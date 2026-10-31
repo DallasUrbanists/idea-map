@@ -1,0 +1,14 @@
+{
+  "name": "idea-map",
+  "private": true,
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@11.25.0",
+  "engines": { "node": "24.22.1" },
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --build",
+    "lint": "node scripts/check-boundaries.mjs",
+    "test": "node --test scripts/*.test.mjs"
+  },
+  "devDependencies": { "@vue/compiler-sfc": "3.5.44", "typescript": "5.9.3" }
+}
