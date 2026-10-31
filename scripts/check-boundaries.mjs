@@ -12,7 +12,7 @@ async function walk(dir) {
       console.error(file + ': symlinks are not supported by the boundary check');
       failed = true;
     } else if (entry.isDirectory()) {
-      if (!['node_modules', 'dist'].includes(entry.name)) await walk(file);
+      if (!['node_modules', 'dist', '.nuxt', '.output'].includes(entry.name)) await walk(file);
     } else if (/\.[cm]?[jt]sx?$/.test(file) || file.endsWith('.vue')) {
       for (const problem of checkSource(file, await readFile(file, 'utf8'))) {
         console.error(file + ': ' + problem);

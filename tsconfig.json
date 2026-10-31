@@ -1,11 +1,20 @@
 {
   "files": [],
   "references": [
-    { "path": "./apps/web" },
-    { "path": "./apps/worker" },
-    { "path": "./packages/contracts" },
-    { "path": "./packages/server" },
-    { "path": "./packages/street-renderer" },
-    { "path": "./packages/streetmix" }
+    {
+      "path": "./apps/worker"
+    },
+    {
+      "path": "./packages/contracts"
+    },
+    {
+      "path": "./packages/server"
+    },
+    {
+      "path": "./packages/street-renderer"
+    },
+    {
+      "path": "./packages/streetmix"
+    }
   ]
 }
