@@ -14,3 +14,5 @@ see [the dependency decision](docs/workspace-dependencies.md) for its scope.
 For focused checks, test ownership and review expectations, see [testing and validation](docs/testing.md).
 
 For versioning, release review and rollback conventions, see [the release guide](docs/releases.md).
+
+For proposed infrastructure definitions, state handling and validation, see [Terraform foundation](docs/terraform-foundation.md).
