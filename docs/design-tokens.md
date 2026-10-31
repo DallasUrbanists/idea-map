@@ -2,11 +2,10 @@
 
 The proposed foundation is in `apps/web/src/styles/tokens.css`. Open
 [`specimen.html`](design/specimen.html) in a browser to review palette,
-typography, spacing, controls and keyboard focus. The committed
-[light](design/specimen-light.png) and [dark](design/specimen-dark.png) screenshots
-are review evidence, not approved visual baselines. The web app is still a
+typography, spacing, controls and keyboard focus. The web app is still a
 placeholder; load the token stylesheet once from the application entry point when
-it is integrated. No remotely hosted or bundled fonts are needed.
+it is integrated. The specimen loads Poppins and Merriweather from Google Fonts;
+applications must load these fonts separately or use the fallback stacks.
 
 ## Reference and direction
 
@@ -16,8 +15,8 @@ The [shared CSS](https://github.com/DallasUrbanists/improvement-map/blob/ee0552e
 provides the green map surfaces, cream text, sand selection and rounded controls;
 the [theme service](https://github.com/DallasUrbanists/improvement-map/blob/ee0552e3348a286b69e2540aa332217cdecd28cb/src/services/theme.js)
 provides light, dark and system choices. The proposal keeps those cues but uses a
-darker light-theme accent for readable white button text, a consistent system font
-stack instead of v1's mixed fonts, and flat surfaces instead of background textures.
+darker light-theme accent for readable white button text, Poppins headings and
+Merriweather body text, and flat surfaces instead of background textures.
 These are proposed accessibility and consistency changes, subject to review.
 
 ## Using the tokens
@@ -29,7 +28,11 @@ These are proposed accessibility and consistency changes, subject to review.
   `--color-selection` with `--color-selection-text` for selected states.
   `--color-border`, `--color-focus`, and `--color-danger` cover boundaries, focus,
   and errors; provide text or icons alongside errors.
-- `--font-body` is a system UI stack; `--font-mono` is a system monospace stack.
+- Use `--font-heading` for headings and `--font-body` for body text. These specify
+  Poppins and Merriweather, respectively, with sans-serif and serif fallbacks;
+  `--font-mono` is a system monospace stack. The tokens name the fonts but do not
+  load them. Provide Poppins 700 and Merriweather 400 and 700 when integrating the
+  specimen's styles, along with any other weights or styles the application uses.
   `--font-size-small`, `--font-size-body`, `--font-size-heading`, and
   `--font-size-display` form the 14px / 16px / 24px / responsive 32–48px scale at
   the default root size. Use `--line-body` and `--line-heading` for readable lines.

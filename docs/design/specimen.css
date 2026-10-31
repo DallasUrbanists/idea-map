@@ -3,6 +3,7 @@ body { margin: 0; background: var(--color-page); color: var(--color-text); font:
 main { max-width: 1120px; padding: var(--space-8); margin: auto; }
 .header { display: flex; justify-content: space-between; gap: var(--space-8); align-items: start; padding: var(--space-12) 0; }
 h1, h2, p { margin: 0 0 var(--space-4); }
+h1, h2 { font-family: var(--font-heading); }
 h1 { font-size: var(--font-size-display); line-height: 1.05; letter-spacing: -.04em; }
 h2 { font-size: var(--font-size-heading); line-height: var(--line-heading); letter-spacing: -.025em; }
 .intro { max-width: 38rem; font-size: 1.125rem; }
