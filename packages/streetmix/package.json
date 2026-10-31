@@ -11,7 +11,7 @@
     }
   },
   "scripts": {
-    "test": "node --test test/*.test.mjs",
+    "test": "tsc --build && node --test test/*.test.mjs",
     "example": "node examples/fake.mjs"
   }
 }
