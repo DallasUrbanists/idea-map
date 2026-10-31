@@ -1,0 +1,73 @@
+/* Idea Map semantic tokens. Omit data-theme or use "system" to follow the OS. */
+:root {
+  color-scheme: light;
+  --color-page: #f5f3ee;
+  --color-surface: #ffffff;
+  --color-surface-raised: #edf1ee;
+  --color-text: #273b31;
+  --color-text-muted: #465a50;
+  --color-border: #61766b;
+  --color-accent: #705400;
+  --color-accent-text: #ffffff;
+  --color-selection: #d8c394;
+  --color-selection-text: #24282b;
+  --color-focus: #0c4d8a;
+  --color-danger: #9b2727;
+  --font-body: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', Consolas, monospace;
+  --font-size-small: 0.875rem;
+  --font-size-body: 1rem;
+  --font-size-heading: 1.5rem;
+  --font-size-display: clamp(2rem, 4vw, 3rem);
+  --line-body: 1.55;
+  --line-heading: 1.2;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+  --radius-small: 0.5rem;
+  --radius-medium: 0.75rem;
+  --radius-large: 1rem;
+  --radius-pill: 999px;
+  --motion-fast: 140ms;
+  --motion-standard: 200ms;
+  --motion-ease: ease;
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-page: #202b29;
+  --color-surface: #2b3638;
+  --color-surface-raised: #40534c;
+  --color-text: #fff0ce;
+  --color-text-muted: #e4dfcf;
+  --color-border: #a4b5aa;
+  --color-accent: #d8c394;
+  --color-accent-text: #24282b;
+  --color-selection: #fff0ce;
+  --color-selection-text: #24282b;
+  --color-focus: #9ecbff;
+  --color-danger: #ffb4a9;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]), :root[data-theme='system'] {
+    color-scheme: dark;
+    --color-page: #202b29;
+    --color-surface: #2b3638;
+    --color-surface-raised: #40534c;
+    --color-text: #fff0ce;
+    --color-text-muted: #e4dfcf;
+    --color-border: #a4b5aa;
+    --color-accent: #d8c394;
+    --color-accent-text: #24282b;
+    --color-selection: #fff0ce;
+    --color-selection-text: #24282b;
+    --color-focus: #9ecbff;
+    --color-danger: #ffb4a9;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --motion-fast: 0ms; --motion-standard: 0ms; }
+}
