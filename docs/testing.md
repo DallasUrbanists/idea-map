@@ -8,7 +8,7 @@ explains the wider testing approach and what we expect before work is complete.
 
 ## Everyday checks
 
-Use the Node and pnpm versions in the [README](../README.md), then run
+Use the Node and pnpm versions in the [contributing guide](../CONTRIBUTING.md#run-locally), then run
 `pnpm install --frozen-lockfile` from the repository folder.
 
 | Command | What it does |
