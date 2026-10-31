@@ -38,7 +38,7 @@ For a complete, valid compliance score `c` from 60% to below 95%, calculate:
 
 ```text
 wait in hours = 24 × (95 - c) / 35
-auto-approval time = revision acceptance time + wait
+auto-approval time = assessment receipt time + wait
 ```
 
 The score uses percentage points: enter `80` for 80%. This is linear interpolation
@@ -56,17 +56,25 @@ no automatic-approval time; scores of 95% or greater have a zero wait.
 | 95% or greater | No waiting period |
 
 Use the stored score before display rounding and the calculated timestamp rather
-than rounding the wait down. Measure from durable acceptance of the exact revision.
-The 24-hour maximum is the policy wait for a successfully assessed submission,
-not a promise that an unavailable provider or publication service will recover
-within 24 hours. Schedule a durable job for the deadline; retry delayed jobs
-without restarting the clock.
+than rounding the wait down. Start the clock when the server receives, validates
+and durably records a complete assessment for the exact current revision, including
+all required media checks. Use this server-recorded receipt timestamp, not the
+submission time, provider's timestamp or a browser-supplied time. Make the score
+and deadline available to moderators when the assessment is recorded.
 
-If a valid assessment arrives after its calculated deadline, process approval
-immediately once the remaining conditions pass. Never interpret a missing assessment
-as a passing score. A replacement assessment for the same revision recalculates
-the deadline from that revision's acceptance time; an edit starts a new revision
-and a new clock.
+Time spent waiting for an assessment does not consume the review window. For
+example, a 60% score received two hours after submission starts a full 24-hour
+review window at receipt. The 24-hour maximum describes the wait after assessment;
+total submission-to-publication time can be longer during assessment or service
+delays. Schedule a durable job for the deadline; retry delayed jobs without
+restarting the clock.
+
+A missing or incomplete assessment never starts the clock. A new assessment that
+supersedes the current one starts a fresh window from its own receipt timestamp
+and invalidates the old deadline. Duplicate delivery of the same assessment does
+not reset its timestamp or extend the wait. An edit invalidates the pending
+revision's assessment and timer; its replacement needs a new assessment before
+its clock starts.
 
 ## Trusted-user shortcut
 
@@ -218,23 +226,27 @@ sending private content to a provider.
 
 1. Save an accepted submission privately with its revision acceptance timestamp.
    Make it available to moderators immediately and assess that exact revision.
-2. Record the assessment and standard deadline. Apply the trusted-user shortcut
-   only when its server-side conditions pass.
+2. On receipt of a complete, valid assessment for the current revision, atomically
+   record its identity, server receipt timestamp, score and calculated deadline.
+   Start the review clock then. Apply the trusted-user shortcut only when its
+   server-side conditions pass.
 3. At the deadline, automatically approve only if the revision still qualifies
    and no moderator intervention blocks it. Bind both human and automatic approval
    to the exact revision and its permitted media.
-4. An edit creates a private pending revision with a new acceptance time and
-   assessment. Keep the last approved revision public until the replacement is
-   approved or the submission is withdrawn or removed. Old scores and scheduled
-   jobs cannot approve a newer revision.
+4. An edit creates a private pending revision that requires a new assessment.
+   Its clock starts on receipt of that assessment, not when the edit is saved.
+   Keep the last approved revision public until the replacement is approved or
+   the submission is withdrawn or removed. Old assessments and scheduled jobs
+   cannot approve a newer revision or supersede its current assessment.
 5. Publish only the approved revision. Invalidate public caches, previews and
    projections on replacement, withdrawal or removal. Rejected and superseded
    assets remain private and follow the approved retention schedule.
 
 ## Audit, privacy and reviewer accountability
 
-Keep an append-only record of the revision, acceptance time, assessment time,
-compliance score, scoring-method version, calculated deadline, policy version,
+Keep an append-only record of the revision, acceptance time, assessment identity,
+server-recorded assessment receipt time, compliance score, scoring-method version,
+calculated deadline, policy version,
 approval method, service or moderator identity, and reason. Record moderator holds,
 decisions and overrides. For the trusted-user shortcut, also record the verified
 identity evidence, prior approval count and threshold used.
@@ -273,8 +285,8 @@ contact before launch.
 | --- | --- |
 | Unverified new user, score 98%, complete checks | Eligible for instant automatic approval; no six-hour gate. |
 | Score 59.99% | Human approval required; no timer can approve it. |
-| Score exactly 60% | Private for up to 24 hours; auto-approve at the deadline if no blocking intervention occurs. |
-| Score 77.5% | Standard deadline is 12 hours after revision acceptance. |
+| Score exactly 60% | Wait 24 hours from receipt of the complete, valid assessment; auto-approve at the deadline if no blocking intervention occurs. |
+| Score 77.5% | Standard deadline is 12 hours after receipt of the complete, valid assessment. |
 | Score exactly 95% | Eligible for instant automatic approval. |
 | Stored score 59.99% displayed as 60% | Use the stored score; no automatic approval. |
 | Verified user, five prior approvals, score 92.6% | Above the 92.5% trusted threshold; eligible for instant approval. |
@@ -286,8 +298,12 @@ contact before launch.
 | Moderator only opens the page | No decision or hold exists; the timer still applies. |
 | Risk flag, valid score >= 60%, no moderator intervention | Prioritize human review; auto-approve at the deadline if still eligible. |
 | Missing image result, unsupported input or provider timeout | Private; no automatic approval without a complete valid assessment. |
-| Valid assessment arrives after its deadline | Process automatic approval immediately if all remaining conditions pass. |
-| Edit after publication | Keep the approved version public; start a new clock and assessment for the pending revision. |
+| Score 60% arrives two hours after submission | Deadline is 26 hours after submission: the full 24-hour review window starts at assessment receipt. |
+| Assessment remains incomplete for 24 hours | No clock starts; keep private until assessment completes or a moderator approves. |
+| A new assessment supersedes the current one | Start a fresh window at the new assessment's receipt time and invalidate the previous timer. |
+| Duplicate delivery of the same assessment | Preserve the original receipt time and deadline. |
+| Approval job runs late | Recheck the current assessment, deadline and moderation state; approve if still eligible without restarting the clock. |
+| Edit after publication | Keep the approved version public; assess the pending revision and start its clock only when that assessment is received. |
 | Stale job after a second edit | Cannot approve or expose the newer revision. |
 | Verification is lost before trusted approval | Fall back to the standard schedule. |
 | Duplicate approval event or reapproved edit | Does not increase the trusted-user count. |
