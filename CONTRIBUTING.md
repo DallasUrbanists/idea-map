@@ -15,7 +15,7 @@ For project priorities, see the [roadmap](https://github.com/DallasUrbanists/ide
 
 1. Fork and clone the repository, or clone it directly if you have access.
 2. Create a branch from the latest `main`.
-3. Follow the [README](README.md) to install dependencies and run the checks.
+3. Follow the setup steps below to install dependencies and run the app.
 4. Keep your change focused on one issue. For UI work, look for an existing
    component or Storybook example before creating something new.
 
@@ -24,6 +24,39 @@ The wiki has more guidance when you need it:
 - [Developer setup and troubleshooting](https://github.com/DallasUrbanists/idea-map/wiki/Developer-Setup-and-Troubleshooting)
 - [Design system and Storybook](https://github.com/DallasUrbanists/idea-map/wiki/Design-System-and-Storybook)
 - [Testing and definition of done](https://github.com/DallasUrbanists/idea-map/wiki/Testing-and-Definition-of-Done)
+
+## Run locally
+
+Install Node 24.22.1 and pnpm 11.25.0. From the repository folder, run:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm exec tsc --build
+pnpm --filter @idea-map/web dev
+```
+
+Open http://localhost:3000.
+
+The app is still under development. To start the local database, Firebase
+emulators, and Storybook, follow the [development guide](docs/development.md).
+It also covers Docker setup and troubleshooting. Normal development does not
+require production credentials.
+
+## Check your changes
+
+For code changes, run:
+
+```sh
+pnpm lint
+pnpm test
+pnpm typecheck
+pnpm build
+pnpm test:web
+```
+
+These check imports, run the root tests, check types, build the app, and test the
+built web server. Some packages have additional tests.
+See the [testing guide](docs/testing.md) to choose the checks for your change.
 
 ## Open a pull request
 
