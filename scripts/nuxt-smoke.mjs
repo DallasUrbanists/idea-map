@@ -39,7 +39,8 @@ test('production server renders, responds safely, and keeps private config priva
       const override = await fetch(base + '/api/health', { headers: { [header]: 'POST' } });
       assert.equal(override.status, 403, header);
     }
-    assert.equal((await fetch(base + '/api/health', { method: 'HEAD' })).status, 200);
+    // The health route is GET-only; HEAD reaches routing rather than the guard.
+    assert.equal((await fetch(base + '/api/health', { method: 'HEAD' })).status, 404);
     const futureRoute = await fetch(base + '/api/not-yet-implemented', { method: 'POST' });
     assert.equal(futureRoute.status, 403);
     const home = await fetch(base + '/');
