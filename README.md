@@ -32,6 +32,8 @@ see [the dependency decision](docs/workspace-dependencies.md) for its scope.
 
 For focused checks, test ownership and review expectations, see [testing and validation](docs/testing.md).
 
+For API privacy, validation and the fail-closed mutation boundary, see [API contracts and authorization](docs/api-contracts.md).
+
 For the published SSR integration check, create an empty disposable PostGIS database
 whose name begins `idea_map_test_`, run the server migrations against it, load
 `packages/server/test/ssr-fixture.sql`, set `TEST_DATABASE_URL` to its connection
