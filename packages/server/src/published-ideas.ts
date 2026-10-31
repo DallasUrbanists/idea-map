@@ -8,6 +8,9 @@ export async function readPublishedIdea(databaseUrl: string, id: string): Promis
   let pool = pools.get(databaseUrl)
   if (!pool) {
     pool = new pg.Pool({ connectionString: databaseUrl, max: 2, connectionTimeoutMillis: 5000, idleTimeoutMillis: 10000 })
+    pool.on('error', (error) => {
+      console.error('Unexpected error on idle PostgreSQL client', error)
+    })
     pools.set(databaseUrl, pool)
   }
   const result = await pool.query<{ title: string | null; description: string | null }>(`
@@ -22,3 +25,4 @@ export async function readPublishedIdea(databaseUrl: string, id: string): Promis
   if (!row || typeof row.title !== 'string' || typeof row.description !== 'string' || !row.title.trim() || !row.description.trim()) return null
   return { title: row.title, description: row.description }
 }
+
