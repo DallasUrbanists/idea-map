@@ -1,0 +1,4 @@
+FROM node:24.22.1-trixie-slim
+RUN npm install --global pnpm@11.25.0
+RUN pnpm config set store-dir /pnpm-store
+WORKDIR /workspace

@@ -18,6 +18,9 @@ The idea API reads only approved revisions of approved ideas when the private
 unconfigured or unavailable database returns 503. Use a dedicated read-only role
 and an isolated synthetic database for local checks.
 
+For native Nuxt and Storybook development with disposable local services, see
+[the development setup](docs/development.md). A Docker-only fallback is available.
+
 Nuxt runtime configuration is private by default; only values under `public`
 are serialized to browsers. Use the `NUXT_` environment-variable convention
 for server runtime overrides and never put credentials under `public`. Future

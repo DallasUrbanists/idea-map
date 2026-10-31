@@ -11,10 +11,14 @@
     "vue-router": "5.4.0"
   },
   "devDependencies": {
+    "@storybook/vue3-vite": "10.6.5",
+    "storybook": "10.6.5",
     "vue-tsc": "3.3.14"
   },
   "scripts": {
     "dev": "nuxt dev",
+    "storybook": "storybook dev -p 6006",
+    "build:storybook": "storybook build",
     "build": "nuxt build",
     "typecheck": "nuxt typecheck",
     "preview": "nuxt preview"

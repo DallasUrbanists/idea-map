@@ -13,6 +13,11 @@
     "test": "node --test scripts/*.test.mjs",
     "test:web": "node --test scripts/nuxt-smoke.mjs",
     "test:web:published": "node --test scripts/nuxt-published-smoke.mjs",
+    "dev:services": "node scripts/dev-services.mjs start",
+    "dev:all": "node scripts/dev-services.mjs all",
+    "dev:status": "node scripts/dev-services.mjs status",
+    "dev:check": "node scripts/dev-check.mjs",
+    "dev:stop": "node scripts/dev-services.mjs stop",
     "changeset": "changeset",
     "release:status": "changeset status"
   },
