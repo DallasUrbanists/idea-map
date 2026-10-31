@@ -3,7 +3,9 @@
 **Proposal for human review — not an approved policy or implemented service.**
 This document addresses [#52](https://github.com/DallasUrbanists/idea-map/issues/52).
 This proposal allows automatic approval for verified users when their submission's
-compliance score is strictly greater than 95%. It describes the intended policy;
+compliance score is strictly greater than their history-based threshold, ranging
+from 95% for a new contributor to 90% after ten approved submissions. It describes
+the intended policy;
 implementation, score evaluation and provider setup are still required.
 The existing [moderation direction](https://github.com/DallasUrbanists/idea-map/wiki/Moderation-and-Publication)
 keeps new ideas and unapproved media private and retains an approved revision
@@ -13,9 +15,11 @@ and [#55](https://github.com/DallasUrbanists/idea-map/issues/55).
 ## Decision proposed
 
 **Auto-approve submissions from verified users when their compliance score is
-strictly greater than 95%.** A score of exactly 95% goes to human review.
-All other submissions require human approval; rejection always requires a human
-decision.
+strictly greater than their trusted-user threshold.** The threshold starts at
+95% and falls by 0.5 percentage points for each prior approved submission, reaching
+90% at ten approvals. It stays at 90% for users with more than ten approvals.
+A score equal to the user's threshold goes to human review. All other submissions
+require human approval; rejection always requires a human decision.
 
 A verified user means a registered user or guest whose email verification and
 ownership of the submission have been confirmed by the server. Check that status
@@ -47,6 +51,49 @@ correction path; do not silently edit the author's meaning. Emergency or credibl
 threat handling requires an operator-approved escalation contact and procedure;
 do not promise real-time monitoring or automated emergency response.
 
+## Trusted-user score
+
+A verified user's trusted-user score is the number of distinct prior approved
+submissions in their history. Use the server's approval records for the same
+verified submitter identity; never accept a count supplied by the browser.
+
+Count each submission once, whether its approval was automatic or human.
+Reapproving an edit, retrying an approval or processing the same event twice
+does not add another submission. Exclude the submission currently being assessed,
+so its earlier approved revisions cannot lower the threshold for its own edits.
+If an approval is reversed for a moderation violation, remove that submission
+from the count used for future decisions. Rejected and pending submissions do
+not contribute.
+
+For a count `n`, calculate the threshold in percentage points:
+
+```text
+auto-approval threshold = 95 - 0.5 × min(n, 10)
+```
+
+This is linear interpolation between zero and ten approvals, capped at a minimum
+threshold of 90%.
+
+| Prior approved submissions | Auto-approval requires a compliance score |
+| --- | --- |
+| 0 | > 95% |
+| 1 | > 94.5% |
+| 2 | > 94% |
+| 3 | > 93.5% |
+| 4 | > 93% |
+| 5 | > 92.5% |
+| 6 | > 92% |
+| 7 | > 91.5% |
+| 8 | > 91% |
+| 9 | > 90.5% |
+| 10 or more | > 90% |
+
+Calculate the count and threshold again when approval is committed. Record that
+snapshot with the decision so later changes to history do not rewrite past
+decisions. If history cannot be read reliably, route to human review. Trust
+changes only the numeric threshold: verification, ownership, complete scans and
+the absence of unresolved flags are still required.
+
 ## Compliance score and automatic approval
 
 The compliance score is a project-level score from 0% to 100%, where a higher
@@ -65,14 +112,15 @@ Automatic approval requires all of the following:
 - The server confirms the submitter is verified and owns the submission.
 - All required checks have completed for the current revision and its media.
 - The compliance score is a finite number in the range 0% to 100%, strictly
-  greater than 95%, using the
-  stored value before display rounding.
+  greater than the user's calculated threshold. Compare the stored score before
+  display rounding.
 - There are no unresolved content flags, privacy or ownership concerns, or
   requests for human review.
 
 A missing score, unsupported input, incomplete scan or provider failure routes to
 human review. If the scoring method cannot assess a required rule, the submission
-also needs human review. A score of 95% or below never causes automatic rejection.
+also needs human review. A score at or below the user's threshold never causes
+automatic rejection.
 
 ## Candidate provider and routing thresholds
 
@@ -94,10 +142,10 @@ precedence over the compliance score. Route remaining submissions as follows:
 
 | Signal | Proposed routing | Decision |
 | --- | --- | --- |
-| Verified user, compliance score > 95%, complete checks and no unresolved flags | Automatic approval | Publish only the scored revision and permitted media |
+| Verified user, compliance score > calculated trusted-user threshold, complete checks and no unresolved flags | Automatic approval | Publish only the scored revision and permitted media |
 | Text Toxic, Derogatory, Violent or Sexual confidence >= 0.75; or image adult or violence `LIKELY`/`VERY_LIKELY` | High-priority human review | Blocks automatic approval; no automatic rejection |
 | Those text categories >= 0.40 and < 0.75; or image adult or violence `POSSIBLE` | Human review with contextual flag | Blocks automatic approval; no automatic rejection |
-| Compliance score <= 95%, or unverified submitter, with no higher-priority flag | Normal human review once eligible | No automatic rejection or publication |
+| Compliance score <= calculated trusted-user threshold, or unverified submitter, with no higher-priority flag | Normal human review once eligible | No automatic rejection or publication |
 | Unsupported language, missing/unknown score, malformed result, provider error, timeout or unscannable media | Manual review with an explicit unavailable flag | Never treat as clean |
 
 `spoof`, `medical`, `racy`, profanity, politics and other sensitive categories
@@ -122,7 +170,8 @@ terms, access and costs have been reviewed and separately authorized.
    automatic-approval condition above. Otherwise, an authorized moderator
    approves, rejects or requests changes with a reason. Both approval paths
    atomically bind the decision to the checked revision and its permitted media,
-   rechecking verification, ownership and revision identity at that transition.
+   rechecking verification, ownership, prior approval count, calculated threshold
+   and revision identity at that transition.
    Publication and cache/projection invalidation use that approved revision only.
    A withdrawn or removed item is unavailable and its public projections/previews
    are invalidated.
@@ -140,13 +189,16 @@ Propose an append-only decision record containing idea/revision identifiers,
 eligibility and event timestamps, actor or service identity, policy version,
 provider/feature/model identifiers where supplied, outcome, reason code and
 reviewer override. Record whether approval was automatic or human, the compliance
-score and scoring-method version, and the server-verified eligibility evidence.
+score and scoring-method version, prior approved-submission count, applied
+threshold and trust-policy version, and the server-verified eligibility evidence.
 Record classifier categories/threshold version and failure
 state only as needed for review; avoid raw content, contact details, tokens and
 provider payloads in logs. Access is restricted to authorized staff and audited.
 Propose retaining decision metadata for **90 days**, subject to legal and operator
 review; raw uploads and account data follow separate, approved retention rules.
-No retention job is implemented here. Document a lawful hold and deletion
+Approval-history counts must remain accurate when decision metadata expires;
+define retention and correction rules for the trust record separately from this
+90-day audit proposal. No retention job is implemented here. Document a lawful hold and deletion
 exception process before implementing it; do not imply an unapproved retention
 period is operational.
 
@@ -172,9 +224,17 @@ launch; no deadline or support channel is asserted here.
 | Scenario | Expected result |
 | --- | --- |
 | Unverified guest at five hours | Private; not review-eligible yet. |
-| Verified submitter, compliance score 95.1%, all checks complete and no flags | Automatically approve and publish the exact scored revision and permitted media. |
-| Verified submitter, compliance score exactly 95% or lower | Human review; no automatic approval or rejection. |
-| Stored score 95.01% displayed as 95% | Use the stored score; qualifies if all other conditions pass. |
+| Verified submitter, no prior approvals, compliance score 95.1%, all checks complete and no flags | Automatically approve and publish the exact scored revision and permitted media. |
+| Verified submitter, no prior approvals, compliance score exactly 95% or lower | Human review; no automatic approval or rejection. |
+| Verified submitter, five prior approvals, compliance score 92.6% | Threshold is 92.5%; automatically approve if all other conditions pass. |
+| Verified submitter, five prior approvals, compliance score exactly 92.5% | Human review; equality does not qualify. |
+| Verified submitter, ten prior approvals, compliance score 90.1% | Threshold is 90%; automatically approve if all other conditions pass. |
+| Verified submitter, eleven or more prior approvals, compliance score exactly 90% | Threshold remains 90%; human review. |
+| Reapproval of an edit or duplicate approval event | Counts as the same submission; no increase in trust. |
+| Editing a previously approved submission | Exclude that submission from its author's prior-approval count for this decision. |
+| An earlier approval is reversed for a moderation violation | Remove it from the count and recalculate the threshold for future decisions. |
+| Approval history is unavailable | Keep private and route to human review. |
+| New contributor's stored score 95.01% displayed as 95% | Use the stored score; qualifies if all other conditions pass. |
 | Unverified submitter, compliance score 99% | No automatic approval; human review after the six-hour eligibility wait. |
 | Verified submitter, score 99%, but a photo or privacy concern is flagged | Keep private and route to human review. |
 | Political criticism or a photo flagged `POSSIBLE` | Contextual human review; no rejection on score alone. |
@@ -185,7 +245,6 @@ launch; no deadline or support channel is asserted here.
 | Rejection followed by appeal | Private content remains private; reason and appeal are auditable without exposing private reviewer notes. |
 
 Before implementation, reviewers must approve the rules, provider terms and
-data handling, compliance scoring method and evaluation, retention, escalation
-contacts,
-appeal process and publication transition. This proposal does not provision a
+data handling, compliance scoring method and evaluation, trust-history handling,
+retention, escalation contacts, appeal process and publication transition. This proposal does not provision a
 cloud service, change access controls, run a live model or enable publication.
