@@ -1,0 +1,1 @@
+ALTER TABLE "guest_submission_counters" ADD CONSTRAINT "guest_submission_count_range" CHECK ("guest_submission_counters"."accepted_count" between 0 and 2);
