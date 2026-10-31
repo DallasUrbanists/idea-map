@@ -1,6 +1,6 @@
 # Testing and validation
 
-Choose the lowest layer that proves a specific failure mode. The feature's implementer owns its checks and fixtures; reviewers check that the test actually guards that risk. Do not add placeholder feature tests, duplicate the same assertion through every layer, or copy v1's suite wholesale. This policy applies now; the database, Storybook and Playwright tooling below are future work, not commands that already exist.
+Choose the lowest layer that proves a specific failure mode. The feature's implementer owns its checks and fixtures; reviewers check that the test actually guards that risk. Do not add placeholder feature tests, duplicate the same assertion through every layer, or copy v1's suite wholesale. PostGIS integration and native Storybook setup now exist; a full component catalog and cross-system journey suite remain future work.
 
 ## Current runnable foundation
 
@@ -11,17 +11,25 @@ From the repository root, use the pinned Node and pnpm versions in `package.json
 | Boundary parser behavior | `node --test scripts/boundaries.test.mjs` | Existing cases reject browser/server and package/application leaks, including dynamic imports and Vue scripts; server code can use Node builtins. |
 | A single boundary risk | `node --test --test-name-pattern="browser imports" scripts/boundaries.test.mjs` | Runs the named browser-import test. Substitute another test name when investigating. |
 | Workspace source imports | `pnpm lint` | Scans app and package source for forbidden dependencies; see [workspace dependency decision](workspace-dependencies.md) for limitations. |
-| All existing tests | `pnpm test` | Runs the Node test files under `scripts/`; no application journey tests exist yet. |
-| Type/build boundary | `pnpm typecheck` or `pnpm build` | Both currently run `tsc --build`; run once for a change when both would do the same work. |
+| Root tests | `pnpm test` | Runs Node test files under `scripts/`; it does not run every package or application integration test. |
+| Type and production build | `pnpm typecheck` and `pnpm build` | Each builds workspace TypeScript; one checks Nuxt types, the other builds Nuxt for production. |
+| Renderer package | `pnpm exec tsc --build` then `pnpm --filter @idea-map/street-renderer test` | Tests the synthetic renderer and its input handling. |
+| Streetmix package | `pnpm --filter @idea-map/streetmix test` | Builds and checks fake-backed package contracts. |
+| Production web smoke | `pnpm build` then `pnpm test:web` | Exercises the local built server without a database. |
 
-The package directories are bootstrap exports with no package-specific tests or test scripts yet. Use the boundary test above for the current shared workspace risk; do not claim it tests future package functionality. When real package behavior lands, its implementing issue should add focused package-level commands alongside meaningful tests. Tests must not require network access or production credentials by default.
+The [development guide](development.md) describes local services and Storybook.
+The server's `pnpm --filter @idea-map/server test:database` requires an empty
+disposable PostGIS database named `idea_map_test_*` in `TEST_DATABASE_URL`; it
+creates records and runs migrations. The README describes the separate synthetic
+published-idea SSR check. Never point these checks at shared or production data.
+Tests should not require production credentials or live providers by default.
 
 ## Ownership by layer
 
 | Layer and owner | Distinct risk to cover | Timing / dependency |
 | --- | --- | --- |
-| Pure/domain and independent package tests: owner of the domain or package change | Geometry, validation and transformations produce incorrect results for meaningful inputs or edge cases. Prefer fast deterministic tests without UI or providers. | Add alongside actual behavior; package owners for #67 and #69 and later implementations own their commands and fixtures. |
-| Database/API integration: schema/API feature owner | Authorization, ownership, transactions, idempotency or private fields leak across the actual database/API boundary. Use an isolated test database, migrations, deterministic fixtures and provider fakes; never use production data. | #13/#15 and feature issues own their integration setup and checks; #21 owns local dependency setup and #22 owns deterministic seeds and provider mocks. |
+| Pure/domain and independent package tests: owner of the domain or package change | Geometry, validation and transformations produce incorrect results for meaningful inputs or edge cases. Prefer fast deterministic tests without UI or providers. | Existing package tests cover initial renderer and generator contracts; feature owners add checks for new behavior. |
+| Database/API integration: schema/API feature owner | Authorization, ownership, transactions, idempotency or private fields leak across the actual database/API boundary. Use an isolated test database, migrations, deterministic fixtures and provider fakes; never use production data. | Schema and SSR checks exist; #15 and later features own their API checks, and #22 owns broader deterministic seeds and provider mocks. |
 | Component / Storybook interaction and accessibility: component owner | Keyboard operation, labels, focus, semantic state and interaction behavior fail in a component. Include automated accessibility checks and manual keyboard/screen-reader review for affected flows; automation alone cannot establish accessibility. | #38 owns the component catalog, #39 owns accessibility and visual acceptance, and component implementation issues own their stories and focused checks. #21 owns development setup; #22 supplies deterministic mocks. |
 | Small Playwright suite: journey owner | A small set of essential cross-system journeys fails despite lower-layer checks. Use stable fixtures and deterministic providers, not timing sleeps or production accounts. | #11 and #21 provide app/development foundation, #22 supplies fixtures and mocks, and subsequent feature issues own concrete journey checks when the journeys exist. |
 

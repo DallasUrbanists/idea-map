@@ -1,5 +1,7 @@
 # idea-map
 
+See [CONTRIBUTING](CONTRIBUTING.md) for selecting work, setup, focused checks and review.
+
 Install Node 24.22.1 and pnpm 11.25.0, then run:
 
 ```sh
