@@ -1,87 +1,47 @@
 # Contributing to Idea Map
 
-Thanks for helping improve the map. The repository is Apache-2.0; see
-[LICENSE](LICENSE). Report security-sensitive information privately to a
-maintainer instead of placing credentials or personal data in an issue or PR.
+Welcome! You can help by fixing a bug, improving the docs, or building a feature.
+If this is your first contribution, a small documentation fix is a good place to start.
 
-## Choose and scope work
+## Find something to work on
 
-1. Read the relevant [open issues](https://github.com/DallasUrbanists/idea-map/issues)
-   and linked project decisions. Check the issue's dependencies, assignees,
-   comments and open PRs before starting; coordinate with an existing owner
-   rather than duplicating their work. Ask on the issue when requirements or
-   ownership are unclear.
-2. Choose a small, reviewable change. Confirm prerequisite code is available on
-   the base branch; an unmerged PR does not establish that dependency. Preserve
-   existing work and discuss any change in scope with maintainers.
-3. Create a short-lived branch from the current default branch. Make focused
-   commits, then open a PR against the default branch and link its issue. For
-   example, `Closes #123` in a PR body links completion to a merge; don't close
-   an issue merely because implementation has started.
+Browse the [open issues](https://github.com/DallasUrbanists/idea-map/issues).
+Before starting, check whether someone is already working on the issue and whether
+it depends on other work. Leave a comment if you'd like to help or need clarification.
 
-## Set up and run
+For project priorities, see the [roadmap](https://github.com/DallasUrbanists/idea-map/wiki/Roadmap-and-Milestones).
 
-Use Node 24.22.1 and pnpm 11.25.0, then follow the
-[development setup](docs/development.md) for native Nuxt/Storybook, isolated
-PostGIS and Firebase emulators, ports, migration and the Docker-only fallback.
-Start with `pnpm install --frozen-lockfile`. Normal development does not require
-production credentials. The current application is a foundation; seeded
-end-to-end flows and a full component catalog are separate work.
+## Make your change
 
-The setup in [#120](https://github.com/DallasUrbanists/idea-map/pull/120) was
-exercised on Windows with Docker Desktop. Linux, macOS, WSL and a fresh
-uninvolved-contributor onboarding exercise have not been independently verified
-in that evidence; report your environment and any platform-specific results.
+1. Fork and clone the repository, or clone it directly if you have access.
+2. Create a branch from the latest `main`.
+3. Follow the [README](README.md) to install dependencies and run the checks.
+4. Keep your change focused on one issue. For UI work, look for an existing
+   component or Storybook example before creating something new.
 
-## Reuse and validate
+The wiki has more guidance when you need it:
 
-Search the existing application, packages, [design tokens](docs/design-tokens.md)
-and Storybook before creating a component. Run
-`pnpm --filter @idea-map/web storybook --no-open` after setup. The current
-welcome story is a setup specimen, not a finished component catalog. For new UI,
-use existing responsibilities where suitable and include a focused story or
-evidence for relevant states, keyboard access, labels, contrast, small screens
-and reduced motion. Visual snapshots are review evidence, not approval by themselves.
+- [Developer setup and troubleshooting](https://github.com/DallasUrbanists/idea-map/wiki/Developer-Setup-and-Troubleshooting)
+- [Design system and Storybook](https://github.com/DallasUrbanists/idea-map/wiki/Design-System-and-Storybook)
+- [Testing and definition of done](https://github.com/DallasUrbanists/idea-map/wiki/Testing-and-Definition-of-Done)
 
-Choose checks for the behavior changed; see [testing and validation](docs/testing.md)
-for ownership, current commands and integration prerequisites. Typical checks:
+## Open a pull request
 
-```sh
-pnpm lint
-pnpm test
-pnpm typecheck
-pnpm build
-pnpm test:web
-```
+Push your branch and open a pull request against `main`. Include:
 
-`pnpm test` covers root Node tests, not every package or cross-system journey.
-For a package change run its focused test too: build TypeScript first with
-`pnpm exec tsc --build`, then use `pnpm --filter @idea-map/street-renderer test`
-or `pnpm --filter @idea-map/streetmix test` as applicable. Database and published
-SSR checks require an **empty disposable** PostGIS database and synthetic data;
-follow [testing](docs/testing.md) and [the README](README.md) before running them.
-Never run fixture migrations or destructive tests against shared or production data.
+- What you changed and why, with a link to the issue.
+- How you checked it, including any checks you couldn't run.
+- Screenshots if the appearance changed.
 
-Add tests when they prevent a meaningful failure; avoid tests that only repeat
-implementation details. For documentation-only work, review the text, commands,
-links and diff instead of installing unrelated tools. Report skipped checks and
-their reasons rather than presenting them as passed.
+A draft pull request is welcome if you'd like feedback while you're working.
+Ask for help when you're stuck, and respond to review comments as you go.
 
-## Review and AI-assisted work
+## Using AI tools
 
-Describe the problem, resulting behavior, linked issue, exact checks and their
-results in the PR. Include relevant accessibility, privacy, recovery and visual
-evidence; distinguish mocked/local checks from live-service verification. Review
-the complete diff, dependency and license effects, and any data or schema change.
-Keep secrets, personal information and production data out of examples, logs,
-fixtures and screenshots. Consult [release guidance](docs/releases.md) for
-changesets, compatibility and rollback when a release is affected.
+AI tools are optional. Review the code they produce and make sure you understand
+the change before submitting it. Keep credentials and private data out of prompts.
+See [AI-assisted development](https://github.com/DallasUrbanists/idea-map/wiki/AI-Assisted-Development)
+for more guidance.
 
-AI assistance is optional. Provide only the context the tool needs, inspect any
-repository instructions that apply, and avoid sharing secrets or private data.
-The human contributor remains responsible for understanding and reviewing the
-change, tests, licenses and safety boundaries; an AI-generated explanation or
-passing test does not replace human review. Preserve unrelated local changes and
-do not deploy, publish packages, change permissions or merge on behalf of a
-maintainer without explicit authorization. Respond to review feedback with new
-evidence and leave final acceptance to the maintainer.
+Please report security-sensitive problems privately to a maintainer.
+Contributions follow the repository's [Apache-2.0 license](LICENSE).
