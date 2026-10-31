@@ -80,13 +80,11 @@ local drafts, attribution and stable links belong to [#100](https://github.com/D
 [#102](https://github.com/DallasUrbanists/idea-map/issues/102). Browser storage is
 origin-bound; do not promise automatic recovery across origins.
 
-## Proposed wiki update
+## Wiki crosswalk
 
-The existing [wiki matrix](https://github.com/DallasUrbanists/idea-map/wiki/V1-Capability-and-Migration-Matrix)
-should point to this reviewed inventory and remove the instruction to audit local
-uncommitted changes. This repository change is a proposed update; the wiki has not
-been modified by this PR. Preserve the origin-bound storage and pilot/full-parity
-caveats when applying the wiki update.
+The [wiki matrix](https://github.com/DallasUrbanists/idea-map/wiki/V1-Capability-and-Migration-Matrix)
+links to this inventory and retains the origin-bound storage and pilot/full-parity
+caveats. The inventory and its classifications remain subject to maintainer review.
 
 ## Review and remaining evidence
 
