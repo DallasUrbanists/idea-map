@@ -40,3 +40,7 @@ synthetic data; do not load it into a shared or production database. The runtime
 read selects title and description only after both the idea and its referenced
 revision are approved. Publishing transitions and richer projections remain later
 work. The application role should be read-only and scoped to those required tables.
+
+For versioning, release review and rollback conventions, see [the release guide](docs/releases.md).
+
+For proposed infrastructure definitions, state handling and validation, see [Terraform foundation](docs/terraform-foundation.md).

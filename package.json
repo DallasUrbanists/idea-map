@@ -12,9 +12,12 @@
     "lint": "node scripts/check-boundaries.mjs",
     "test": "node --test scripts/*.test.mjs",
     "test:web": "node --test scripts/nuxt-smoke.mjs",
-    "test:web:published": "node --test scripts/nuxt-published-smoke.mjs"
+    "test:web:published": "node --test scripts/nuxt-published-smoke.mjs",
+    "changeset": "changeset",
+    "release:status": "changeset status"
   },
   "devDependencies": {
+    "@changesets/cli": "3.0.3",
     "@vue/compiler-sfc": "3.5.44",
     "typescript": "5.9.3"
   }
