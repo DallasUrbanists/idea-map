@@ -1,35 +1,166 @@
 # Proposed moderation policy and review workflow
 
-**Proposal for human review — not an approved policy or implemented service.**
+**Policy proposal; implementation and provider setup are still required.**
+
 This document addresses [#52](https://github.com/DallasUrbanists/idea-map/issues/52).
-This proposal allows automatic approval for verified users when their submission's
-compliance score is strictly greater than their history-based threshold, ranging
-from 95% for a new contributor to 90% after ten approved submissions. It describes
-the intended policy;
-implementation, score evaluation and provider setup are still required.
-The existing [moderation direction](https://github.com/DallasUrbanists/idea-map/wiki/Moderation-and-Publication)
-keeps new ideas and unapproved media private and retains an approved revision
-while edits are reviewed. Implementation belongs to [#53](https://github.com/DallasUrbanists/idea-map/issues/53)
+Implementation belongs to [#53](https://github.com/DallasUrbanists/idea-map/issues/53)
 and [#55](https://github.com/DallasUrbanists/idea-map/issues/55).
 
 ## Decision proposed
 
-**Auto-approve submissions from verified users when their compliance score is
-strictly greater than their trusted-user threshold.** The threshold starts at
-95% and falls by 0.5 percentage points for each prior approved submission, reaching
-90% at ten approvals. It stays at 90% for users with more than ten approvals.
-A score equal to the user's threshold goes to human review. All other submissions
-require human approval; rejection always requires a human decision.
+Use the compliance score to give moderators time to review riskier submissions
+before automatic publication:
 
-A verified user means a registered user or guest whose email verification and
-ownership of the submission have been confirmed by the server. Check that status
-again when approving; a browser-supplied flag is insufficient. Unverified guest
-submissions wait at least six hours before human review. Waiting six hours alone
-does not qualify a submission for automatic approval.
+- **Below 60%:** human approval is required. Time alone cannot approve the submission.
+- **60% to below 95%:** wait up to 24 hours, with a shorter wait for a higher score.
+  Automatically approve when the wait expires if no moderator has intervened.
+- **95% or greater:** eligible for instant automatic approval.
+- **Trusted verified users:** keep the earlier instant-approval shortcut, with a
+  threshold that falls from 95% to 90% as their approval history grows.
 
-New submissions and pending edits remain private until approved. Publication
-exposes only the approved content and permitted media; contact information and
-reviewer notes stay private after publication too.
+The standard schedule applies to registered users and guests, including unverified
+submitters. It replaces the previous fixed six-hour gate and verification-only
+automatic approval rule. The [moderation wiki](https://github.com/DallasUrbanists/idea-map/wiki/Moderation-and-Publication)
+describes the earlier direction; its six-hour eligibility rule must be synchronized
+with this proposal before rollout.
+
+Moderators can review a submission as soon as it is accepted. The waiting period
+is an opportunity for intervention, not a delay before moderators may act.
+Rejection always requires a human decision.
+
+New submissions and pending edits stay private until approved. Publication exposes
+only approved content and permitted media. Contact information and reviewer notes
+stay private after publication too.
+
+## Waiting period
+
+For a complete, valid compliance score `c` from 60% to below 95%, calculate:
+
+```text
+wait in hours = 24 × (95 - c) / 35
+auto-approval time = revision acceptance time + wait
+```
+
+The score uses percentage points: enter `80` for 80%. This is linear interpolation
+from 24 hours at exactly 60% to zero hours at exactly 95%. Scores below 60% have
+no automatic-approval time; scores of 95% or greater have a zero wait.
+
+| Compliance score | Standard waiting period |
+| --- | --- |
+| Below 60% | Human approval required |
+| 60% | 24 hours |
+| 68.75% | 18 hours |
+| 77.5% | 12 hours |
+| 86.25% | 6 hours |
+| 90% | About 3 hours 26 minutes |
+| 95% or greater | No waiting period |
+
+Use the stored score before display rounding and the calculated timestamp rather
+than rounding the wait down. Measure from durable acceptance of the exact revision.
+The 24-hour maximum is the policy wait for a successfully assessed submission,
+not a promise that an unavailable provider or publication service will recover
+within 24 hours. Schedule a durable job for the deadline; retry delayed jobs
+without restarting the clock.
+
+If a valid assessment arrives after its calculated deadline, process approval
+immediately once the remaining conditions pass. Never interpret a missing assessment
+as a passing score. A replacement assessment for the same revision recalculates
+the deadline from that revision's acceptance time; an edit starts a new revision
+and a new clock.
+
+## Trusted-user shortcut
+
+A verified user's trusted-user score is the number of distinct prior approved
+submissions in their history. Use the server's approval records for the same
+verified submitter identity; never accept a count supplied by the browser.
+
+Count each submission once, whether its approval was automatic or human.
+Reapproving an edit, retrying an approval or processing the same event twice
+does not add another submission. Exclude the submission currently being assessed,
+so its earlier approved revisions cannot lower the threshold for its own edits.
+If an approval is reversed for a moderation violation, remove that submission
+from the count used for future decisions. Rejected and pending submissions do
+not contribute.
+
+For a count `n`, calculate the threshold in percentage points:
+
+```text
+trusted-user instant-approval threshold = 95 - 0.5 × min(n, 10)
+```
+
+This is linear interpolation between zero and ten approvals, capped at a minimum
+threshold of 90%.
+
+| Prior approved submissions | Instant shortcut requires a compliance score |
+| --- | --- |
+| 0 | > 95% |
+| 1 | > 94.5% |
+| 2 | > 94% |
+| 3 | > 93.5% |
+| 4 | > 93% |
+| 5 | > 92.5% |
+| 6 | > 92% |
+| 7 | > 91.5% |
+| 8 | > 91% |
+| 9 | > 90.5% |
+| 10 or more | > 90% |
+
+Calculate the count and threshold again when approval is committed. Record that
+snapshot with the decision so later changes to history do not rewrite past
+decisions. If history cannot be read reliably, do not use the shortcut; use the
+standard waiting schedule instead. The shortcut requires server-confirmed email
+verification and submission ownership. It only shortens the wait; the checks and
+moderator holds described below still apply. A verified user's score must
+strictly exceed this shortcut threshold. The standard rule already gives everyone
+instant approval at 95% or greater, including exactly 95%.
+
+## Compliance score and approval conditions
+
+The compliance score is a project-level score from 0% to 100%, where a higher
+score means greater confidence that the submission meets the content rules.
+Assess the whole revision, including text, captions, photos and generated assets.
+A strong text score cannot compensate for an unassessed photo.
+
+Google's text category confidence and SafeSearch likelihoods are inputs, not a
+ready-made compliance percentage. Do not assume that subtracting a harmful-category
+score from 100 produces this score, or assign arbitrary percentages to SafeSearch
+labels. Define, version and evaluate the scoring method against the content rules
+before using it for automatic approval.
+
+Automatic approval requires all of the following:
+
+- All required checks have completed for the exact current revision and its media.
+- The compliance score is a finite number from 0% to 100% and is at least 60%.
+- The standard deadline has arrived, or the verified-user shortcut applies.
+- No moderator decision, hold or request for changes blocks approval.
+  Withdrawn or removed submissions cannot be approved.
+
+At approval time, recheck the revision, current assessment, deadline and moderation
+state atomically. Recheck verified identity, ownership and history when using the
+trusted-user shortcut. If that shortcut no longer applies, fall back to the
+standard deadline; loss of the shortcut alone does not permanently block approval.
+
+Missing or unknown scores, unsupported input, incomplete scans and provider failures
+require manual review until a valid assessment is available. If the scoring method
+cannot assess a required rule, route to human review. A score below 60% never causes
+automatic rejection; it requires a moderator's approval or rejection.
+
+## Human intervention
+
+Before the deadline, a moderator can approve early, reject, request changes or place
+a review hold. Each action records an actor, timestamp and reason. A hold or request
+for changes prevents timer-based publication until a moderator explicitly resolves
+it. Merely opening the submission page does not count as a review decision or hold.
+
+Classifier risk flags prioritize the queue and contribute to the compliance
+assessment. A flag alone does not indefinitely block an otherwise eligible
+submission after its wait. When a moderator finds a violation or needs to
+escalate a case, they must record a decision or an explicit hold with an owner
+and reason rather than relying on silent queue placement.
+
+When the timer and a moderator action race, the publication transaction must honor
+any blocking action committed before approval. After publication, moderators can
+remove content and invalidate its public projections if a violation is discovered.
 
 ## Proposed content rules
 
@@ -51,78 +182,7 @@ correction path; do not silently edit the author's meaning. Emergency or credibl
 threat handling requires an operator-approved escalation contact and procedure;
 do not promise real-time monitoring or automated emergency response.
 
-## Trusted-user score
-
-A verified user's trusted-user score is the number of distinct prior approved
-submissions in their history. Use the server's approval records for the same
-verified submitter identity; never accept a count supplied by the browser.
-
-Count each submission once, whether its approval was automatic or human.
-Reapproving an edit, retrying an approval or processing the same event twice
-does not add another submission. Exclude the submission currently being assessed,
-so its earlier approved revisions cannot lower the threshold for its own edits.
-If an approval is reversed for a moderation violation, remove that submission
-from the count used for future decisions. Rejected and pending submissions do
-not contribute.
-
-For a count `n`, calculate the threshold in percentage points:
-
-```text
-auto-approval threshold = 95 - 0.5 × min(n, 10)
-```
-
-This is linear interpolation between zero and ten approvals, capped at a minimum
-threshold of 90%.
-
-| Prior approved submissions | Auto-approval requires a compliance score |
-| --- | --- |
-| 0 | > 95% |
-| 1 | > 94.5% |
-| 2 | > 94% |
-| 3 | > 93.5% |
-| 4 | > 93% |
-| 5 | > 92.5% |
-| 6 | > 92% |
-| 7 | > 91.5% |
-| 8 | > 91% |
-| 9 | > 90.5% |
-| 10 or more | > 90% |
-
-Calculate the count and threshold again when approval is committed. Record that
-snapshot with the decision so later changes to history do not rewrite past
-decisions. If history cannot be read reliably, route to human review. Trust
-changes only the numeric threshold: verification, ownership, complete scans and
-the absence of unresolved flags are still required.
-
-## Compliance score and automatic approval
-
-The compliance score is a project-level score from 0% to 100%, where a higher
-score means greater confidence that the submission meets the content rules.
-It must cover the exact revision, including its text, captions, photos and
-generated assets. A strong text score cannot compensate for a flagged photo.
-
-Google's text category confidence and SafeSearch likelihoods are inputs, not a
-ready-made compliance percentage. Do not assume that subtracting a harmful-category
-score from 100 produces this score, or assign arbitrary percentages to SafeSearch
-labels. Implementation must define, version and evaluate the scoring method
-against the content rules before using it for automatic approval.
-
-Automatic approval requires all of the following:
-
-- The server confirms the submitter is verified and owns the submission.
-- All required checks have completed for the current revision and its media.
-- The compliance score is a finite number in the range 0% to 100%, strictly
-  greater than the user's calculated threshold. Compare the stored score before
-  display rounding.
-- There are no unresolved content flags, privacy or ownership concerns, or
-  requests for human review.
-
-A missing score, unsupported input, incomplete scan or provider failure routes to
-human review. If the scoring method cannot assess a required rule, the submission
-also needs human review. A score at or below the user's threshold never causes
-automatic rejection.
-
-## Candidate provider and routing thresholds
+## Candidate providers and review priority
 
 Propose Google Cloud Natural Language `documents.moderateText`, explicitly
 `MODEL_VERSION_2`, for text and Google Cloud Vision SafeSearch for images.
@@ -137,114 +197,104 @@ it does not provide the same numeric confidence scale. The Vision API does not
 expose a model version in this proposal: record the API feature and any version
 the provider actually returns, and reassess changes.
 
-Apply the automatic-approval rule first, with any flags or failures below taking
-precedence over the compliance score. Route remaining submissions as follows:
+Use these provider signals as inputs to the score and to queue priority:
 
-| Signal | Proposed routing | Decision |
-| --- | --- | --- |
-| Verified user, compliance score > calculated trusted-user threshold, complete checks and no unresolved flags | Automatic approval | Publish only the scored revision and permitted media |
-| Text Toxic, Derogatory, Violent or Sexual confidence >= 0.75; or image adult or violence `LIKELY`/`VERY_LIKELY` | High-priority human review | Blocks automatic approval; no automatic rejection |
-| Those text categories >= 0.40 and < 0.75; or image adult or violence `POSSIBLE` | Human review with contextual flag | Blocks automatic approval; no automatic rejection |
-| Compliance score <= calculated trusted-user threshold, or unverified submitter, with no higher-priority flag | Normal human review once eligible | No automatic rejection or publication |
-| Unsupported language, missing/unknown score, malformed result, provider error, timeout or unscannable media | Manual review with an explicit unavailable flag | Never treat as clean |
+| Signal | Review priority |
+| --- | --- |
+| Text Toxic, Derogatory, Violent or Sexual confidence >= 0.75; or image adult or violence `LIKELY`/`VERY_LIKELY` | High-priority contextual review |
+| Those text categories >= 0.40 and < 0.75; or image adult or violence `POSSIBLE` | Contextual review |
+| Unsupported language, missing/unknown result, provider error, timeout or unscannable media | Assessment unavailable; no automatic approval |
 
 `spoof`, `medical`, `racy`, profanity, politics and other sensitive categories
-are not automatic violations. Reviewers may consider them in context, and image
-classifiers do not detect all text in images, privacy issues, harassment or
-ownership concerns. Provider scores and routing thresholds are not a safety
-guarantee. Evaluate on consented/synthetic, diverse and multilingual examples before use; measure missed harmful material, false
-flags and reviewer workload, then revise with documented approval. Do not send
-private content to a provider until data handling, region, retention, contractual
-terms, access and costs have been reviewed and separately authorized.
+are not automatic violations. Classifiers do not detect every privacy, harassment
+or ownership concern. Evaluate scoring and the waiting schedule on consented or
+synthetic, diverse and multilingual examples. Measure missed harmful material,
+false flags and whether moderators can act within the proposed windows.
 
-## State, failure and revisions
+Review provider data handling, region, retention, terms, access and costs before
+sending private content to a provider.
 
-1. A durable accepted submission starts **private** and records the eligibility
-   time and content revision. It may be saved, waiting, queued, reviewing or
-   escalated; none of these states is public.
-2. Once eligible, enqueue review with an idempotent key for the exact revision.
-   A provider outage, retry exhaustion, unsupported input or stale result routes
-   to manual review. Retries are bounded; a later result cannot approve a newer
-   revision or unlock public media.
-3. The service automatically approves a submission only when it meets every
-   automatic-approval condition above. Otherwise, an authorized moderator
-   approves, rejects or requests changes with a reason. Both approval paths
-   atomically bind the decision to the checked revision and its permitted media,
-   rechecking verification, ownership, prior approval count, calculated threshold
-   and revision identity at that transition.
-   Publication and cache/projection invalidation use that approved revision only.
-   A withdrawn or removed item is unavailable and its public projections/previews
-   are invalidated.
-4. Editing published material creates a private pending revision. Apply the same
-   automatic-approval or human-review rules to the new revision. Keep the last
-   approved revision public until a new revision is approved or the item is
-   withdrawn/removed; never overwrite the public version with pending content.
-   Review new photos, generated content and accepted clarification transcripts
-   under their respective policy before publication. Rejected or superseded
-   assets remain private and follow the approved deletion/retention schedule.
+## Revisions and publication
+
+1. Save an accepted submission privately with its revision acceptance timestamp.
+   Make it available to moderators immediately and assess that exact revision.
+2. Record the assessment and standard deadline. Apply the trusted-user shortcut
+   only when its server-side conditions pass.
+3. At the deadline, automatically approve only if the revision still qualifies
+   and no moderator intervention blocks it. Bind both human and automatic approval
+   to the exact revision and its permitted media.
+4. An edit creates a private pending revision with a new acceptance time and
+   assessment. Keep the last approved revision public until the replacement is
+   approved or the submission is withdrawn or removed. Old scores and scheduled
+   jobs cannot approve a newer revision.
+5. Publish only the approved revision. Invalidate public caches, previews and
+   projections on replacement, withdrawal or removal. Rejected and superseded
+   assets remain private and follow the approved retention schedule.
 
 ## Audit, privacy and reviewer accountability
 
-Propose an append-only decision record containing idea/revision identifiers,
-eligibility and event timestamps, actor or service identity, policy version,
-provider/feature/model identifiers where supplied, outcome, reason code and
-reviewer override. Record whether approval was automatic or human, the compliance
-score and scoring-method version, prior approved-submission count, applied
-threshold and trust-policy version, and the server-verified eligibility evidence.
-Record classifier categories/threshold version and failure
-state only as needed for review; avoid raw content, contact details, tokens and
-provider payloads in logs. Access is restricted to authorized staff and audited.
-Propose retaining decision metadata for **90 days**, subject to legal and operator
-review; raw uploads and account data follow separate, approved retention rules.
-Approval-history counts must remain accurate when decision metadata expires;
-define retention and correction rules for the trust record separately from this
-90-day audit proposal. No retention job is implemented here. Document a lawful hold and deletion
-exception process before implementing it; do not imply an unapproved retention
-period is operational.
+Keep an append-only record of the revision, acceptance time, assessment time,
+compliance score, scoring-method version, calculated deadline, policy version,
+approval method, service or moderator identity, and reason. Record moderator holds,
+decisions and overrides. For the trusted-user shortcut, also record the verified
+identity evidence, prior approval count and threshold used.
+
+Record provider identifiers, category signals and failure states only as needed
+for review. Keep raw content, contact details, credentials and full provider
+payloads out of logs. Restrict audit access to authorized staff.
+
+Propose retaining decision metadata for **90 days**, subject to operator and legal
+review. Define trust-history retention and corrections separately so expiring audit
+records do not corrupt approval counts. Uploads and account data follow separate
+retention rules. Define lawful holds and deletion exceptions before implementation.
 
 ## User-facing messages and appeals
 
-- Waiting: “Your idea is saved privately and is waiting for review.”
-- Automatically approved: “Your idea has been approved and published.”
+- Waiting: “Your idea is saved privately. It is scheduled for automatic review
+  completion at [time], unless a moderator requests changes or places it on hold.”
+- Human review required: “Your idea is saved privately and needs a moderator's review.”
+- Approved and published: “Your idea has been approved and published.”
 - Needs changes: “Your idea needs changes before it can be published. Review the
   feedback and submit an updated version.”
 - Rejected: “We could not publish this version because it does not meet our
   content rules. You can review the reason and request another review.”
-- Review unavailable: “Review is delayed. Your idea remains private; please try
-  again later.”
+- Assessment unavailable: “Review is delayed. Your idea remains private while
+  we complete the required checks.”
 
+Show the expected time only when a valid assessment establishes a deadline.
 Messages must not expose another person's private information, classifier scores
-or moderator-only notes. Provide a route to correct content and request human
-reconsideration; a different authorized reviewer should handle an appeal when
-practicable. The operator must define response targets and a contact before
-launch; no deadline or support channel is asserted here.
+or moderator-only notes. Provide a correction and appeal path; use a different
+authorized reviewer for appeals when practicable. Define response targets and a
+contact before launch.
 
 ## Acceptance scenarios for implementation
 
 | Scenario | Expected result |
 | --- | --- |
-| Unverified guest at five hours | Private; not review-eligible yet. |
-| Verified submitter, no prior approvals, compliance score 95.1%, all checks complete and no flags | Automatically approve and publish the exact scored revision and permitted media. |
-| Verified submitter, no prior approvals, compliance score exactly 95% or lower | Human review; no automatic approval or rejection. |
-| Verified submitter, five prior approvals, compliance score 92.6% | Threshold is 92.5%; automatically approve if all other conditions pass. |
-| Verified submitter, five prior approvals, compliance score exactly 92.5% | Human review; equality does not qualify. |
-| Verified submitter, ten prior approvals, compliance score 90.1% | Threshold is 90%; automatically approve if all other conditions pass. |
-| Verified submitter, eleven or more prior approvals, compliance score exactly 90% | Threshold remains 90%; human review. |
-| Reapproval of an edit or duplicate approval event | Counts as the same submission; no increase in trust. |
-| Editing a previously approved submission | Exclude that submission from its author's prior-approval count for this decision. |
-| An earlier approval is reversed for a moderation violation | Remove it from the count and recalculate the threshold for future decisions. |
-| Approval history is unavailable | Keep private and route to human review. |
-| New contributor's stored score 95.01% displayed as 95% | Use the stored score; qualifies if all other conditions pass. |
-| Unverified submitter, compliance score 99% | No automatic approval; human review after the six-hour eligibility wait. |
-| Verified submitter, score 99%, but a photo or privacy concern is flagged | Keep private and route to human review. |
-| Political criticism or a photo flagged `POSSIBLE` | Contextual human review; no rejection on score alone. |
-| Timeout, unsupported language or missing image result | Private and routed to manual review with failure evidence. |
-| Edit after publication | Original approved revision stays public; new text and media remain private until that exact revision receives automatic or human approval. |
-| Stale worker result after a second edit | Cannot approve or expose the newer revision. |
-| Verification or ownership no longer valid when approval runs | No automatic approval; keep the pending revision private. |
-| Rejection followed by appeal | Private content remains private; reason and appeal are auditable without exposing private reviewer notes. |
+| Unverified new user, score 98%, complete checks | Eligible for instant automatic approval; no six-hour gate. |
+| Score 59.99% | Human approval required; no timer can approve it. |
+| Score exactly 60% | Private for up to 24 hours; auto-approve at the deadline if no blocking intervention occurs. |
+| Score 77.5% | Standard deadline is 12 hours after revision acceptance. |
+| Score exactly 95% | Eligible for instant automatic approval. |
+| Stored score 59.99% displayed as 60% | Use the stored score; no automatic approval. |
+| Verified user, five prior approvals, score 92.6% | Above the 92.5% trusted threshold; eligible for instant approval. |
+| Verified user, five prior approvals, score exactly 92.5% | Shortcut does not apply; standard wait is about 1 hour 43 minutes. |
+| Verified user, ten prior approvals, score 90.1% | Above the 90% trusted threshold; eligible for instant approval. |
+| Approval history unavailable | Use the standard schedule; do not grant the trusted shortcut. |
+| Moderator approves before the deadline | Publish the approved revision early. |
+| Moderator rejects, requests changes or places a hold before the deadline | The timer cannot publish the revision. |
+| Moderator only opens the page | No decision or hold exists; the timer still applies. |
+| Risk flag, valid score >= 60%, no moderator intervention | Prioritize human review; auto-approve at the deadline if still eligible. |
+| Missing image result, unsupported input or provider timeout | Private; no automatic approval without a complete valid assessment. |
+| Valid assessment arrives after its deadline | Process automatic approval immediately if all remaining conditions pass. |
+| Edit after publication | Keep the approved version public; start a new clock and assessment for the pending revision. |
+| Stale job after a second edit | Cannot approve or expose the newer revision. |
+| Verification is lost before trusted approval | Fall back to the standard schedule. |
+| Duplicate approval event or reapproved edit | Does not increase the trusted-user count. |
+| Prior approval reversed for a moderation violation | Correct the trust count for future decisions. |
+| Appeal after rejection | Content stays private while a human reconsiders the decision. |
 
-Before implementation, reviewers must approve the rules, provider terms and
-data handling, compliance scoring method and evaluation, trust-history handling,
-retention, escalation contacts, appeal process and publication transition. This proposal does not provision a
-cloud service, change access controls, run a live model or enable publication.
+Before rollout, define and evaluate the compliance scoring method, implement durable
+timers and atomic moderation/publication transitions, synchronize the wiki, and
+complete provider review, retention rules, escalation contacts and appeals.
+This document changes the proposed policy; it does not enable a live service.
