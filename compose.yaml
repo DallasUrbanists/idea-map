@@ -1,0 +1,82 @@
+services:
+  db:
+    image: postgis/postgis:17-3.6
+    environment:
+      POSTGRES_DB: idea_map_dev
+      POSTGRES_USER: idea_map
+      POSTGRES_PASSWORD: local-only
+    ports:
+      - '127.0.0.1:54329:5432'
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U idea_map -d idea_map_dev']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  firebase:
+    build:
+      context: .
+      dockerfile: dev/Dockerfile.firebase
+    ports:
+      - '127.0.0.1:9099:9099'
+      - '127.0.0.1:8080:8080'
+    volumes:
+      - firebase_cache:/root/.cache/firebase/emulators
+  tools:
+    profiles: ['tools']
+    build:
+      context: .
+      dockerfile: dev/Dockerfile.tools
+    working_dir: /workspace
+    command: sh -c 'pnpm install --frozen-lockfile && pnpm exec tsc --build && node scripts/dev-container.mjs'
+    environment:
+      NUXT_DATABASE_URL: postgres://idea_map:local-only@db:5432/idea_map_dev
+      CHOKIDAR_USEPOLLING: 'true'
+    ports:
+      - '127.0.0.1:3000:3000'
+      - '127.0.0.1:6006:6006'
+    volumes:
+      - .:/workspace
+      - root_modules:/workspace/node_modules
+      - web_modules:/workspace/apps/web/node_modules
+      - worker_modules:/workspace/apps/worker/node_modules
+      - contracts_modules:/workspace/packages/contracts/node_modules
+      - server_modules:/workspace/packages/server/node_modules
+      - renderer_modules:/workspace/packages/street-renderer/node_modules
+      - streetmix_modules:/workspace/packages/streetmix/node_modules
+      - nuxt_cache:/workspace/apps/web/.nuxt
+      - web_output:/workspace/apps/web/.output
+      - storybook_output:/workspace/apps/web/storybook-static
+      - web_cache:/workspace/apps/web/.cache
+      - root_cache:/workspace/.cache
+      - worker_dist:/workspace/apps/worker/dist
+      - contracts_dist:/workspace/packages/contracts/dist
+      - server_dist:/workspace/packages/server/dist
+      - renderer_dist:/workspace/packages/street-renderer/dist
+      - streetmix_dist:/workspace/packages/streetmix/dist
+      - pnpm_store:/pnpm-store
+    depends_on:
+      db:
+        condition: service_healthy
+volumes:
+  database:
+  firebase_cache:
+  root_modules:
+  web_modules:
+  worker_modules:
+  contracts_modules:
+  server_modules:
+  renderer_modules:
+  streetmix_modules:
+  nuxt_cache:
+  web_output:
+  storybook_output:
+  web_cache:
+  root_cache:
+  pnpm_store:
+  worker_dist:
+  contracts_dist:
+  server_dist:
+  renderer_dist:
+  streetmix_dist:
