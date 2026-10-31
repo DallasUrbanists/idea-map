@@ -11,7 +11,8 @@
     "typecheck": "tsc --build && pnpm --filter @idea-map/web typecheck",
     "lint": "node scripts/check-boundaries.mjs",
     "test": "node --test scripts/*.test.mjs",
-    "test:web": "node --test scripts/nuxt-smoke.mjs"
+    "test:web": "node --test scripts/nuxt-smoke.mjs",
+    "test:web:published": "node --test scripts/nuxt-published-smoke.mjs"
   },
   "devDependencies": {
     "@vue/compiler-sfc": "3.5.44",

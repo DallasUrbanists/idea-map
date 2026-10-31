@@ -8,7 +8,8 @@ if (error.value || !idea.value) {
   throw createError({ statusCode, statusMessage: statusCode === 404 ? 'Idea not found' : 'Unable to load idea' })
 }
 useSeoMeta({ title: () => idea.value?.title, description: () => idea.value?.description,
-  ogTitle: () => idea.value?.title, ogDescription: () => idea.value?.description })
+  ogTitle: () => idea.value?.title, ogDescription: () => idea.value?.description,
+  twitterCard: 'summary', twitterTitle: () => idea.value?.title, twitterDescription: () => idea.value?.description })
 </script>
 
 <template>

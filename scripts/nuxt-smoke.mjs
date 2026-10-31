@@ -13,7 +13,7 @@ test('production server renders, responds safely, and keeps private config priva
   await new Promise((resolve) => probe.close(resolve));
   const secret = 'test-private-runtime-value-847329';
   const server = spawn(process.execPath, ['apps/web/.output/server/index.mjs'], {
-    env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), NUXT_API_SECRET: secret },
+    env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), NUXT_API_SECRET: secret, NUXT_DATABASE_URL: '' },
     stdio: 'ignore',
   });
   const base = 'http://127.0.0.1:' + port;
@@ -34,6 +34,9 @@ test('production server renders, responds safely, and keeps private config priva
     assert.equal(api.status, 404);
     assert.match(api.headers.get('content-type'), /application\/json/);
     assert.equal((await api.json()).statusCode, 404);
+    const unavailable = await fetch(base + '/api/ideas/11111111-1111-4111-8111-111111111111');
+    assert.equal(unavailable.status, 503);
+    assert.ok(!(await unavailable.text()).includes(secret));
     const page = await fetch(base + '/suggestion/missing');
     assert.equal(page.status, 404);
     assert.ok(!(await page.text()).includes(secret));
