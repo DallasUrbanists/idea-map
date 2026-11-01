@@ -1,6 +1,7 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   ssr: true,
+  css: ['~~/src/styles/tokens.css'],
   // The Node server runtime supports ES2020, including BigInt literals.
   nitro: { esbuild: { options: { target: 'es2020' } } },
   runtimeConfig: {
@@ -8,6 +9,9 @@ export default defineNuxtConfig({
     apiSecret: '',
     // NUXT_DATABASE_URL remains server-only and is never serialized.
     databaseUrl: '',
-    public: { siteName: 'Idea Map' },
+    // Canonical browser origin; never infer this from request headers.
+    sessionOrigin: '',
+    firebaseProjectId: '',
+    public: { siteName: 'Idea Map', firebaseApiKey: '', firebaseAuthDomain: '', firebaseProjectId: '', firebaseAuthEmulator: '' },
   },
 })

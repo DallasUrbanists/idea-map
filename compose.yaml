@@ -30,8 +30,11 @@ services:
       dockerfile: dev/Dockerfile.tools
     working_dir: /workspace
     command: sh -c 'pnpm install --frozen-lockfile && pnpm exec tsc --build && node scripts/dev-container.mjs'
+    env_file: .env
     environment:
+      DATABASE_URL: postgres://idea_map:local-only@db:5432/idea_map_dev
       NUXT_DATABASE_URL: postgres://idea_map:local-only@db:5432/idea_map_dev
+      FIREBASE_AUTH_EMULATOR_HOST: firebase:9099
       CHOKIDAR_USEPOLLING: 'true'
     ports:
       - '127.0.0.1:3000:3000'
