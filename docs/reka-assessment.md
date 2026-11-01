@@ -35,7 +35,11 @@ inputs, checkboxes, radios and selects are preferred for simple responsibilities
 ## Dialog wrapper contract
 
 `IdeaDialog` provides a labelled modal with a trigger slot, required title and
-description strings, a content slot and close button. It is uncontrolled and
+description strings, a content slot and a standard top-right X icon button.
+The close button has the accessible name `Close`, a 44px touch target and a
+visible keyboard focus indicator. The header reserves room for it when long
+titles wrap. There is no bottom close button. Clicking the X or pressing Escape
+closes the modal and restores focus to its trigger. It is uncontrolled and
 intentionally does not expose the entire Reka API. Content is teleported; styles
 are scoped to the rendered elements and use the project tokens; consumers must
 load `apps/web/src/styles/tokens.css` once. Provide one native button in the
