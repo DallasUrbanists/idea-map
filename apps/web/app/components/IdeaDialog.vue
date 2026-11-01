@@ -13,10 +13,16 @@ defineProps<{ title: string; description: string }>()
     <DialogPortal>
       <DialogOverlay class="idea-dialog-overlay" />
       <DialogContent class="idea-dialog-content">
-        <DialogTitle class="idea-dialog-title">{{ title }}</DialogTitle>
+        <div class="idea-dialog-header">
+          <DialogTitle class="idea-dialog-title">{{ title }}</DialogTitle>
+          <DialogClose class="idea-dialog-close" type="button" aria-label="Close">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false">
+              <path d="m6 6 12 12M18 6 6 18" />
+            </svg>
+          </DialogClose>
+        </div>
         <DialogDescription class="idea-dialog-description">{{ description }}</DialogDescription>
         <slot />
-        <DialogClose class="idea-dialog-close">Close</DialogClose>
       </DialogContent>
     </DialogPortal>
   </DialogRoot>
@@ -46,18 +52,24 @@ defineProps<{ title: string; description: string }>()
   font-family: var(--font-body);
   line-height: var(--line-body);
 }
-.idea-dialog-title { margin: 0 0 var(--space-2); font: var(--font-size-heading) / var(--line-heading) var(--font-heading); }
+.idea-dialog-header { display: flex; align-items: flex-start; gap: var(--space-2); margin-bottom: var(--space-2); }
+.idea-dialog-title { flex: 1; min-width: 0; overflow-wrap: anywhere; margin: 0; font: var(--font-size-heading) / var(--line-heading) var(--font-heading); }
 .idea-dialog-description { margin: 0 0 var(--space-4); color: var(--color-text-muted); }
 .idea-dialog-close {
-  min-height: 44px;
-  margin-top: var(--space-4);
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--color-border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
   border-radius: var(--radius-small);
   color: var(--color-text);
-  background: var(--color-surface);
+  background: transparent;
   font: inherit;
   cursor: pointer;
 }
+.idea-dialog-close:hover { background: var(--color-surface-raised); }
 .idea-dialog-close:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }
 </style>
