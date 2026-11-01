@@ -1,12 +1,10 @@
 # Getting started with AI tools
 
-You can use an AI assistant to help with Idea Map, but you don't need one to
-contribute. The [contributor guide](../CONTRIBUTING.md) works either way.
+You can use an AI assistant to help with Idea Map, but it is optional. The [contributor guide](../CONTRIBUTING.md) works either way.
 
 ## 1. Choose a tool
 
-Follow your tool's setup guide to install it and sign in. Check its pricing and
-usage limits before you start.
+Follow your tool's setup guide to install it and sign in. Check its pricing and usage limits before you start.
 
 | Tool | Setup guide | Open the project |
 | --- | --- | --- |
@@ -37,7 +35,7 @@ The wiki explains [how to check each tool's instructions](https://github.com/Dal
 
 ## 3. Make a small change
 
-Choose a small issue and ask the assistant to explain its approach before editing.
+[Choose a small issue on GitHub](https://github.com/DallasUrbanists/idea-map/issues) and ask the assistant to explain its approach before editing.
 Review its proposed commands and changes, and make sure you understand them.
 Keep credentials and private data out of prompts.
 
