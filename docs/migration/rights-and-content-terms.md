@@ -53,23 +53,18 @@ commitment for processing an incoming email has been set.
 | --- | --- | --- |
 | V2 project source | Root `LICENSE` and workspace package manifests specify Apache-2.0. | Keep the license and applicable notices; do not remove Apache or represent third-party material as project-owned. |
 | V1 contributor code | Maintainer statement in #93 covers rights they control. No specific SPDX license is identified by the pinned README. | Record source revision, path, authorship and permission for each copied item. Confirm other rights holders and embedded third-party code before copying. |
-| Dependencies | The [declared-license snapshot](dependency-license-inventory.tsv) lists 500 package names from the installed production dependency graph at v2 commit `a29c989c60ee9f657fa14e95f4b4a81991c3f7d4`; package metadata is not a legal clearance. | Preserve applicable license texts, copyright and NOTICE obligations, and verify bundled/transitive dependencies for the exact distribution. |
+| Dependencies | Workspace `package.json` manifests declare direct dependencies; [`pnpm-lock.yaml`](../../pnpm-lock.yaml) records resolved versions and transitive dependencies. | Generate license metadata for release review; preserve applicable license texts, copyright and NOTICE obligations, and verify dependencies in the actual distribution. |
 | OSM data and derived geometry | Pinned [live location source](https://github.com/DallasUrbanists/improvement-map/blob/ee0552e3348a286b69e2540aa332217cdecd28cb/src/services/liveLocationData.js) records OSM attribution and `ODbL-1.0`; [OSM copyright](https://www.openstreetmap.org/copyright) and [ODbL](https://opendatacommons.org/licenses/odbl/1-0/) govern applicable uses. | Retain visible attribution and license link; record provenance, modifications and dates. Evaluate database share-alike and distribution obligations for the specific use. Do not treat data as Apache. |
 | Rail catalogs and corrections | The pinned README describes local GeoJSON and OSM-sourced corrections; full source rights are not established by a filename. | Verify each feed, provenance, terms, modifications and correction records; #94 owns detailed fixture/artwork audit. Do not copy an unverified feed. |
 | Transit agency logos/artwork | The pinned README identifies agency logos, but inclusion does not prove permission. | Verify each asset's source, license/trademark terms, and any required attribution before reuse; keep neutral alternatives where permission is unclear. |
 | Streetmix | [Existing package guidance](../../packages/streetmix/README.md) points to Streetmix's terms; API and content rights are distinct. | Recheck current terms and attribution before integration or distribution; do not assume a right to copy artwork. |
 | User text and photos | Submitted content is separate from project source. Existing v1 terms/consents and third-party rights in uploads are unverified. | Use the proposed service license only after review and acceptance; establish authority and a migration basis separately for existing content. |
 
-The snapshot was generated with `pnpm licenses list --prod --json` after a
-frozen install, retaining package names, versions and declared license expressions
-without machine-specific paths. It includes metadata for tooling reachable in
-that graph and platform-specific packages; it is not a statement that every item
-is shipped. Notable declarations include `MPL-2.0` for lightningcss,
-`CC-BY-4.0` for caniuse-lite, `BlueOak-1.0.0` for several packages, and dual
-expressions for node-forge and type-fest. Inspect actual license files, notices,
-chosen alternatives and built artifacts before release; this snapshot does not
-preserve or substitute for full third-party license texts. The current v2 tree
-at that commit has no tracked image, font, GeoJSON, or separate NOTICE file.
+For a release review, install the locked dependencies and generate license metadata
+with `pnpm licenses list --prod --json`. The report may include tooling and
+platform-specific packages; check which files actually ship. Review their license
+texts and notices rather than treating declared package metadata as clearance.
+A separate committed dependency-license snapshot is not maintained.
 
 The v1 [rail directory](https://github.com/DallasUrbanists/improvement-map/tree/ee0552e3348a286b69e2540aa332217cdecd28cb/src/data/rails)
 contains ten catalogs: DART Blue, Green, Orange, Red and Silver, M-Line, Dallas
@@ -155,6 +150,6 @@ produced works as applicable; retain the exact underlying license texts where
 required. [Apache 2.0 section 4](https://www.apache.org/licenses/LICENSE-2.0.html)
 describes redistribution and NOTICE conditions, and does not grant general
 trademark rights. Review the complete dependency and asset manifests for the
-specific release rather than relying on this snapshot. Unresolved permissions
+specific release rather than relying on declared package metadata alone. Unresolved permissions
 block copying the affected item; they do not justify guessing or weakening a
 notice. No v1 data or assets are transferred by this document.
