@@ -9,6 +9,7 @@ and its plans.
 ## Learn more
 
 - [Architecture and technology decisions](https://github.com/DallasUrbanists/idea-map/wiki/Architecture-and-Technology-Decisions)
+- [API contracts and authorization](docs/api-contracts.md)
 - [Design system and Storybook](https://github.com/DallasUrbanists/idea-map/wiki/Design-System-and-Storybook)
 - [Workspace dependencies](docs/workspace-dependencies.md)
 - [Releases](docs/releases.md)

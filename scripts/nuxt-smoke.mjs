@@ -25,6 +25,24 @@ test('production server renders, responds safely, and keeps private config priva
     }
     assert.ok(health, 'server did not start');
     assert.deepEqual(await health.json(), { status: 'ok' });
+    // A new route must not become writable merely by being added. Neither
+    // credentials supplied by a caller nor method overrides grant authority.
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']) {
+      const denied = await fetch(base + '/api/health', {
+        method,
+        headers: { authorization: 'Bearer forged-token', 'x-user-id': 'admin' },
+      });
+      assert.equal(denied.status, 403, method);
+      assert.match(denied.headers.get('cache-control'), /no-store/);
+    }
+    for (const header of ['x-http-method-override', 'x-http-method', 'x-method-override']) {
+      const override = await fetch(base + '/api/health', { headers: { [header]: 'POST' } });
+      assert.equal(override.status, 403, header);
+    }
+    // The health route is GET-only; HEAD reaches routing rather than the guard.
+    assert.equal((await fetch(base + '/api/health', { method: 'HEAD' })).status, 404);
+    const futureRoute = await fetch(base + '/api/not-yet-implemented', { method: 'POST' });
+    assert.equal(futureRoute.status, 403);
     const home = await fetch(base + '/');
     const html = await home.text();
     assert.equal(home.status, 200);
