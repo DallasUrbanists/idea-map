@@ -23,6 +23,30 @@ third-party code have separate rights. Do not assume Apache covers them.
   grant of rights from existing submitters and does not authorize importing their
   legacy content without checking the original terms and necessary consent.
 
+## Operator and agreed removal policy
+
+Dallas Urbanists operates Idea Map. The maintainer identifies Dallas Urbanists
+as a 501(c)(3) nonprofit based in Dallas, Texas. Send privacy, removal and rights
+requests to [contact@dallasurbanists.org](mailto:contact@dallasurbanists.org).
+
+The maintainer selected the following requirements for implementation:
+
+- Verify the requester's authority before acting on a removal request. Once
+  removal is authorized, stop public access immediately, including public media,
+  previews and cached projections.
+- Delete primary stored copies of removed content within 30 days of authorized
+  removal. Expire backup copies within 90 days of that same removal.
+- Document any legal-hold exception, restrict access to retained copies, and
+  prevent backup restoration from making removed content public again.
+- Keep rail feeds and transit logos whose permissions are unverified excluded
+  from v2 until [#94](https://github.com/DallasUrbanists/idea-map/issues/94)
+  establishes item-specific rights and required notices. This inventory can be
+  reviewed and merged with that exclusion in place.
+
+These are agreed operating requirements, not claims that deletion, cache
+invalidation or request handling has already been implemented. No response-time
+commitment for processing an incoming email has been set.
+
 ## Source and third-party inventory
 
 | Material | Evidence / status | Required action before reuse or distribution |
@@ -69,25 +93,25 @@ item-specific record is verified, none of these files is cleared for transfer.
 Proposed submission terms, for review before publication:
 
 > You retain ownership of the text and photos you submit. You grant the service
-> operator a non-exclusive, worldwide, royalty-free license to store, process,
+> operator, Dallas Urbanists, a non-exclusive, worldwide, royalty-free license to store, process,
 > moderate, display and distribute your contribution as needed to operate the
 > service, including creating accessible or technically compatible versions.
 > You must have the rights needed to submit the material and should identify any
 > required attribution. This license does not place your contribution under the
 > software's Apache license or grant everyone a general right to reuse it.
-> You may request removal through the service's published process; the operator
-> will stop making the removed contribution available through the service, subject
-> to the stated retention policy and technical time needed for removal. Removal
-> cannot recall copies already obtained by others.
+> To request removal, email contact@dallasurbanists.org. After verifying your
+> authority to request it, we will stop public access immediately, delete primary
+> stored copies within 30 days and expire backup copies within 90 days of that
+> authorized removal, subject to documented legal holds. Removal cannot recall
+> copies already obtained by others.
 
 Display supplied attribution where appropriate without exposing private contact
 details. The license is intended to last for service use while content is retained,
-including limited backup retention; the final terms must specify the retention period
-and removal process before users are asked to accept them.
+including the limited backup retention described above. Implement the removal
+process and retention limits before presenting these as operational promises.
 
-The operator identity, retention periods, permitted downstream sharing, privacy
-notice and consent mechanism must be
-reviewed and settled before these become published terms. Withdrawal cannot be
+Permitted downstream sharing, the privacy notice and the consent mechanism
+remain to be settled before these become published terms. Withdrawal cannot be
 promised to erase prior downloads, third-party copies or legally retained records.
 Existing submissions need their own original-terms and consent review; do not
 retroactively assume acceptance. Link the final terms from the submission flow
