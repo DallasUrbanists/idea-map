@@ -1,6 +1,7 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   ssr: true,
+  css: ['~~/src/styles/tokens.css'],
   // The Node server runtime supports ES2020, including BigInt literals.
   nitro: { esbuild: { options: { target: 'es2020' } } },
   runtimeConfig: {

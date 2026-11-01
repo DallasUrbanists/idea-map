@@ -1,4 +1,4 @@
-import { createError, defineEventHandler, getHeader, readBody, setCookie, setResponseHeader } from 'h3'
+import { createError, defineEventHandler, getHeader, setCookie, setResponseHeader } from 'h3'
 import { allowsSessionMutation } from '../utils/session-csrf.mjs'
 import { issueSession, SESSION_LIFETIME_MS } from '../utils/session-policy.mjs'
 import { firebaseAdmin } from '../utils/firebase-admin'
@@ -11,7 +11,20 @@ export default defineEventHandler(async (event) => {
     contentType: getHeader(event, 'content-type'), requestedWith: getHeader(event, 'x-idea-map-session'),
   })) throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
 
-  const body = await readBody(event)
+  // Bound memory even for chunked requests without a Content-Length header.
+  const chunks: Buffer[] = []
+  let size = 0
+  let tooLarge = false
+  for await (const chunk of event.node.req) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    size += bytes.length
+    if (size > 32768) tooLarge = true
+    if (!tooLarge) chunks.push(bytes)
+  }
+  if (tooLarge) throw createError({ statusCode: 413, statusMessage: 'Request too large' })
+  let body: { action?: unknown, idToken?: unknown }
+  try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) }
+  catch { throw createError({ statusCode: 400, statusMessage: 'Invalid request' }) }
   const cookieOptions = { httpOnly: true, secure: true, sameSite: 'lax' as const, path: '/' }
   if (body?.action === 'logout') {
     setCookie(event, '__session', '', { ...cookieOptions, maxAge: 0 })

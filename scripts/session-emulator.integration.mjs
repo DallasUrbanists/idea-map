@@ -31,6 +31,7 @@ test('session endpoint verifies emulator credentials and enforces CSRF and cooki
     assert.equal((await request({ action: 'login', idToken }, { origin: 'https://evil.example' })).status, 403)
     assert.equal((await request({ action: 'login', idToken }, { 'x-http-method-override': 'DELETE' })).status, 403)
     assert.equal((await request({ action: 'login', idToken: 'forged' })).status, 401)
+    assert.equal((await request({ action: 'login', idToken: 'x'.repeat(33000) })).status, 413)
     const anonymous = await fetch('http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake-key', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ returnSecureToken: true }) })
     assert.equal(anonymous.status, 200)
     assert.equal((await request({ action: 'login', idToken: (await anonymous.json()).idToken })).status, 401)
