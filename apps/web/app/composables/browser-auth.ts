@@ -1,7 +1,9 @@
 import { getApps, initializeApp } from 'firebase/app'
-import { browserLocalPersistence, connectAuthEmulator, createUserWithEmailAndPassword, getAuth, GoogleAuthProvider, onIdTokenChanged, sendEmailVerification, sendPasswordResetEmail, setPersistence, signInWithEmailAndPassword, signInWithPopup, signOut } from 'firebase/auth'
+import { browserLocalPersistence, connectAuthEmulator, createUserWithEmailAndPassword, getAuth, GoogleAuthProvider, onAuthStateChanged, sendEmailVerification, sendPasswordResetEmail, setPersistence, signInWithEmailAndPassword, signInWithPopup, signOut, type User } from 'firebase/auth'
 
 const emulatorConnected = new WeakSet<object>()
+const RENEW_SESSION_MS = 50 * 60 * 1000
+const RETRY_SESSION_MS = 60 * 1000
 
 // Called only from the browser. Public Firebase settings are identifiers, not secrets.
 export async function createBrowserAuth(config: { apiKey: string, authDomain: string, projectId: string, emulator: string }) {
@@ -26,22 +28,56 @@ export async function createBrowserAuth(config: { apiKey: string, authDomain: st
   return {
     auth,
     observe(callback: (email: string | null, error?: string) => void) {
-      return onIdTokenChanged(auth, async user => {
+      let stopped = false
+      let timer: ReturnType<typeof setTimeout> | undefined
+      let refreshingUser: User | null = null
+      const clearTimer = () => { clearTimeout(timer); timer = undefined }
+      const refresh = async (user: User) => {
+        if (stopped || auth.currentUser !== user || refreshingUser === user) return
+        clearTimer()
+        refreshingUser = user
+        let nextRefresh = RENEW_SESSION_MS
+        try {
+          // Always fetch current claims, including a recently verified email.
+          const token = await user.getIdToken(true)
+          if (stopped || auth.currentUser !== user) return
+          await session({ action: 'login', idToken: token })
+          if (!stopped && auth.currentUser === user) callback(user.email)
+        }
+        catch {
+          nextRefresh = RETRY_SESSION_MS
+          if (!stopped && auth.currentUser === user) callback(user.email, 'Your server session could not be refreshed. Retrying automatically, or sign out.')
+        }
+        finally {
+          if (refreshingUser === user) refreshingUser = null
+          if (!stopped && auth.currentUser === user) timer = setTimeout(() => { void refresh(user) }, nextRefresh)
+        }
+      }
+      const resume = () => {
+        const user = auth.currentUser
+        if (user && !user.isAnonymous) void refresh(user)
+      }
+      // Track sign-in/out separately from token changes so forced refreshes
+      // cannot feed back into the observer (including across browser tabs).
+      // Timers renew open tabs; focus/online recover after sleep or disconnection.
+      window.addEventListener('focus', resume)
+      window.addEventListener('online', resume)
+      const unsubscribe = onAuthStateChanged(auth, user => {
+        clearTimer()
         if (!user || user.isAnonymous) {
           callback(null)
           void session({ action: 'logout' }).catch(() => callback(null, 'Could not clear the server session. Please retry sign-out.'))
           return
         }
-        try {
-          const result = await user.getIdTokenResult()
-          const stale = Date.now() - Date.parse(result.issuedAtTime) > 4 * 60 * 1000
-          const token = await user.getIdToken(stale)
-          if (auth.currentUser !== user) return
-          await session({ action: 'login', idToken: token })
-          if (auth.currentUser === user) callback(user.email)
-        }
-        catch { if (auth.currentUser === user) callback(user.email, 'Your server session could not be refreshed. Retry or sign out.') }
+        void refresh(user)
       })
+      return () => {
+        stopped = true
+        clearTimer()
+        unsubscribe()
+        window.removeEventListener('focus', resume)
+        window.removeEventListener('online', resume)
+      }
     },
     async register(email: string, password: string) { const result = await createUserWithEmailAndPassword(auth, email, password); await sendEmailVerification(result.user) },
     async login(email: string, password: string) { await signInWithEmailAndPassword(auth, email, password) },
