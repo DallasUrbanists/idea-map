@@ -93,9 +93,12 @@ item-specific record is verified, none of these files is cleared for transfer.
 Proposed submission terms, for review before publication:
 
 > You retain ownership of the text and photos you submit. You grant the service
-> operator, Dallas Urbanists, a non-exclusive, worldwide, royalty-free license to store, process,
-> moderate, display and distribute your contribution as needed to operate the
-> service, including creating accessible or technically compatible versions.
+> operator, Dallas Urbanists, a non-exclusive, worldwide, royalty-free license
+> to store, process, moderate, display and distribute your contribution only as
+> needed to operate Idea Map, including creating accessible or technically
+> compatible versions. Dallas Urbanists may use hosting and moderation providers
+> to perform those tasks on its behalf. This permission does not authorize
+> providers or the public to independently reuse your contribution.
 > You must have the rights needed to submit the material and should identify any
 > required attribution. This license does not place your contribution under the
 > software's Apache license or grant everyone a general right to reuse it.
@@ -110,13 +113,37 @@ details. The license is intended to last for service use while content is retain
 including the limited backup retention described above. Implement the removal
 process and retention limits before presenting these as operational promises.
 
-Permitted downstream sharing, the privacy notice and the consent mechanism
-remain to be settled before these become published terms. Withdrawal cannot be
-promised to erase prior downloads, third-party copies or legally retained records.
-Existing submissions need their own original-terms and consent review; do not
-retroactively assume acceptance. Link the final terms from the submission flow
-and record the accepted version when implemented. Relevant work: [#50](https://github.com/DallasUrbanists/idea-map/issues/50),
-[#56](https://github.com/DallasUrbanists/idea-map/issues/56),
+Public display through Idea Map does not grant a general content reuse license.
+Provider access is limited to work needed to operate the service on Dallas
+Urbanists' behalf. The privacy notice must explain that processing and the agreed
+removal/retention rules before launch.
+
+Withdrawal cannot erase prior downloads, third-party copies or legally retained
+records. Existing submissions need their own original-terms and consent review;
+do not retroactively assume acceptance.
+
+## Submission agreement
+
+Require an **unchecked agreement checkbox on every submission**, for registered
+users and guests. Link the exact content terms beside it. Suggested label:
+
+> I agree to the Idea Map content terms and confirm that I have the rights needed
+> to submit this text and these photos.
+
+- Do not preselect the checkbox or rely on agreement at account signup.
+- Require affirmative agreement before the server accepts a submission.
+- Store the accepted terms version and a server-recorded acceptance timestamp
+  with the submission. Keep the referenced terms version available for review.
+- Reject missing agreement or an invalid terms version on the server.
+- Preserve the acceptance record through retries and guest-to-account claims;
+  claiming content does not create or replace consent.
+- The license remains limited to operating Idea Map, including its hosting and
+  moderation providers; the checkbox does not grant the public a reuse license.
+
+These are implementation requirements. The checkbox and consent record are not
+implemented by this documentation. Relevant work:
+[#50](https://github.com/DallasUrbanists/idea-map/issues/50),
+[#56](https://github.com/DallasUrbanists/idea-map/issues/56) and
 [#100](https://github.com/DallasUrbanists/idea-map/issues/100).
 
 ## Review and release gates
