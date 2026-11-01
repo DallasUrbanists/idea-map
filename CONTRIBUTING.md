@@ -73,7 +73,7 @@ Ask for help when you're stuck, and respond to review comments as you go.
 
 AI tools are optional. Review the code they produce and make sure you understand
 the change before submitting it. Keep credentials and private data out of prompts.
-See [AI-assisted development](https://github.com/DallasUrbanists/idea-map/wiki/AI-Assisted-Development)
+See the [AI tool onboarding guide](docs/ai-onboarding.md) and [AI-assisted development](https://github.com/DallasUrbanists/idea-map/wiki/AI-Assisted-Development)
 for more guidance.
 
 Please report security-sensitive problems privately to a maintainer.
