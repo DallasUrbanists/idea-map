@@ -65,3 +65,32 @@ the relevant Compose logs. Stop a service already using a required port only if
 you own it, or configure a separate local port mapping. The Firebase CLI downloads
 emulator artifacts on first startup; a network connection is needed then. No
 production credentials, production data, or hosted resources are used by this setup.
+
+## Authentication in development
+
+The account page uses Firebase Authentication and a private, HttpOnly `__session`
+server cookie. Configure `NUXT_SESSION_ORIGIN` to the exact public origin (without
+an ending slash), `NUXT_FIREBASE_PROJECT_ID` on the server, and
+`NUXT_PUBLIC_FIREBASE_API_KEY`, `NUXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, and
+`NUXT_PUBLIC_FIREBASE_PROJECT_ID` for the browser. The web configuration values
+are public identifiers. Server credentials use Application Default Credentials;
+never place a service-account key in browser configuration or source control.
+Enable email/password and Google providers in the intended Firebase project.
+
+For local tests only, use `demo-idea-map`, set `FIREBASE_AUTH_EMULATOR_HOST` to
+`127.0.0.1:9099`, and set `NUXT_PUBLIC_FIREBASE_AUTH_EMULATOR` to
+`http://127.0.0.1:9099`. Start the documented Firebase emulator first. The browser
+only accepts a loopback emulator with a `demo-` project. Use synthetic accounts.
+Build first, then run `node --test scripts/session-emulator.integration.mjs
+scripts/auth-browser.integration.mjs` with the pinned Node version. These checks
+create test accounts in the emulator; they do not use a hosted project.
+
+Session creation verifies Firebase token signatures and revocation and requires a
+recently minted ID token; the persistent browser SDK can refresh a server cookie
+even after it expires. Session mutations require the configured exact Origin and
+a non-simple JSON header. Keep cross-origin CORS disabled for this endpoint.
+Logout clears this browser's cookie and Firebase persistence without revoking
+other devices. Token revocation or account disablement is checked when issuing a
+new cookie; future protected server routes must verify their session cookies with
+revocation checking and enforce their own authorization, including verified-email
+ownership rules. The cookie alone does not grant access to private data.

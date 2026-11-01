@@ -6,5 +6,6 @@ useSeoMeta({ title: 'Idea Map', description: 'Explore ideas for your community.'
   <main>
     <h1>Idea Map</h1>
     <p>Ideas for your community.</p>
+    <NuxtLink to="/account">Account</NuxtLink>
   </main>
 </template>

@@ -8,6 +8,9 @@ export default defineNuxtConfig({
     apiSecret: '',
     // NUXT_DATABASE_URL remains server-only and is never serialized.
     databaseUrl: '',
-    public: { siteName: 'Idea Map' },
+    // Canonical browser origin; never infer this from request headers.
+    sessionOrigin: '',
+    firebaseProjectId: '',
+    public: { siteName: 'Idea Map', firebaseApiKey: '', firebaseAuthDomain: '', firebaseProjectId: '', firebaseAuthEmulator: '' },
   },
 })
