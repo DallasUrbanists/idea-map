@@ -23,6 +23,11 @@ test('registration, reload, reset, and device logout with the Auth emulator', as
     const page = await browser.newPage()
     await page.goto(`${base}/account`)
     const email = `browser-${Date.now()}@example.test`
+    await page.waitForFunction(() => !document.querySelector('#email')?.disabled)
+    await page.locator('#email').focus()
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'email')
+    await page.keyboard.press('Tab')
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'password')
     await page.locator('#email').fill(email)
     await page.locator('#password').fill('example-password')
     await page.getByRole('button', { name: 'Create account' }).click()
