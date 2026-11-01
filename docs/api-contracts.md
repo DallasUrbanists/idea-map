@@ -50,24 +50,34 @@ smoke test establishes denial only, not future policy correctness.
 
 ## Conventions for future endpoints
 
-- Validate every route, query and body against a documented schema. Return 400
-  for malformed input, 401 for missing/invalid authentication where authentication
-  is required, 403 for a verified principal lacking permission, 404 when a
-  resource is absent or its existence must be concealed, 409 for a conflicting
-  state or idempotency key, and a generic 5xx for server failures. Existing Nuxt
-  errors expose `statusCode` and `statusMessage`; do not expose stack traces,
-  credentials or raw database/provider errors. Document any endpoint-specific
-  error and retry behavior.
-- List endpoints use a bounded page size and an opaque cursor with a stable,
-  deterministic ordering and tie-breaker. Validate cursor and limit; apply the
-  same authorization and filters on every page. Document defaults, maximums,
-  next-cursor semantics and behavior when data changes. Do not put private data
-  in a cursor or assume encoding makes it secret.
-- Retryable mutations accept a bounded client idempotency key scoped to the
-  authenticated principal or reviewed guest capability and operation. Store a
-  canonical request fingerprint and result durably and atomically with the
-  state change; concurrent retries with the same key and payload return the same
-  result without repeating side effects. Reject reuse with different payloads.
-  Document retention, in-progress/recovery behavior and transactional outbox
-  interaction; an in-memory cache alone is insufficient. Each implementing issue
-  must test concurrent retries, conflicts and recovery.
+When implementing an endpoint, document its contract using the
+[API documentation standards](documentation-style-guide.md#api-contracts-and-reference-comments).
+
+### Validation and errors
+
+Validate every route, query and body against a documented schema. Return 400
+for malformed input, 401 for missing/invalid authentication where authentication
+is required, 403 for a verified principal lacking permission, 404 when a
+resource is absent or its existence must be concealed, 409 for a conflicting
+state or idempotency key, and a generic 5xx for server failures.
+
+Existing Nuxt errors expose `statusCode` and `statusMessage`; do not expose stack
+traces, credentials or raw database/provider errors.
+
+### Pagination
+
+List endpoints use a bounded page size and an opaque cursor with a stable,
+deterministic ordering and tie-breaker. Validate cursor and limit; apply the
+same authorization and filters on every page. Do not put private data
+in a cursor or assume encoding makes it secret.
+
+### Idempotency
+
+Retryable mutations accept a bounded client idempotency key scoped to the
+authenticated principal or reviewed guest capability and operation. Store a
+canonical request fingerprint and result durably and atomically with the
+state change; concurrent retries with the same key and payload return the same
+result without repeating side effects. Reject reuse with different payloads.
+
+An in-memory cache alone is insufficient. Each implementing issue must test
+concurrent retries, conflicts and recovery.

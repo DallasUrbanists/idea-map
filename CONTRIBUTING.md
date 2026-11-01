@@ -28,6 +28,11 @@ change focused on one task.
 4. Keep the change focused on one issue.
 5. For user-interface work, look for an existing component or Storybook example before creating your own.
 
+When writing or updating documentation, follow the
+[documentation style guide](docs/documentation-style-guide.md).
+
+The following guides cover common development tasks:
+
 | Topic | More guidance |
 | --- | --- |
 | Developer setup | [Developer setup and troubleshooting](https://github.com/DallasUrbanists/idea-map/wiki/Developer-Setup-and-Troubleshooting) |
@@ -94,8 +99,8 @@ Expect each command to finish without failures. Some packages have additional
 checks in the [testing guide](docs/testing.md), and authentication work also needs
 the [manual and automated auth checks](docs/auth-manual-testing.md).
 
-For documentation-only changes, review wording, links and commands; an unrelated
-application build is unnecessary.
+For documentation-only changes, follow the
+[documentation review checklist](docs/documentation-style-guide.md#documentation-review-checklist).
 
 ## Open a pull request
 
@@ -106,11 +111,8 @@ reviewers the information they need.
 2. Push your branch to your repository.
 3. Open a pull request against `main`.
 
-| Include in the description | Why it helps |
-| --- | --- |
-| What changed and why, with an issue link | Gives reviewers the problem and intended result. |
-| Checks run and any checks you could not run | Shows what was verified and what remains uncertain. |
-| Screenshots when appearance changed | Makes visual changes easier to assess. |
+Prepare the description using the
+[review-description standards](docs/documentation-style-guide.md#review-descriptions-and-release-notes).
 
 A draft pull request is welcome while work is in progress. Ask for help when
 you are stuck.

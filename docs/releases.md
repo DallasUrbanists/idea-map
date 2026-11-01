@@ -10,33 +10,34 @@ No automatic publication or production release is configured in this change.
 ## Contribution and review
 
 1. For a shipped behavior or public package API change, run `pnpm changeset` and
-   select each affected workspace package or application and its bump. An app and
-   its package can appear in one changeset and one PR. The changeset text should
-   describe the behavior users will receive, not planned work or internal task IDs.
-   Internal-only work and documentation without shipped behavior need no changeset.
+   select each affected workspace package or application and its bump.
+   Follow the [changeset and release-note writing standards](documentation-style-guide.md#review-descriptions-and-release-notes).
 2. Review package compatibility and tests alongside the changeset. Use patch for
    compatible fixes, minor for compatible additions and major for breaking changes;
-   while versions are `0.x`, document any breaking change explicitly and coordinate
-   the version and consumers rather than assuming stable major-version guarantees.
-   Record migration instructions and required app/package version combinations.
+   while versions are `0.x`, coordinate the version and consumers rather than
+   assuming stable major-version guarantees.
 3. Before a release, run the pinned install, lint, tests, typecheck and build, plus
-   relevant package/integration checks. Fetch `origin/main` first; `pnpm
-   release:status` summarizes all pending changesets and compares package changes
-   to that ref. A missing changeset for a changed package can make status fail;
-   inspect the change rather than adding a note for unshipped work. This is
-   inspection, not a release.
+   relevant package/integration checks. Fetch `origin/main`, then run
+   `pnpm release:status` and inspect any missing changeset for a changed package
+   rather than adding a note for unshipped work.
 4. In a dedicated, reviewable version PR, an authorized maintainer runs
    `pnpm changeset version`, reviews the generated version/changelog and workspace
-   dependency changes, and ensures the changelog describes what actually shipped.
-   The command consumes changeset files. It must not run automatically on every PR.
-   Merge and publish are separate decisions outside this issue's scope.
+   dependency changes against the writing standards.
+   The command consumes changeset files and must not run automatically on every PR.
+
+The `pnpm release:status` command summarizes all pending changesets and compares
+package changes to `origin/main`; a missing changeset for a changed package can
+make status fail. It only inspects release state. Versioning, merging, and
+publishing require separate decisions.
 
 For example, a single changeset can name `@idea-map/web` and
 `@idea-map/street-renderer` and describe a concrete app-visible renderer change.
+An app and its package can appear in one changeset and one PR. Internal-only work
+and documentation without shipped behavior need no changeset.
+
 Do not add a speculative changeset until that change exists. Applications are
-released from an immutable reviewed commit/image; include that commit, affected
-package versions, behavior, migration notes and validation in application release
-notes. Versioning an app does not deploy it.
+released from an immutable reviewed commit/image; prepare application release
+notes using the writing standards. Versioning an app does not deploy it.
 
 ## Package build and export conventions
 

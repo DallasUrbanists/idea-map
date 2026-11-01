@@ -22,8 +22,8 @@ Use the Node and pnpm versions in the [contributing guide](../CONTRIBUTING.md#ru
 Run these before requesting review for code or shared configuration changes.
 The root test command doesn't include every package test.
 
-For documentation changes, check the wording, links, and commands.
-You don't need to build the app just to fix a typo.
+For documentation changes, follow the
+[documentation review checklist](documentation-style-guide.md#documentation-review-checklist).
 
 ## Package tests
 
@@ -92,5 +92,5 @@ a full component catalog and complete user journeys are still being built.
 
 ## In your pull request
 
-List the checks you ran and their results. If you skipped a check, say why.
-Include any setup details a reviewer needs to reproduce the result.
+Report validation using the
+[review-description standards](documentation-style-guide.md#review-descriptions-and-release-notes).
