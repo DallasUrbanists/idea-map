@@ -1,0 +1,7 @@
+FROM node:24.22.1-trixie-slim
+RUN apt-get update && apt-get install -y --no-install-recommends openjdk-21-jre-headless ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install --global firebase-tools@15.34.2
+WORKDIR /emulator
+COPY dev/firebase.json dev/firestore.rules ./
+CMD ["firebase", "emulators:start", "--project", "demo-idea-map", "--only", "auth,firestore"]

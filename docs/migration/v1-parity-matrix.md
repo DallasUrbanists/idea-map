@@ -95,6 +95,8 @@ caveats. The inventory and its classifications remain subject to maintainer revi
 - Confirm proposed redesigns, legacy link behavior and whether each experimental or
   opt-in capability is retained, changed or deferred. No feature is silently dropped.
 - [#92](https://github.com/DallasUrbanists/idea-map/issues/92) owns deeper backend
-  API and dataset inventory; [#103](https://github.com/DallasUrbanists/idea-map/issues/103)
+  API and dataset inventory; the [frontend API and dependency inventory](v1-api-dependencies.md)
+  records committed client evidence and unresolved backend questions.
+  [#103](https://github.com/DallasUrbanists/idea-map/issues/103)
   and [#104](https://github.com/DallasUrbanists/idea-map/issues/104) own pilot and
   full-parity evidence respectively.
