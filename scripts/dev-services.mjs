@@ -12,10 +12,12 @@ const commands = {
   start: ['up', '-d', '--build', 'db', 'firebase'],
   all: ['--profile', 'tools', 'up', '-d', '--build'],
   status: ['--profile', 'tools', 'ps', '-a'],
+  logs: ['--profile', 'tools', 'logs', '--follow', ...process.argv.slice(3)],
+  migrate: ['--profile', 'tools', 'exec', 'tools', 'pnpm', '--filter', '@idea-map/server', 'db:migrate'],
   stop: ['--profile', 'tools', 'down'],
 }
 const command = commands[process.argv[2]]
-if (!command) throw new Error('Use start, all, status or stop')
+if (!command) throw new Error('Use start, all, status, logs, migrate or stop')
 console.log(`Compose project: ${project}`)
 const result = spawnSync(docker, ['compose', '--project-name', project, '-f', `${root}compose.yaml`, ...command], { cwd: root, stdio: 'inherit' })
 if (result.error) console.error(result.error.message)
