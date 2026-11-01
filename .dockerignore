@@ -1,0 +1,11 @@
+.git
+**/node_modules
+**/.nuxt
+**/.output
+**/dist
+**/.cache
+**/storybook-static
+**/*.tsbuildinfo
+.env
+.env.*
+!.env.example
