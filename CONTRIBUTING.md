@@ -122,7 +122,7 @@ responsible for the changes they contribute.
 
 1. Review AI-generated changes and make sure you understand them before submitting.
 2. Keep credentials and private data out of prompts.
-3. Read the [AI-assisted development guide](https://github.com/DallasUrbanists/idea-map/wiki/AI-Assisted-Development) for more guidance.
+3. Read the [AI tool onboarding guide](docs/ai-onboarding.md) for setup and the [AI-assisted development guide](https://github.com/DallasUrbanists/idea-map/wiki/AI-Assisted-Development) for instructions and troubleshooting.
 
 AI tools are optional. Report security-sensitive problems privately to a
 maintainer; contributions follow the repository's [Apache-2.0 license](LICENSE).
