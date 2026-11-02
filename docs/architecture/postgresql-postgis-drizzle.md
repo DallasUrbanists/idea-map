@@ -387,3 +387,21 @@ write-locking and rollback before applying it to a live database. Decision
 metadata and assessment records need a privacy-safe deletion and legal-hold
 lifecycle before live use; the new foreign key preserves that dependency rather
 than silently deleting the evidence.
+
+### Moderator requests for changes
+
+A server-verified moderator can request changes against the current revision and
+assessment, or against the absence of an assessment. The request blocks timed
+publication for the idea, including later edits, until a moderator explicitly
+resolves it against the current review snapshot. The request and its resolution
+record the relevant revision, assessment, actor, time, and reason. Resolving it
+never clears a separate moderator hold, rejection, or other review block.
+
+The database functions have fixed search paths and no `PUBLIC` execute grant. A
+separate, unscheduled retention primitive removes resolved request metadata only
+after 90 days and only when no legal hold applies. Active requests remain to
+preserve the block. Neither primitive grants live permissions or provides a
+moderator or author interface. Before live use, complete privacy-safe deletion,
+legal-hold lifecycle, role administration, notification, recovery, and rollout
+review. These records refer to revisions and assessments, so deletion must honor
+those dependencies rather than silently discard evidence.

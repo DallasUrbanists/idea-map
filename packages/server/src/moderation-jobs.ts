@@ -106,6 +106,8 @@ export async function executeModerationJob(pool: pg.Pool, jobId: string, policy:
     const hold = await client.query(`SELECT 1 FROM moderator_holds h JOIN idea_revisions r ON r.id = h.revision_id
       WHERE r.idea_id = $1 AND h.released_at IS NULL`, [result.rows[0].idea_id])
     if (hold.rowCount) throw new Error('Moderation is on hold')
+    const changes = await client.query('SELECT 1 FROM moderator_change_requests WHERE idea_id = $1 AND resolved_at IS NULL', [result.rows[0].idea_id])
+    if (changes.rowCount) throw new Error('Moderator changes are requested')
     const decision = await policy(client, job)
     if (decision === 'retry') throw new Error('Moderation eligibility is unavailable')
     if (decision === 'stale') return 'stale'

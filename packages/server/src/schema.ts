@@ -186,6 +186,29 @@ export const revisionAssessments = pgTable('revision_assessments', {
   uniqueIndex('revision_assessments_id_revision_key').on(table.id, table.revisionId),
   check('revision_assessments_deadline', sql`(${table.deadline} IS NULL AND ${table.waitMilliseconds} IS NULL AND NOT ${table.shortcutRequested}) OR (${table.deadline} IS NOT NULL AND ${table.waitMilliseconds} IS NOT NULL AND ${table.waitMilliseconds} BETWEEN 0 AND 86400000 AND ${table.deadline} >= ${table.receivedAt})`),
 ])
+// A request for changes blocks the whole idea, including later edits, until resolved.
+export const moderatorChangeRequests = pgTable('moderator_change_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ideaId: uuid('idea_id').notNull().references(() => ideas.id),
+  requestedRevisionId: uuid('requested_revision_id').notNull(),
+  requestedAssessmentId: text('requested_assessment_id'),
+  requestedBy: uuid('requested_by').notNull().references(() => users.id),
+  requestedAt: createdAt(),
+  reason: text('reason').notNull(),
+  resolvedRevisionId: uuid('resolved_revision_id'),
+  resolvedAssessmentId: text('resolved_assessment_id'),
+  resolvedBy: uuid('resolved_by').references(() => users.id),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  resolutionReason: text('resolution_reason'),
+}, table => [
+  uniqueIndex('moderator_change_requests_active_idea_key').on(table.ideaId).where(sql`${table.resolvedAt} IS NULL`),
+  foreignKey({ columns: [table.ideaId, table.requestedRevisionId], foreignColumns: [ideaRevisions.ideaId, ideaRevisions.id] }),
+  foreignKey({ columns: [table.requestedAssessmentId, table.requestedRevisionId], foreignColumns: [revisionAssessments.id, revisionAssessments.revisionId] }),
+  foreignKey({ columns: [table.ideaId, table.resolvedRevisionId], foreignColumns: [ideaRevisions.ideaId, ideaRevisions.id] }),
+  foreignKey({ columns: [table.resolvedAssessmentId, table.resolvedRevisionId], foreignColumns: [revisionAssessments.id, revisionAssessments.revisionId] }),
+  check('moderator_change_requests_reason', sql`length(trim(${table.reason})) > 0 AND octet_length(${table.reason}) <= 1000`),
+  check('moderator_change_requests_resolution', sql`(${table.resolvedAt} IS NULL AND ${table.resolvedBy} IS NULL AND ${table.resolvedRevisionId} IS NULL AND ${table.resolvedAssessmentId} IS NULL AND ${table.resolutionReason} IS NULL) OR (${table.resolvedAt} IS NOT NULL AND ${table.resolvedBy} IS NOT NULL AND ${table.resolvedRevisionId} IS NOT NULL AND ${table.resolutionReason} IS NOT NULL AND length(trim(${table.resolutionReason})) > 0 AND octet_length(${table.resolutionReason}) <= 1000)`),
+])
 export const jobs = pgTable('jobs', {
   id: uuid('id').primaryKey().defaultRandom(),
   // Associate background work with the immutable input revision when relevant.
