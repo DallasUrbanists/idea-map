@@ -59,6 +59,8 @@ exposing job data. Failed or early execution returns a retryable response.
 The worker uses `WORKER_ORIGIN`, `TASK_INVOKER_EMAIL`, `REPAIR_INVOKER_EMAIL`,
 `CLOUD_TASKS_QUEUE`, and a server-only `WORKER_DATABASE_URL`. The worker pool has
 one connection and must be included in the Neon connection budget before use.
+The [Terraform runtime option](terraform.md#resource-definitions) supplies
+these settings and a pinned database-secret reference when explicitly enabled.
 Repair handles at most 20 records per request with a five-second dispatch timeout
 and logs only aggregate counts. The worker entry point currently rejects task
 execution because automatic moderation requires the accepted scoring contract,

@@ -182,3 +182,114 @@ run "reject_latest_webhook_secret" {
   }
   expect_failures = [var.resend_webhook_secret_version]
 }
+
+run "worker_runtime_is_opt_in" {
+  command = plan
+  assert {
+    condition     = length(google_secret_manager_secret_iam_member.worker_database) == 0 && length(google_cloud_run_v2_service.runtime["worker"].template[0].containers[0].env) == 0
+    error_message = "Worker runtime settings and database access must be opt-in."
+  }
+}
+
+run "worker_runtime_is_scoped_and_pinned" {
+  command = plan
+  variables {
+    enable_task_delivery           = true
+    enable_worker_runtime          = true
+    worker_origin                  = "https://worker.synthetic.invalid"
+    worker_database_secret_id      = "synthetic-worker-db"
+    worker_database_secret_version = "3"
+  }
+  override_resource {
+    target          = google_cloud_run_v2_service.runtime["worker"]
+    override_during = plan
+    values          = { uri = "https://worker.synthetic.invalid" }
+  }
+  override_resource {
+    target          = google_service_account.runtime["worker"]
+    override_during = plan
+    values          = { email = "worker@synthetic.invalid" }
+  }
+  override_resource {
+    target          = google_service_account.task_invoker[0]
+    override_during = plan
+    values          = { email = "task@synthetic.invalid", name = "projects/synthetic-idea-map-dev/serviceAccounts/task-sa@synthetic-idea-map-dev.iam.gserviceaccount.com" }
+  }
+  override_resource {
+    target          = google_service_account.repair_invoker[0]
+    override_during = plan
+    values          = { email = "repair@synthetic.invalid" }
+  }
+  assert {
+    condition     = length(google_cloud_run_v2_service.runtime["worker"].template[0].containers[0].env) == 5 && one([for e in google_cloud_run_v2_service.runtime["worker"].template[0].containers[0].env : e if e.name == "WORKER_ORIGIN"]).value == "https://worker.synthetic.invalid" && one([for e in google_cloud_run_v2_service.runtime["worker"].template[0].containers[0].env : e if e.name == "TASK_INVOKER_EMAIL"]).value == "task@synthetic.invalid" && one([for e in google_cloud_run_v2_service.runtime["worker"].template[0].containers[0].env : e if e.name == "REPAIR_INVOKER_EMAIL"]).value == "repair@synthetic.invalid" && one([for e in google_cloud_run_v2_service.runtime["worker"].template[0].containers[0].env : e if e.name == "CLOUD_TASKS_QUEUE"]).value == "projects/synthetic-idea-map-dev/locations/us-central1/queues/idea-map-dev-queue"
+    error_message = "The worker must receive only its intended task and identity settings."
+  }
+  assert {
+    condition     = one([for e in google_cloud_run_v2_service.runtime["worker"].template[0].containers[0].env : e if e.name == "WORKER_DATABASE_URL"]).value_source[0].secret_key_ref[0].secret == "synthetic-worker-db" && one([for e in google_cloud_run_v2_service.runtime["worker"].template[0].containers[0].env : e if e.name == "WORKER_DATABASE_URL"]).value_source[0].secret_key_ref[0].version == "3" && google_secret_manager_secret_iam_member.worker_database[0].role == "roles/secretmanager.secretAccessor" && google_secret_manager_secret_iam_member.worker_database[0].secret_id == "synthetic-worker-db" && google_secret_manager_secret_iam_member.worker_database[0].member == "serviceAccount:worker@synthetic.invalid"
+    error_message = "Only the worker must receive the pinned database secret and scoped access."
+  }
+  assert {
+    condition     = length(google_cloud_run_v2_service.runtime["web"].template[0].containers[0].env) == 0 && google_cloud_scheduler_job.repair[0].paused
+    error_message = "Worker credentials must not reach the web service and repair must remain paused."
+  }
+}
+
+run "worker_runtime_requires_task_delivery" {
+  command = plan
+  variables {
+    enable_worker_runtime          = true
+    worker_origin                  = "https://worker.synthetic.invalid"
+    worker_database_secret_id      = "synthetic-worker-db"
+    worker_database_secret_version = "3"
+  }
+  expect_failures = [google_cloud_run_v2_service.runtime["worker"], google_cloud_run_v2_service.runtime["web"]]
+}
+
+run "reject_unpinned_worker_database" {
+  command = plan
+  variables { worker_database_secret_version = "latest" }
+  expect_failures = [var.worker_database_secret_version]
+}
+
+run "reject_worker_origin_path" {
+  command = plan
+  variables { worker_origin = "https://worker.synthetic.invalid/tasks" }
+  expect_failures = [var.worker_origin]
+}
+
+run "reject_worker_origin_mismatch" {
+  command = plan
+  variables {
+    enable_task_delivery           = true
+    enable_worker_runtime          = true
+    worker_origin                  = "https://wrong.synthetic.invalid"
+    worker_database_secret_id      = "synthetic-worker-db"
+    worker_database_secret_version = "3"
+  }
+  override_resource {
+    target          = google_cloud_run_v2_service.runtime["worker"]
+    override_during = plan
+    values          = { uri = "https://worker.synthetic.invalid" }
+  }
+  override_resource {
+    target          = google_service_account.task_invoker[0]
+    override_during = plan
+    values          = { name = "projects/synthetic-idea-map-dev/serviceAccounts/task-sa@synthetic-idea-map-dev.iam.gserviceaccount.com" }
+  }
+  expect_failures = [google_cloud_run_v2_service.runtime["worker"]]
+}
+
+run "worker_runtime_requires_database_secret" {
+  command = plan
+  variables {
+    enable_task_delivery  = true
+    enable_worker_runtime = true
+    worker_origin         = "https://worker.synthetic.invalid"
+  }
+  override_resource {
+    target          = google_service_account.task_invoker[0]
+    override_during = plan
+    values          = { name = "projects/synthetic-idea-map-dev/serviceAccounts/task-sa@synthetic-idea-map-dev.iam.gserviceaccount.com" }
+  }
+  expect_failures = [google_cloud_run_v2_service.runtime["worker"], google_cloud_run_v2_service.runtime["web"]]
+}

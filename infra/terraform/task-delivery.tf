@@ -1,4 +1,12 @@
 # No schedule runs until an operator explicitly unpauses the reviewed job.
+resource "google_secret_manager_secret_iam_member" "worker_database" {
+  count     = var.enable_worker_runtime && var.worker_database_secret_id != "" ? 1 : 0
+  project   = var.project_id
+  secret_id = var.worker_database_secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.runtime["worker"].email}"
+}
+
 resource "google_service_account" "task_invoker" {
   count        = var.enable_task_delivery ? 1 : 0
   account_id   = "idea-map-task-${var.environment}"
