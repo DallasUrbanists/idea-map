@@ -50,6 +50,30 @@ data change. Reconciliation repairs missed work; queue configuration must
 account for retries and exhausted attempts without repeating side effects or
 losing ownership of recovery.
 
+The worker accepts task execution and repair requests at separate private POST
+routes. It verifies the Google-signed token, configured audience, verified email,
+and the distinct invoker assigned to each route; Cloud Run IAM and ingress also
+restrict invocation. The `GET /healthz` route reports process liveness without
+exposing job data. Failed or early execution returns a retryable response.
+
+The worker uses `WORKER_ORIGIN`, `TASK_INVOKER_EMAIL`, `REPAIR_INVOKER_EMAIL`,
+`CLOUD_TASKS_QUEUE`, and a server-only `WORKER_DATABASE_URL`. The worker pool has
+one connection and must be included in the Neon connection budget before use.
+Repair handles at most 20 records per request with a five-second dispatch timeout
+and logs only aggregate counts. The worker entry point currently rejects task
+execution because automatic moderation requires the accepted scoring contract,
+verification and history, moderator controls, and publication/privacy checks.
+Do not unpause the repair schedule or connect a live assessment workflow until
+those gates and the separate deployment review are complete.
+
+Each Cloud Tasks name contains the database job ID and delivery generation. An
+already-existing task name is accepted only after a full provider lookup confirms
+the intended target, identity, body, and schedule. A missing or uninspectable
+task is an uncertain result, not proof of successful dispatch. The runtime needs
+queue-scoped create and full-view access; that access can expose task payloads,
+so payloads contain only the job ID and must remain private. Task creation uses
+short-lived application-default credentials and an explicit invoker identity.
+
 ## Media and secrets
 
 Separate buckets hold pending uploads, approved media, and backups. Buckets use

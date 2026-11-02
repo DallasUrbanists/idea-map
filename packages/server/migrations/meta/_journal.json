@@ -43,6 +43,13 @@
       "when": 1793633122224,
       "tag": "0005_durable_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793635341203,
+      "tag": "0006_moderation_delivery",
+      "breakpoints": true
     }
   ]
 }

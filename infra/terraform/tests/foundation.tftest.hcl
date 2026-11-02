@@ -30,6 +30,47 @@ run "bounded_private_foundation" {
   }
 }
 
+run "task_delivery_is_opt_in" {
+  command = plan
+  assert {
+    condition     = length(google_cloud_scheduler_job.repair) == 0 && length(google_service_account.task_invoker) == 0 && length(google_service_account.repair_invoker) == 0
+    error_message = "Task identities and repair scheduling must be opt-in."
+  }
+}
+
+run "task_delivery_is_scoped_and_paused" {
+  command = plan
+  variables { enable_task_delivery = true }
+  override_resource {
+    target          = google_cloud_run_v2_service.runtime["worker"]
+    override_during = plan
+    values          = { uri = "https://worker.synthetic.invalid" }
+  }
+  override_resource {
+    target          = google_service_account.runtime["worker"]
+    override_during = plan
+    values          = { email = "worker@synthetic.invalid" }
+  }
+  override_resource {
+    target          = google_service_account.task_invoker[0]
+    override_during = plan
+    values          = { email = "task-sa@synthetic-project.iam.gserviceaccount.com", name = "projects/synthetic-project/serviceAccounts/task-sa@synthetic-project.iam.gserviceaccount.com" }
+  }
+  override_resource {
+    target          = google_service_account.repair_invoker[0]
+    override_during = plan
+    values          = { email = "repair@synthetic-project.iam.gserviceaccount.com" }
+  }
+  assert {
+    condition     = google_cloud_scheduler_job.repair[0].paused && google_cloud_scheduler_job.repair[0].schedule == "0 * * * *" && google_cloud_scheduler_job.repair[0].http_target[0].oidc_token[0].audience == "https://worker.synthetic.invalid"
+    error_message = "Hourly repair must start paused and target the worker audience."
+  }
+  assert {
+    condition     = google_cloud_run_v2_service_iam_member.task_invoker[0].member == "serviceAccount:task-sa@synthetic-project.iam.gserviceaccount.com" && google_cloud_run_v2_service_iam_member.repair_invoker[0].member == "serviceAccount:repair@synthetic-project.iam.gserviceaccount.com" && google_cloud_tasks_queue_iam_member.worker_enqueue[0].role == "roles/cloudtasks.enqueuer"
+    error_message = "Task and repair invokers must be distinct and queue access scoped."
+  }
+}
+
 run "reject_invalid_environment" {
   command = plan
   variables { environment = "v1" }

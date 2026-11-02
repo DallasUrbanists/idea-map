@@ -64,7 +64,21 @@ importers:
         specifier: 3.3.14
         version: 3.3.14(typescript@5.9.3)
 
-  apps/worker: {}
+  apps/worker:
+    dependencies:
+      '@idea-map/server':
+        specifier: workspace:*
+        version: link:../../packages/server
+      google-auth-library:
+        specifier: 11.3.2
+        version: 11.3.2(supports-color@10.2.2)
+      pg:
+        specifier: 8.16.3
+        version: 8.16.3
+    devDependencies:
+      '@types/pg':
+        specifier: 8.15.6
+        version: 8.15.6
 
   packages/contracts: {}
 

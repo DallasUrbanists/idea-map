@@ -100,6 +100,14 @@ claimant cannot overwrite a newer claim. The application needs a separately
 authenticated hourly scheduler and a provider dispatcher to invoke this repair;
 the database code does not run a polling loop or configure those services.
 
+An accepted assessment stores its server receipt time, evidence fingerprint,
+standard deadline, and jobs in one transaction. A duplicate preserves that
+record; a replacement makes its predecessor stale. When a trusted shortcut is
+requested, a separate immediate job leaves the standard deadline job intact.
+Only the future authorized assessment integration may provide accepted evidence
+and policy timing; it must provide a globally unique assessment ID and a digest
+of its validated evidence. This storage API does not evaluate a compliance score.
+
 `executeJob` locks the job, checks its deadline, and runs a database-only handler
 in the same transaction as the final job state. A handler must lock the relevant
 domain records and recheck the current revision, assessment, withdrawal and
@@ -110,6 +118,11 @@ idempotent delivery; a database transaction cannot make a provider call atomic.
 The moderation implementation owns the eligibility checks and the task service
 owns authenticated invocation and execution retry limits.
 
+The moderation policy callback must return `retry` when required evidence is
+temporarily unavailable. It may return `stale` only when that job is permanently
+ineligible; a rejected shortcut leaves its separate standard deadline job intact.
+The worker does not expose a way to supply this callback in a request.
+
 To investigate an unpublished job, an authorized operator can connect to the
 intended environment's database with `psql` using its approved read-only role.
 Set `job_id` to the known job ID with `\set job_id 'JOB_UUID'` in that session,
@@ -117,7 +130,7 @@ then inspect its state:
 
 ```sql
 SELECT j.id, j.kind, j.state, j.scheduled_at, o.published_at,
-       o.dispatch_attempts, o.lease_until
+       o.dispatch_attempts, o.delivery_generation, o.lease_until
 FROM jobs j JOIN outbox o ON o.job_id = j.id
 WHERE j.id = :'job_id'::uuid;
 ```
@@ -149,6 +162,24 @@ jobId)`. Neither reset changes the deadline or execution state. If delivery is
 uncertain and task deduplication or execution idempotency cannot be established,
 do not replay the job. Record the investigation and escalate instead. These
 functions do not provide an operator interface or grant database access.
+
+If a pending job was accepted by the queue but execution exhausted its retries,
+or dispatch attempts were exhausted with an uncertain outcome, inspect its
+`outbox.delivery_generation` and the corresponding task in the intended queue.
+The task name is `job-JOB_UUID-GENERATION`. An authorized recovery tool can use
+`inspectCloudTask` with the reviewed queue and short-lived credentials, then pass
+that check to `rearmMissingDelivery` with the job ID and observed generation.
+The reset proceeds only when the provider confirms absence, the generation has
+not changed, the job remains pending, and no dispatch lease is active. It assigns
+a new task generation without changing the job ID or deadline. An uninspectable
+task must remain unchanged and be escalated. The worker's transactional
+execution must remain idempotent even if an old in-flight delivery later arrives.
+
+For a moderator hold or unavailable eligibility, the moderation job remains
+pending and the worker must return a retryable result. If queue retries are
+exhausted, an authorized operator follows the same recovery procedure after the
+hold or dependency is resolved; the job must not be marked stale just because a
+temporary hold or provider failure occurred.
 
 ## Consent and retention
 

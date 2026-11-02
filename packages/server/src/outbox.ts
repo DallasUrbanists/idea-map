@@ -25,9 +25,11 @@ export interface DurableJob {
   scheduledAt: Date
 }
 
+export interface DispatchJob extends DurableJob { deliveryGeneration: number }
+
 /** A dispatcher must deduplicate by job.id and stop promptly when the signal is aborted. */
 export interface JobDispatcher {
-  dispatch(job: DurableJob, signal: AbortSignal): Promise<void>
+  dispatch(job: DispatchJob, signal: AbortSignal): Promise<void>
 }
 
 export interface DispatchOptions { timeoutMs?: number }
@@ -107,7 +109,7 @@ export async function createJobIntent(pool: pg.Pool, intent: JobIntent,
   })
 }
 
-type ClaimRow = JobRow & { lease_token: string }
+type ClaimRow = JobRow & { lease_token: string, delivery_generation: number }
 
 async function claim(pool: pg.Pool, excluded: string[], jobId?: string): Promise<ClaimRow | null> {
   const token = randomUUID()
@@ -122,10 +124,26 @@ async function claim(pool: pg.Pool, excluded: string[], jobId?: string): Promise
     ), claimed AS (
       UPDATE outbox o SET lease_token = $4, lease_until = clock_timestamp() + ($5::int * interval '1 second'),
         dispatch_attempts = o.dispatch_attempts + 1 FROM candidate c WHERE o.id = c.id
-      RETURNING o.job_id, o.lease_token
-    ) SELECT j.id, j.idempotency_key, j.kind, j.revision_id, j.assessment_id, j.assessment_received_at, j.scheduled_at, c.lease_token
+      RETURNING o.job_id, o.lease_token, o.delivery_generation
+    ) SELECT j.id, j.idempotency_key, j.kind, j.revision_id, j.assessment_id, j.assessment_received_at, j.scheduled_at, c.lease_token, c.delivery_generation
       FROM claimed c JOIN jobs j ON j.id = c.job_id`, [MAX_DISPATCH_ATTEMPTS, excluded, jobId ?? null, token, LEASE_SECONDS])
   return result.rows[0] ?? null
+}
+
+/** Rearm a pending job only after a trusted provider check confirms its delivery is absent. */
+export async function rearmMissingDelivery(pool: pg.Pool, jobId: string, expectedGeneration: number,
+  inspect: (jobId: string, generation: number) => Promise<'present' | 'absent' | 'unknown'>): Promise<boolean> {
+  if (!Number.isSafeInteger(expectedGeneration) || expectedGeneration < 0 || expectedGeneration >= 2_147_483_647) {
+    throw new Error('Invalid delivery generation')
+  }
+  if (await inspect(jobId, expectedGeneration) !== 'absent') return false
+  const result = await pool.query(`UPDATE outbox SET delivery_generation = delivery_generation + 1,
+      published_at = NULL, dispatch_attempts = 0, lease_token = NULL, lease_until = NULL
+    WHERE job_id = $1 AND (published_at IS NOT NULL OR dispatch_attempts = 5) AND delivery_generation = $2
+      AND (lease_until IS NULL OR lease_until <= clock_timestamp())
+      AND EXISTS (SELECT 1 FROM jobs WHERE id = outbox.job_id AND state = 'pending')`,
+  [jobId, expectedGeneration])
+  return result.rowCount === 1
 }
 
 async function dispatchClaim(pool: pg.Pool, dispatcher: JobDispatcher, row: ClaimRow, timeoutMs: number): Promise<boolean> {
@@ -135,7 +153,7 @@ async function dispatchClaim(pool: pg.Pool, dispatcher: JobDispatcher, row: Clai
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     await Promise.race([
-      dispatcher.dispatch(jobFromRow(row), controller.signal),
+      dispatcher.dispatch({ ...jobFromRow(row), deliveryGeneration: row.delivery_generation }, controller.signal),
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           controller.abort()

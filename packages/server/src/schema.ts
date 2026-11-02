@@ -74,6 +74,23 @@ export const moderationEvents = pgTable('moderation_events', {
   reason: text('reason'),
   createdAt: createdAt(),
 }, table => [index('moderation_events_revision_idx').on(table.revisionId)])
+// Assessment evidence and review holds are private server-side state.
+export const reviewGates = pgTable('review_gates', {
+  revisionId: uuid('revision_id').primaryKey().references(() => ideaRevisions.id),
+  blocked: boolean('blocked').notNull().default(false),
+})
+export const revisionAssessments = pgTable('revision_assessments', {
+  id: text('id').primaryKey(),
+  revisionId: uuid('revision_id').notNull().references(() => ideaRevisions.id),
+  fingerprint: text('fingerprint').notNull(),
+  receivedAt: timestamp('received_at', { withTimezone: true }).notNull(),
+  deadline: timestamp('deadline', { withTimezone: true }),
+  waitMilliseconds: integer('wait_milliseconds'),
+  shortcutRequested: boolean('shortcut_requested').notNull().default(false),
+  current: boolean('current').notNull().default(true),
+}, table => [uniqueIndex('revision_assessments_current_key').on(table.revisionId).where(sql`${table.current}`),
+  check('revision_assessments_deadline', sql`(${table.deadline} IS NULL AND ${table.waitMilliseconds} IS NULL AND NOT ${table.shortcutRequested}) OR (${table.deadline} IS NOT NULL AND ${table.waitMilliseconds} IS NOT NULL AND ${table.waitMilliseconds} BETWEEN 0 AND 86400000 AND ${table.deadline} >= ${table.receivedAt})`),
+])
 export const jobs = pgTable('jobs', {
   id: uuid('id').primaryKey().defaultRandom(),
   // Associate background work with the immutable input revision when relevant.
@@ -95,11 +112,13 @@ export const outbox = pgTable('outbox', {
   jobId: uuid('job_id').notNull().references(() => jobs.id),
   publishedAt: timestamp('published_at', { withTimezone: true }),
   dispatchAttempts: integer('dispatch_attempts').notNull().default(0),
+  deliveryGeneration: integer('delivery_generation').notNull().default(0),
   leaseToken: uuid('lease_token'),
   leaseUntil: timestamp('lease_until', { withTimezone: true }),
   createdAt: createdAt(),
 }, table => [uniqueIndex('outbox_job_key').on(table.jobId), index('outbox_published_idx').on(table.publishedAt),
   check('outbox_dispatch_attempts_range', sql`${table.dispatchAttempts} between 0 and 5`),
+  check('outbox_delivery_generation_nonnegative', sql`${table.deliveryGeneration} >= 0`),
   check('outbox_lease_pair', sql`(${table.leaseToken} IS NULL) = (${table.leaseUntil} IS NULL)`),
 ])
 // Store only the provider identifiers and delivery state, never message content or recipients.

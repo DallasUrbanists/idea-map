@@ -89,6 +89,16 @@ ambiguous delivery, lease recovery, bounded retries, and concurrent execution
 with a fake dispatcher, including a stalled request. It does not validate Cloud
 Tasks or the moderation handler.
 
+Run `pnpm --filter @idea-map/server test:cloud-tasks` and
+`pnpm --filter @idea-map/worker test` for provider-fake task creation and
+worker authentication checks. To check the assessment and publication
+transactions, use a separate empty disposable PostGIS database with the
+`idea_map_test_` prefix and run `pnpm --filter @idea-map/server test:moderation-jobs`.
+For the worker integration check, migrate a different disposable database,
+set `TEST_DATABASE_URL`, and run `pnpm --filter @idea-map/worker test:integration`.
+These tests use synthetic assessments and injected authentication and policy;
+they do not validate live provider permissions or authorize publication.
+
 To exercise the built webhook endpoint against a disposable local database, set
 `TEST_DATABASE_URL` to a migrated `idea_map_test_` database on `127.0.0.1`, run
 `pnpm build`, and then run `pnpm test:webhook`. The test uses a synthetic webhook
