@@ -22,6 +22,20 @@
       "when": 1793463242644,
       "tag": "0002_claim_contact",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793590848843,
+      "tag": "0003_email_delivery_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793591360498,
+      "tag": "0004_media_previews",
+      "breakpoints": true
     }
   ]
 }

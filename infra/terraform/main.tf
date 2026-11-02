@@ -32,8 +32,27 @@ resource "google_cloud_run_v2_service" "runtime" {
     }
     containers {
       image = each.value.image
+      dynamic "env" {
+        for_each = each.key == "web" && var.enable_resend_secrets && var.resend_webhook_secret_version != "" ? [1] : []
+        content {
+          name = "NUXT_RESEND_WEBHOOK_SECRET"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.resend["webhook-secret"].secret_id
+              version = var.resend_webhook_secret_version
+            }
+          }
+        }
+      }
     }
   }
+  lifecycle {
+    precondition {
+      condition     = var.resend_webhook_secret_version == "" || var.enable_resend_secrets
+      error_message = "Enable the Resend secrets before selecting a webhook secret version."
+    }
+  }
+  depends_on = [google_secret_manager_secret_iam_member.resend]
 }
 
 resource "google_storage_bucket" "media" {
@@ -44,6 +63,15 @@ resource "google_storage_bucket" "media" {
   public_access_prevention    = "enforced"
   force_destroy               = false
   versioning { enabled = true }
+  dynamic "cors" {
+    for_each = each.key == "uploads" && length(var.upload_allowed_origins) > 0 ? [1] : []
+    content {
+      origin          = var.upload_allowed_origins
+      method          = ["POST", "PUT"]
+      response_header = ["Content-Type", "x-goog-content-length-range", "x-goog-if-generation-match"]
+      max_age_seconds = 300
+    }
+  }
   lifecycle { prevent_destroy = true }
 }
 

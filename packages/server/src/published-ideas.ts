@@ -1,18 +1,10 @@
-import pg from 'pg'
+import { runtimeDatabasePool } from './runtime-database.js'
 
 export interface PublicIdea { readonly title: string; readonly description: string }
-const pools = new Map<string, pg.Pool>()
 
 /** Read only the approved public projection. No contact or owner columns are selected. */
 export async function readPublishedIdea(databaseUrl: string, id: string): Promise<PublicIdea | null> {
-  let pool = pools.get(databaseUrl)
-  if (!pool) {
-    pool = new pg.Pool({ connectionString: databaseUrl, max: 2, connectionTimeoutMillis: 5000, idleTimeoutMillis: 10000 })
-    pool.on('error', (error) => {
-      console.error('Unexpected error on idle PostgreSQL client', error)
-    })
-    pools.set(databaseUrl, pool)
-  }
+  const pool = runtimeDatabasePool(databaseUrl)
   const result = await pool.query<{ title: string | null; description: string | null }>(`
     SELECT revision.content->>'title' AS title, revision.content->>'description' AS description
     FROM ideas AS idea

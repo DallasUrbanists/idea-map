@@ -28,6 +28,12 @@ idea and its revision are approved. The server must exclude private emails,
 ownership evidence, pending media, unapproved content, and moderator-only
 information from public API, server-rendered, and cached responses.
 
+The public preview endpoint serves only a published preview attached to the
+currently approved revision of an approved idea. It rechecks approval after
+loading the versioned object and does not expose pending object names or storage
+credentials. Preview responses use `private, no-store` so a shared cache cannot
+continue serving them after withdrawal.
+
 Private owner and moderator views must have separate definitions and require
 server-side authorization before projection. Before adding public fields, you
 should review their privacy implications and test with synthetic private values
@@ -47,7 +53,8 @@ capabilities and abuse controls rather than a missing-user bypass.
 
 The middleware denies unsupported mutations with `403` and
 `Cache-Control: private, no-store`. The session `POST` is explicitly handled by
-its own origin and request checks. Other authorized operations must enforce
+its own origin and request checks; the Resend webhook `POST` verifies its signed
+body before storing events. Other authorized operations must enforce
 their exact policy at the server boundary, independently of user interface or
 hosting controls.
 

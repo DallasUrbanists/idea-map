@@ -73,6 +73,7 @@ and how maintainers operate services and release changes:
 | [Terms of Use](policies/terms-of-use-policy.md) | Submission rights, service license, consent, acceptable use, and reuse restrictions |
 | [Release procedure](policies/release-procedure.md) | Changesets, validation, versioning, release authorization, and recovery |
 | [Neon Cloud Run test procedure](policies/neon-cloud-run-test-procedure.md) | Verify hosted Neon connectivity and scaling with a synthetic test service |
+| [Staging media procedure](policies/media-staging-procedure.md) | Review isolated staging media resources, CORS, secrets, and cleanup |
 
 ## Migration history
 

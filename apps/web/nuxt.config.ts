@@ -9,6 +9,11 @@ export default defineNuxtConfig({
     apiSecret: '',
     // NUXT_DATABASE_URL remains server-only and is never serialized.
     databaseUrl: '',
+    // NUXT_RESEND_WEBHOOK_SECRET remains private to the server.
+    resendWebhookSecret: '',
+    approvedMediaBucket: '',
+    pendingMediaBucket: '',
+    mediaPreviewMaxBytes: 0,
     // Canonical browser origin; never infer this from request headers.
     sessionOrigin: '',
     firebaseProjectId: '',

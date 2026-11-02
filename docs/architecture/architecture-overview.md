@@ -64,6 +64,7 @@ development tools:
 | `packages/street-renderer` | Independent street-diagram core with explicit inputs and provenance |
 | `packages/streetmix` | Independent generation contracts and injected provider adapters |
 | `infra/terraform` | Foundation infrastructure definitions and validation |
+| `infra/media-staging` | Existing isolated staging media buckets and Resend secret containers |
 | `infra/ssr-staging`, `infra/ssr-staging-db` | Isolated synthetic staging web service and database |
 | `dev` and `scripts` | Local services, development helpers, and test harnesses |
 

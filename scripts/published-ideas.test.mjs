@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import test from 'node:test'
-import { readPublishedIdea } from '../packages/server/src/published-ideas.ts'
+import { readPublishedIdea } from '../packages/server/dist/published-ideas.js'
 
 const require = createRequire(new URL('../packages/server/package.json', import.meta.url))
 const { Pool } = require('pg')
@@ -21,7 +21,7 @@ test('published reads reuse a bounded pool after an idle client error', async (t
   const error = new Error('idle connection lost')
   pool.emit('error', error)
   assert.equal(log.mock.callCount(), 1)
-  assert.equal(log.mock.calls[0].arguments[1], error)
+  assert.deepEqual(log.mock.calls[0].arguments, ['Unexpected error on idle PostgreSQL client'])
   assert.deepEqual(await readPublishedIdea('postgres://example.invalid/test', 'idea'), expected)
   assert.equal(pool, originalPool)
 })
