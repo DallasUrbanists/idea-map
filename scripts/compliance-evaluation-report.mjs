@@ -1,4 +1,4 @@
-// Offline reporting only. This does not define an accepted scoring method or gate.
+// Offline reporting only. A measured minimum is not method or rollout approval.
 import { shortcutEligible } from './compliance-candidate.mjs'
 
 export function summarizeEvaluation(rows) {
@@ -14,6 +14,8 @@ export function summarizeEvaluation(rows) {
   }
   const scored = rows.filter(row => row.state === 'scored')
   const violations = scored.filter(row => row.reference === 0)
+  const labelledViolations = rows.filter(row => row.reference === 0).length
+  const knownMisses = violations.filter(row => row.score >= 60).length
   const compliant = rows.filter(row => row.reference === 1)
   const shortcutViolations = Array.from({ length: 11 }, (_, priorApprovals) => ({
     priorApprovals,
@@ -32,10 +34,12 @@ export function summarizeEvaluation(rows) {
     cases: rows.length,
     scored: scored.length,
     unavailable: rows.length - scored.length,
+    labelledViolations,
+    zeroKnownMisses: labelledViolations === 0 ? null : knownMisses === 0,
     incompleteScored: scored.filter(row => row.reference === null).length,
     eligibleForAutomaticApproval: scored.filter(row => row.score >= 60).length,
     requiringHumanReviewOrUnavailable: rows.filter(row => row.state === 'unavailable' || row.score < 60).length,
-    violatingEligibleForAutomaticApproval: violations.filter(row => row.score >= 60).length,
+    violatingEligibleForAutomaticApproval: knownMisses,
     violatingEligibleForInstantApproval: violations.filter(row => row.score >= 95).length,
     compliantSentToHumanReview: compliant.filter(row => row.state === 'unavailable' || row.score < 60).length,
     shortcutViolations,

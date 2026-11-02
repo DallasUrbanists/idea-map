@@ -127,9 +127,17 @@ content; this offline experiment does not authorize provider use.
 Before proposing a production method, reviewers need independently labelled,
 representative and consented or synthetic examples with documented provenance,
 separate development and evaluation sets, and explicit checks for each policy
-rule and required medium. They should establish and approve measurable limits
-for missed violations, false flags, calibration, subgroup performance, moderator
-capacity, and provider failures before evaluating a candidate against them.
+rule and required medium. The maintainer selected zero labelled violations
+reaching any automatic-approval range as a minimum requirement for the agreed
+evaluation set. A set without labelled violations cannot demonstrate this
+minimum. The report shows this observation without deciding whether the set is
+agreed, representative, or sufficient. The current experiment has a known miss
+and fails the minimum.
+
+Reviewers must also establish and approve measurable limits for false flags,
+calibration, subgroup performance, moderator capacity, and provider failures.
+They must review provider handling and uncertainty before accepting a method.
+Zero known misses alone is not proof of safety or permission to publish.
 
 The scoring contract and method require a recorded acceptance decision. Until
 that decision and the other moderation rollout gates are satisfied, the worker

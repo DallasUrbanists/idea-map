@@ -12,6 +12,8 @@ test('report exposes unsafe scores, unavailable examples, and every shortcut thr
     row('incomplete-unavailable', null, null, 'incomplete'),
   ])
   assert.equal(report.violatingEligibleForAutomaticApproval, 4)
+  assert.equal(report.labelledViolations, 5)
+  assert.equal(report.zeroKnownMisses, false)
   assert.equal(report.violatingEligibleForInstantApproval, 1)
   assert.equal(report.shortcutViolations[0].eligible, 0)
   assert.equal(report.shortcutViolations[9].eligible, 1)
@@ -20,6 +22,11 @@ test('report exposes unsafe scores, unavailable examples, and every shortcut thr
   assert.equal(report.compliantSentToHumanReview, 2)
   assert.deepEqual(report.groups.incomplete, { cases: 2, unavailable: 1, labelledViolations: 0, labelledCompliant: 0,
     incompleteScored: 1, violatingEligibleForAutomaticApproval: 0, compliantSentToHumanReview: 0 })
+})
+
+test('a set with no labelled violations cannot demonstrate zero known misses', () => {
+  assert.equal(summarizeEvaluation([row('compliant', 1, 80)]).zeroKnownMisses, null)
+  assert.equal(summarizeEvaluation([row('manual', 0, null)]).zeroKnownMisses, true)
 })
 
 test('invalid, duplicate, or internally inconsistent evidence cannot produce a report', () => {
