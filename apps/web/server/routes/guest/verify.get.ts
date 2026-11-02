@@ -4,26 +4,53 @@ import { setResponseHeader } from 'h3'
 // This response deliberately has no application plugins or third-party scripts.
 // The script runs in the head and removes the fragment before the user acts.
 const script = `(() => {
-  let proof = window.location.hash.slice(1)
-  window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search)
-  document.addEventListener('DOMContentLoaded', () => {
-    const status = document.getElementById('status')
-    const button = document.getElementById('verify')
+  let proof = ''
+  let busy = false
+  let ready = false
+  let generation = 0
+  let status
+  let button
+  const capture = () => {
+    const fragment = window.location.hash.slice(1)
+    window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search)
+    generation += 1
+    if (busy) {
+      proof = ''
+      if (ready) status.textContent = 'Wait for the current request to finish, then reopen the link.'
+      return
+    }
+    proof = fragment
+    if (!ready) return
+    button.hidden = true
+    button.disabled = false
     if (!proof || proof.length > 160) { proof = ''; status.textContent = 'This link is not valid. Request another verification link.'; return }
+    status.textContent = ''
     button.hidden = false
+  }
+  window.addEventListener('hashchange', capture)
+  capture()
+  document.addEventListener('DOMContentLoaded', () => {
+    status = document.getElementById('status')
+    button = document.getElementById('verify')
+    ready = true
+    if (!proof || proof.length > 160) { proof = ''; status.textContent = 'This link is not valid. Request another verification link.' }
+    else button.hidden = false
     button.addEventListener('click', async () => {
-      if (!proof || button.disabled) return
+      if (!proof || busy) return
       const token = proof
       proof = ''
+      const requestGeneration = generation
+      busy = true
       button.disabled = true
       status.textContent = ''
       try {
         const response = await fetch('/api/guest/verify', { method: 'POST', cache: 'no-store', headers: { 'content-type': 'application/json', 'x-idea-map-session': 'IdeaMapSession' }, body: JSON.stringify({ token }) })
+        if (requestGeneration !== generation) return
         if (!response.ok) { status.textContent = 'Verification could not be completed. Request another link.'; return }
         const result = await response.json()
-        status.textContent = result.verified === true ? 'Your email has been verified.' : 'This link is invalid, expired, or already used. Request another link.'
-      } catch { status.textContent = 'Verification could not be confirmed. Request another link.' }
-      finally { button.hidden = true }
+        if (requestGeneration === generation) status.textContent = result.verified === true ? 'Your email has been verified.' : 'This link is invalid, expired, or already used. Request another link.'
+      } catch { if (requestGeneration === generation) status.textContent = 'Verification could not be confirmed. Request another link.' }
+      finally { busy = false; button.hidden = true }
     })
   })
 })()`
