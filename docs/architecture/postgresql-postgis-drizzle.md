@@ -389,9 +389,12 @@ safe handoffs. More than 100 active holds fail closed pending a bounded review
 procedure rather than silently hiding blocks.
 The database function and endpoint do not grant live access. Content larger than
 256 KiB is unavailable through this endpoint until a bounded review process is
-implemented. It does not expose private media, review controls, a queue, or
-notifications. Complete those paths, privacy and access controls, and rollout
-review before enabling it. Responses and errors use `private, no-store`.
+implemented. A separate private queue lists at most 50 current pending revision
+identifiers per page in creation order, without content or contact data; it does
+not yet prioritize risk flags. Queue results are snapshots and the revision
+read and actions recheck current state. Private media, a reviewer interface,
+notifications, load limits, privacy controls, and rollout review remain open.
+Responses and errors use `private, no-store`.
 
 The separately default-disabled action endpoint accepts manual approval,
 rejection, request-changes, resolve-changes, hold, hold-release, escalation, and
