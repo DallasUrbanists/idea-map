@@ -430,11 +430,10 @@ the nullable assessment identity with a revision-bound foreign key and protects
 that evidence from later changes, including reassessment and hold release. A new
 escalation without an assessment records null. The escalation remains a hold
 across later edits and when the owner's assignment is revoked; it must be
-explicitly released. It does not clear or replace an ordinary hold. The current record exposes the owner's internal user ID for a
+explicitly released. It does not clear or replace an ordinary hold. The record retains the initial owner's internal user ID for a
 future authorized interface; it does not prove the owner can still sign in.
-Notifications, a usable interface, and an atomic owner-transfer process remain
-open. Do not enable live escalations until those processes and privacy controls
-are reviewed.
+Notifications and a usable interface remain open. Do not enable live
+escalations until those processes and privacy controls are reviewed.
 
 The migration preserves existing holds as ordinary holds and replaces their
 partial uniqueness index. Older code that expects the prior index cannot place
@@ -473,3 +472,20 @@ primitive for live removal until those delivery, privacy, audit, and recovery
 paths are complete and reviewed. A separate, unscheduled retention primitive
 removes removal metadata only after 90 days and only when no legal hold applies.
 The functions grant no live permissions and expose no moderator interface.
+
+### Escalation owner transfers
+
+An authorized moderator can transfer an active escalation to another user with
+an active database moderator assignment. The transaction locks the idea and
+hold, checks the current revision and assessment, and appends the previous and
+new owner, actor, time, reason, and a monotonically increasing sequence. The
+original hold remains active throughout. A caller must supply the sequence it
+reviewed; a stale retry cannot reverse a newer transfer. The original hold's
+owner is the initial owner; the highest transfer sequence identifies the
+current owner. An assignment alone does not prove the owner can still sign in.
+
+Released holds and their transfer records can be pruned together only after
+90 days and only when no legal hold applies. The transfer function is not
+exposed as a route or granted to a live role. An authorized interface,
+notifications, privacy-safe deletion, and operational access review remain
+necessary before use.

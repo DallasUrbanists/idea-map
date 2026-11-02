@@ -237,6 +237,11 @@ database and run `pnpm --filter @idea-map/server test:moderation-integrated`.
 It uses injected identity, dispatcher, and policy fakes; it does not validate an
 accepted scoring method, the disabled production worker, or hosted permissions.
 
+For escalation-owner transfer and stale-retry races, set `TEST_DATABASE_URL`
+to a fresh disposable PostGIS database and run
+`pnpm --filter @idea-map/server test:escalation-transfers`. This uses synthetic
+identities and does not grant live permissions or test a user interface.
+
 For owned escalation holds, upgrades, and legal-retention races, set
 `TEST_DATABASE_URL` to a fresh disposable PostGIS database and run
 `pnpm --filter @idea-map/server test:moderator-escalations`. The test uses
