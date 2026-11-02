@@ -70,8 +70,13 @@ those gates and the separate deployment review are complete.
 
 Each Cloud Tasks name contains the database job ID and delivery generation. An
 already-existing task name is accepted only after a full provider lookup confirms
-the intended target, identity, body, and schedule. A missing or uninspectable
-task is an uncertain result, not proof of successful dispatch. The runtime needs
+the intended target, identity, body, and exact durable schedule. A missing,
+uninspectable, or differently scheduled task is an uncertain result, not proof
+of successful dispatch. A provider may change a task's reported schedule while
+retrying or normalize a past schedule; this conservative check can therefore
+require investigation even for a legitimate task. Validate actual provider
+behavior in separately authorized isolated staging before enabling delivery.
+The runtime needs
 queue-scoped create and full-view access; that access can expose task payloads,
 so payloads contain only the job ID and must remain private. Task creation uses
 short-lived application-default credentials and an explicit invoker identity.
