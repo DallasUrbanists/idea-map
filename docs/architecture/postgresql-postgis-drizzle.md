@@ -133,6 +133,10 @@ requested, a separate immediate job leaves the standard deadline job intact.
 Only the future authorized assessment integration may provide accepted evidence
 and policy timing; it must provide a globally unique assessment ID and a digest
 of its validated evidence. This storage API does not evaluate a compliance score.
+`recordAndDispatchAssessment` reports thrown dispatch failures separately from
+unconfirmed attempts. An unconfirmed attempt may be leased by another worker or
+already delivered; callers should inspect durable state and provider evidence
+before replay rather than treating it as a confirmed failure or success.
 
 `executeJob` locks the job, checks its deadline, and runs a database-only handler
 in the same transaction as the final job state. A handler must lock the relevant
