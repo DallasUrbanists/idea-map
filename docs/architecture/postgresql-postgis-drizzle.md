@@ -315,6 +315,9 @@ is separate from other review blocks, so releasing it cannot resolve a rejection
 or request for changes. Opening a review does not create a hold.
 Assessment, review, and job transactions explicitly use PostgreSQL READ
 COMMITTED isolation so a recheck sees changes committed while waiting for locks.
+The moderator's current identity is rechecked before commit while the database
+assignment remains locked. The external provider and database do not share a
+transaction, so this limits but cannot eliminate identity changes at commit.
 
 This primitive does not expose moderator controls or grant database permissions.
 Do not enable it for live data until review access, reason handling, privacy,

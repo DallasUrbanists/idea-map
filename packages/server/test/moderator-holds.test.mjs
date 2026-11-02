@@ -31,6 +31,26 @@ test('authorized holds serialize with publication and do not release unrelated b
     }
     const held = await create('hold-first')
     assert.deepEqual(await placeModeratorHold(url, 'demo-idea-map', 'synthetic-cookie', unprivileged, held.request), { state: 'forbidden' })
+    let lookups = 0
+    const disabledBeforeCommit = { ...verify, async getUser() {
+      return { uid: session.uid, email: session.email, emailVerified: true, disabled: ++lookups > 1 }
+    } }
+    assert.deepEqual(await placeModeratorHold(url, 'demo-idea-map', 'synthetic-cookie', disabledBeforeCommit, held.request), { state: 'unauthenticated' })
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM moderator_holds WHERE revision_id=$1', [held.revision])).rows[0].n, 0)
+    lookups = 0
+    const providerFailureBeforeCommit = { ...verify, async getUser() {
+      if (++lookups > 1) throw new Error('synthetic provider failure')
+      return { uid: session.uid, email: session.email, emailVerified: true, disabled: false }
+    } }
+    await assert.rejects(placeModeratorHold(url, 'demo-idea-map', 'synthetic-cookie', providerFailureBeforeCommit, held.request), /Identity verification unavailable/)
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM moderator_holds WHERE revision_id=$1', [held.revision])).rows[0].n, 0)
+    lookups = 0
+    const providerTimeoutBeforeCommit = { ...verify, async getUser() {
+      if (++lookups > 1) return new Promise(() => {})
+      return { uid: session.uid, email: session.email, emailVerified: true, disabled: false }
+    } }
+    await assert.rejects(placeModeratorHold(url, 'demo-idea-map', 'synthetic-cookie', providerTimeoutBeforeCommit, held.request), /Identity recheck timed out/)
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM moderator_holds WHERE revision_id=$1', [held.revision])).rows[0].n, 0)
     assert.deepEqual(await placeModeratorHold(...args, { ...held.request, assessmentId: 'stale' }), { state: 'authorized', value: 'stale' })
     assert.deepEqual(await placeModeratorHold(...args, held.request), { state: 'authorized', value: 'placed' })
     assert.deepEqual(await placeModeratorHold(...args, held.request), { state: 'authorized', value: 'already-held' })
