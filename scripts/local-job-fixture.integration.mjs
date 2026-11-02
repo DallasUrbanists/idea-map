@@ -8,6 +8,7 @@ const { Client } = require('pg')
 const url = validateFixtureUrl(process.env.TEST_DATABASE_URL)
 if (!new URL(url).pathname.startsWith('/idea_map_test_')) throw new Error('A disposable test database is required')
 const fixtureContact = 'a16b6e1b-95d5-42bd-b970-f6626538e001'
+const fixtureJob = 'a16b6e1b-95d5-42bd-b970-f6626538e004'
 
 test('fixture is deterministic and cleanup preserves unrelated or conflicting records', async () => {
   const client = new Client({ connectionString: url })
@@ -40,6 +41,11 @@ test('fixture is deterministic and cleanup preserves unrelated or conflicting re
     assert.equal(await seedLocalJobFixture(client), 'seeded')
     assert.deepEqual((await snapshot()).rows, before)
     assert.equal(await cleanLocalJobFixture(client), 'cleaned')
+    await client.query("INSERT INTO jobs(id,kind,idempotency_key) VALUES ($1,'unrelated','unrelated')", [fixtureJob])
+    await assert.rejects(seedLocalJobFixture(client), /marker conflicts/)
+    await assert.rejects(cleanLocalJobFixture(client), /marker conflicts/)
+    assert.equal((await client.query('SELECT kind FROM jobs WHERE id=$1', [fixtureJob])).rows[0].kind, 'unrelated')
+    await client.query('DELETE FROM jobs WHERE id=$1', [fixtureJob])
     await client.query("INSERT INTO contacts(id,normalized_email) VALUES ($1,'collision@example.invalid')", [fixtureContact])
     await assert.rejects(seedLocalJobFixture(client), { code: '23505' })
     assert.equal(await cleanLocalJobFixture(client), 'absent')
