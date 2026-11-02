@@ -36,3 +36,24 @@ const server = createServer(createWorkerHandler({ origin, taskInvoker, repairInv
 const port = Number(process.env.PORT ?? '8080')
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid PORT')
 server.listen(port, '0.0.0.0')
+
+// Cloud Run and Docker send SIGTERM to stop accepting work before termination.
+// Bound the drain so stalled requests cannot keep the instance alive forever.
+let stopping = false
+function shutdown() {
+  if (stopping) return
+  stopping = true
+  const deadline = setTimeout(() => process.exit(1), 8_000)
+  server.close(async error => {
+    try {
+      if (error) throw error
+      await pool.end()
+      clearTimeout(deadline)
+    } catch {
+      clearTimeout(deadline)
+      process.exitCode = 1
+    }
+  })
+}
+process.on('SIGTERM', shutdown)
+process.on('SIGINT', shutdown)
