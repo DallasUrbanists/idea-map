@@ -120,6 +120,20 @@
       "when": 1793655250147,
       "tag": "0016_legal_hold_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793655612601,
+      "tag": "0017_moderation_assessment_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793655623317,
+      "tag": "0018_moderator_rejection",
+      "breakpoints": true
     }
   ]
 }

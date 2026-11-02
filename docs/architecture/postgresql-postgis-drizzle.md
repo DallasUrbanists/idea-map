@@ -366,3 +366,22 @@ The current append-only hold and authority records also prevent deletion of
 referenced ideas and users. Their retention and privacy-safe deletion lifecycle
 must be decided and implemented before live use. Do not grant live access or
 schedule retention based on these tests alone.
+
+### Moderator rejection
+
+A server-verified moderator can reject the current pending revision against the
+assessment visible at review time, or against the absence of an assessment.
+The decision transaction locks and rechecks the idea, revision, assessment, and
+active database assignment. It records the actor, time, reason, revision, and
+assessment identity atomically with the rejection. A duplicate or stale action
+does not create another event. If an edit is rejected, the prior approved
+revision remains public; a rejection committed first makes a timed job stale.
+This primitive does not grant permissions, expose controls, or enable automated
+publication.
+
+The additive migration leaves older decision events without assessment evidence
+and creates a non-concurrent composite index before its foreign key. Review its
+write-locking and rollback before applying it to a live database. Decision
+metadata and assessment records need a privacy-safe deletion and legal-hold
+lifecycle before live use; the new foreign key preserves that dependency rather
+than silently deleting the evidence.

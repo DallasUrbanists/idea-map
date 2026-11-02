@@ -145,11 +145,14 @@ export const auditEvents = pgTable('audit_events', {
 export const moderationEvents = pgTable('moderation_events', {
   id: uuid('id').primaryKey().defaultRandom(),
   revisionId: uuid('revision_id').notNull().references(() => ideaRevisions.id),
+  assessmentId: text('assessment_id'),
   actorId: uuid('actor_id').references(() => users.id),
   state: reviewState('state').notNull(),
   reason: text('reason'),
   createdAt: createdAt(),
-}, table => [index('moderation_events_revision_idx').on(table.revisionId)])
+}, table => [index('moderation_events_revision_idx').on(table.revisionId),
+  foreignKey({ columns: [table.assessmentId, table.revisionId], foreignColumns: [revisionAssessments.id, revisionAssessments.revisionId] }),
+])
 // Assessment evidence and review holds are private server-side state.
 export const reviewGates = pgTable('review_gates', {
   revisionId: uuid('revision_id').primaryKey().references(() => ideaRevisions.id),
@@ -180,6 +183,7 @@ export const revisionAssessments = pgTable('revision_assessments', {
   shortcutRequested: boolean('shortcut_requested').notNull().default(false),
   current: boolean('current').notNull().default(true),
 }, table => [uniqueIndex('revision_assessments_current_key').on(table.revisionId).where(sql`${table.current}`),
+  uniqueIndex('revision_assessments_id_revision_key').on(table.id, table.revisionId),
   check('revision_assessments_deadline', sql`(${table.deadline} IS NULL AND ${table.waitMilliseconds} IS NULL AND NOT ${table.shortcutRequested}) OR (${table.deadline} IS NOT NULL AND ${table.waitMilliseconds} IS NOT NULL AND ${table.waitMilliseconds} BETWEEN 0 AND 86400000 AND ${table.deadline} >= ${table.receivedAt})`),
 ])
 export const jobs = pgTable('jobs', {
