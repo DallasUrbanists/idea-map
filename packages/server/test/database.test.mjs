@@ -34,9 +34,13 @@ test('bootstrap, forward migrations, ownership constraints and PostGIS', async (
     const other = (await client.query("INSERT INTO contacts(normalized_email) VALUES ('other@example.invalid') RETURNING id")).rows[0].id
     const user = (await client.query('INSERT INTO users DEFAULT VALUES RETURNING id')).rows[0].id
     const idea = (await client.query("INSERT INTO ideas(author_contact_id, location) VALUES ($1, ST_SetSRID(ST_MakePoint(-96.8,32.8),4326)::geography) RETURNING id", [contact])).rows[0].id
+    const legacyIdea = (await client.query("INSERT INTO ideas(author_contact_id,owner_id,publication_state) VALUES ($1,$2,'approved') RETURNING id", [contact, user])).rows[0].id
+    const legacyRevision = (await client.query("INSERT INTO idea_revisions(idea_id,version,content,review_state) VALUES ($1,1,'{}','approved') RETURNING id", [legacyIdea])).rows[0].id
+    await client.query('INSERT INTO approved_revisions(idea_id,revision_id) VALUES ($1,$2)', [legacyIdea, legacyRevision])
     await migrate(db, { migrationsFolder: migrations })
     await migrate(db, { migrationsFolder: migrations })
-    assert.equal((await client.query('SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations')).rows[0].count, 7)
+    assert.equal((await client.query('SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations')).rows[0].count, 8)
+    assert.deepEqual((await client.query('SELECT revision_id, verified_for_trust FROM approval_records WHERE idea_id = $1', [legacyIdea])).rows[0], { revision_id: legacyRevision, verified_for_trust: false })
     const deliveryPool = new pg.Pool({ connectionString: url, max: 2 })
     try {
       const store = createDeliveryEventStore(deliveryPool)

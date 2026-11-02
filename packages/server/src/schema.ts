@@ -54,6 +54,21 @@ export const approvedRevisions = pgTable('approved_revisions', {
   ideaId: uuid('idea_id').primaryKey().references(() => ideas.id),
   revisionId: uuid('revision_id').notNull(),
 }, table => [foreignKey({ columns: [table.ideaId, table.revisionId], foreignColumns: [ideaRevisions.ideaId, ideaRevisions.id] })])
+// Durable per-submission approval evidence is separate from expiring audit events.
+export const approvalRecords = pgTable('approval_records', {
+  ideaId: uuid('idea_id').primaryKey().references(() => ideas.id),
+  revisionId: uuid('revision_id').notNull(),
+  verifiedForTrust: boolean('verified_for_trust').notNull().default(false),
+  excludedForViolation: boolean('excluded_for_violation').notNull().default(false),
+}, table => [foreignKey({ columns: [table.ideaId, table.revisionId], foreignColumns: [ideaRevisions.ideaId, ideaRevisions.id] })])
+export const approvalCorrections = pgTable('approval_corrections', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ideaId: uuid('idea_id').notNull().references(() => ideas.id),
+  actorId: uuid('actor_id').notNull().references(() => users.id),
+  excluded: boolean('excluded').notNull(),
+  reason: text('reason').notNull(),
+  createdAt: createdAt(),
+}, table => [index('approval_corrections_idea_idx').on(table.ideaId)])
 // Update this counter atomically with acceptance of a guest submission.
 export const guestSubmissionCounters = pgTable('guest_submission_counters', {
   browserId: text('browser_id').primaryKey(),
