@@ -21,6 +21,7 @@ jobs:
           POSTGRES_DB: idea_map_ci
         ports:
           - 5432:5432
+          - 54329:5432
         options: >-
           --health-cmd "pg_isready -U idea_map -d idea_map_ci"
           --health-interval 5s --health-timeout 5s --health-retries 20
@@ -49,12 +50,21 @@ jobs:
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_outbox
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderation
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_clock
+          docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_local_fixture
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_history
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_worker
       - name: Outbox transactions
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_outbox
         run: pnpm --filter @idea-map/server test:outbox
+      - name: Migrate local fixture test database
+        env:
+          DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:54329/idea_map_test_local_fixture
+        run: pnpm --filter @idea-map/server db:migrate
+      - name: Local fixture cleanup
+        env:
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:54329/idea_map_test_local_fixture
+        run: pnpm test:job-fixture
       - name: Moderation transactions
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_moderation

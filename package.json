@@ -29,7 +29,9 @@
     "dev:db:migrate:container": "node scripts/dev-services.mjs migrate",
     "dev:stop": "node scripts/dev-services.mjs stop",
     "changeset": "changeset",
-    "release:status": "changeset status"
+    "release:status": "changeset status",
+    "fixture:jobs": "node scripts/local-job-fixture.mjs",
+    "test:job-fixture": "node --test scripts/local-job-fixture.integration.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "3.0.3",
