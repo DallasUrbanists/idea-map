@@ -137,6 +137,7 @@ You should give each directory the following responsibility:
 | Directory | Audience and contents |
 | --- | --- |
 | `contributor-guides/` | Contributors developing, testing, documenting, or using AI tools |
+| `test-procedures/` | Contributors and reviewers reproducing focused evaluations and assessing their evidence |
 | `user-guides/` | Nontechnical users completing actions through the application |
 | `architecture/` | Contributors understanding platforms, integrations, configuration, and boundaries |
 | `design/` | Contributors maintaining visual language, component contracts, and accessibility |

@@ -9,11 +9,20 @@ defines the actual requirements.
 
 The following contents links navigate within this guide:
 
+- [When to use this guide](#when-to-use-this-guide)
 - [Candidate and inputs](#candidate-and-inputs)
 - [Run the synthetic evaluation](#run-the-synthetic-evaluation)
 - [Results and limits](#results-and-limits)
 - [Provider review](#provider-review)
 - [Acceptance evidence](#acceptance-evidence)
+
+## When to use this guide
+
+| When this happens... | Use this guide to... |
+| --- | --- |
+| You need to reproduce the scoring experiment. | Run the offline evaluation using invented signals and labels. |
+| You are reviewing the candidate's results. | Interpret its synthetic failures and the limits of the evidence. |
+| You are considering a scoring decision. | Identify the evaluation and provider evidence needed for acceptance. |
 
 ## Candidate and inputs
 
@@ -43,7 +52,7 @@ receipt time; no client-provided score or coverage claim may grant approval.
 
 ## Run the synthetic evaluation
 
-Use the [development setup](development-guide.md#one-time-setup-for-each-checkout)
+Use the [development setup](../contributor-guides/development-guide.md#one-time-setup-for-each-checkout)
 and run these commands from the repository root:
 
 ```sh
