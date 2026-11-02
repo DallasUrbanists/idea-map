@@ -1,0 +1,42 @@
+name: Local job fixture
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgis/postgis:17-3.6
+        env:
+          POSTGRES_USER: idea_map
+          POSTGRES_PASSWORD: local-only
+          POSTGRES_DB: idea_map_test_local_fixture
+        ports:
+          - 54329:5432
+        options: >-
+          --health-cmd "pg_isready -U idea_map -d idea_map_test_local_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Migrate fixture test database
+        env:
+          DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:54329/idea_map_test_local_fixture
+        run: pnpm --filter @idea-map/server db:migrate
+      - name: Verify scoped fixture cleanup
+        env:
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:54329/idea_map_test_local_fixture
+        run: pnpm test:job-fixture
