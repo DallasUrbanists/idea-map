@@ -46,6 +46,11 @@ resource "google_cloud_run_v2_service" "webhook" {
   invoker_iam_disabled = true
   deletion_protection  = true
 
+  scaling {
+    manual_instance_count = 0
+    min_instance_count    = 0
+  }
+
   template {
     service_account                  = google_service_account.webhook.email
     max_instance_request_concurrency = 20
