@@ -6,7 +6,7 @@ import { readPublishedIdea } from '../packages/server/src/published-ideas.ts'
 const require = createRequire(new URL('../packages/server/package.json', import.meta.url))
 const { Pool } = require('pg')
 
-test('an idle database client error is handled and the pool remains usable', async (t) => {
+test('published reads reuse a bounded pool after an idle client error', async (t) => {
   let pool
   t.mock.method(Pool.prototype, 'query', function () {
     pool = this
@@ -15,11 +15,14 @@ test('an idle database client error is handled and the pool remains usable', asy
   const log = t.mock.method(console, 'error', () => {})
   const expected = { title: 'Title', description: 'Description' }
   assert.deepEqual(await readPublishedIdea('postgres://example.invalid/test', 'idea'), expected)
+  assert.equal(pool.options.max, 2)
+  const originalPool = pool
 
   const error = new Error('idle connection lost')
   pool.emit('error', error)
   assert.equal(log.mock.callCount(), 1)
   assert.equal(log.mock.calls[0].arguments[1], error)
   assert.deepEqual(await readPublishedIdea('postgres://example.invalid/test', 'idea'), expected)
+  assert.equal(pool, originalPool)
 })
 

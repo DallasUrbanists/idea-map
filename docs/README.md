@@ -62,8 +62,8 @@ the project stylesheet.
 
 ## Policies and procedures
 
-These policies explain how the app handles requests and content, and how
-maintainers release changes:
+These policies and procedures explain how the app handles requests and content,
+and how maintainers operate services and release changes:
 
 | Document | Purpose |
 | --- | --- |
@@ -72,6 +72,7 @@ maintainers release changes:
 | [Privacy Policy](policies/privacy-policy.md) | Personal-data handling, providers, retention, deletion, and requests |
 | [Terms of Use](policies/terms-of-use-policy.md) | Submission rights, service license, consent, acceptable use, and reuse restrictions |
 | [Release procedure](policies/release-procedure.md) | Changesets, validation, versioning, release authorization, and recovery |
+| [Neon Cloud Run test procedure](policies/neon-cloud-run-test-procedure.md) | Verify hosted Neon connectivity and scaling with a synthetic test service |
 
 ## Migration history
 

@@ -28,6 +28,7 @@ this table:
 | `google_cloud_run_v2_service.runtime` | Internal-only services, separate identities, immutable images, zero minimum; web max 2/concurrency 20, worker max 1/concurrency 1 | Verify image provenance, sizing, health, runtime secrets and reviewed ingress/invoker grants. Public web routing requires explicit reviewed ingress and invoker configuration |
 | `google_storage_bucket.media` | Separate uploads, approved-media and backup buckets; uniform access, public access prevention, versioning, no forced deletion and `prevent_destroy` | Confirm unique names, retention, backup access and recovery; approved-media access uses the reviewed delivery boundary |
 | `google_cloud_tasks_queue.jobs` | Per-environment queue with bounded dispatch and five attempts | Verify quotas, idempotent handlers, dead-letter/reconciliation behavior and authenticated target before use |
+| `infra/neon-cloud-run-test` | Separate authenticated Neon-backed development test service, runtime identity, scoped secret access and one invoker grant | Follow the [test procedure](../policies/neon-cloud-run-test-procedure.md) and confirm the disposable database, secret version, image, inherited access, state prefix and connection budget |
 
 The definitions in this table do not show which changes a live plan will report.
 An actual credentialed plan against the approved state and target shows the
