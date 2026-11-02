@@ -63,7 +63,8 @@ development tools:
 | `packages/server` | Server-only schema, database access, and integrations |
 | `packages/street-renderer` | Independent street-diagram core with explicit inputs and provenance |
 | `packages/streetmix` | Independent generation contracts and injected provider adapters |
-| `infra/terraform` | Infrastructure definitions and validation |
+| `infra/terraform` | Foundation infrastructure definitions and validation |
+| `infra/ssr-staging`, `infra/ssr-staging-db` | Isolated synthetic staging web service and database |
 | `dev` and `scripts` | Local services, development helpers, and test harnesses |
 
 Reusable package cores must not import applications, server integrations, or

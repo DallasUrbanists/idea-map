@@ -4,6 +4,12 @@ This guide explains the Firebase Hosting configuration and cache policy for
 contributors and operators reviewing the web app. The separate staging deployment
 and its limits are described in [the staging guide](../contributor-guides/ssr-staging.md).
 
+The following contents links navigate within this guide:
+
+- [Routing and prerequisites](#routing-and-prerequisites)
+- [Cache and withdrawal behavior](#cache-and-withdrawal-behavior)
+- [Validation](#validation)
+
 ## Routing and prerequisites
 
 `firebase.dev.json` and `firebase.prod.json` configure serving the Nuxt build's
@@ -25,23 +31,27 @@ See the [Terraform architecture guide](terraform.md) for resource and state mana
 
 ## Cache and withdrawal behavior
 
-The server defaults dynamic responses to `Cache-Control: private, no-store`,
-including session endpoints, errors, and routes added later. Only a successful
-`GET` or `HEAD` HTML render of the approved public idea projection without any
-`Cookie` or `Authorization` request header, and without a `Set-Cookie` response,
-is eligible for `public, max-age=0, s-maxage=60, must-revalidate`. The browser
-must revalidate; a shared cache can retain that response for up to 60 seconds.
-The response varies on `Cookie` and `Authorization`. API responses remain
-private and are not the shared HTML cache.
+The server uses `Cache-Control: private, no-store` for dynamic responses,
+including public idea pages, sessions, and errors. This default protects the
+[immediate removal requirement](../policies/privacy-policy.md#retention-and-deletion)
+and the [moderation policy](../policies/moderation-policy.md#revisions-and-publication).
+A cache that retains public content requires an effective invalidation mechanism
+before it can be used for real user content.
 
-The origin server reads the current published projection on each request. Editing
-or withdrawing an idea changes the next origin response, but an existing copy on
-the *content delivery network (CDN)* can remain visible until its 60-second
-lifetime ends. There is no immediate purge mechanism in this implementation.
-Publishers should treat that delay as a publication constraint and should not
-cache content requiring immediate withdrawal. Error responses explicitly use
-`no-store`, including `404 Not Found` responses, to avoid Firebase Hosting's
-default dynamic 404 caching.
+The isolated synthetic staging service can opt in to a 60-second shared cache.
+The runtime requires `NUXT_STAGING_HTML_CACHE=true`, the staging Firebase project,
+the staging session origin, and the staging Cloud Run service name. Only a
+successful `GET` or `HEAD` HTML render of an approved synthetic public idea
+without a `Cookie` or `Authorization` request header or a `Set-Cookie` response
+is eligible for `public, max-age=0, s-maxage=60, must-revalidate`. The response
+varies on `Cookie` and `Authorization`; APIs and all other responses remain
+private.
+
+The staging origin reads the current published projection on each request, but
+a cached copy can remain visible until its 60-second lifetime ends. Staging uses
+synthetic data only, and its cache has no immediate purge mechanism. Error
+responses explicitly use `no-store`, including `404 Not Found` responses, to
+avoid Firebase Hosting's default dynamic 404 caching.
 
 Firebase Hosting forwards the `__session` cookie to Cloud Run and includes cookie
 and authorization headers in its dynamic cache key. Other cookies are stripped
@@ -52,9 +62,9 @@ and [rewrite configuration](https://firebase.google.com/docs/hosting/full-config
 ## Validation
 
 Contributors can run the [published-page test](../contributor-guides/testing-guide.md#database-tests) with a
-disposable seeded database after building. It checks public HTML and crawler
-metadata, private and credential-bearing responses, and the origin response
-after withdrawing the synthetic idea. It restores that fixture and does not
+disposable seeded database after building. It checks the default and isolated
+staging cache policies, crawler metadata, private and credential-bearing
+responses, and the origin response after withdrawing the synthetic idea. It restores that fixture and does not
 simulate a CDN.
 
 An isolated staging check on November 1, 2026 verified the Hosting rewrite, static

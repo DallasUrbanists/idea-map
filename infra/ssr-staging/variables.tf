@@ -2,8 +2,8 @@ variable "project_id" {
   description = "Confirmed isolated v2 staging project ID."
   type        = string
   validation {
-    condition     = length(trimspace(var.project_id)) > 0
-    error_message = "Supply the isolated staging project ID."
+    condition     = var.project_id == "dallasurbanists-idea-map-dev"
+    error_message = "This root is restricted to the isolated staging project."
   }
 }
 
@@ -20,8 +20,8 @@ variable "session_origin" {
   description = "Exact HTTPS origin of the isolated Hosting site."
   type        = string
   validation {
-    condition     = can(regex("^https://[a-z0-9.-]+$", var.session_origin))
-    error_message = "Supply an HTTPS origin without a path or trailing slash."
+    condition     = var.session_origin == "https://staging.ideam.app"
+    error_message = "Supply the isolated staging origin https://staging.ideam.app."
   }
 }
 

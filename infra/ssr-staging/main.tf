@@ -67,6 +67,10 @@ resource "google_cloud_run_v2_service" "web" {
         mount_path = "/cloudsql"
       }
       env {
+        name  = "NUXT_STAGING_HTML_CACHE"
+        value = "true"
+      }
+      env {
         name  = "NUXT_SESSION_ORIGIN"
         value = var.session_origin
       }

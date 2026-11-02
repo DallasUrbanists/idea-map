@@ -12,6 +12,10 @@ terraform {
 variable "project_id" {
   description = "Confirmed isolated v2 staging project ID."
   type        = string
+  validation {
+    condition     = var.project_id == "dallasurbanists-idea-map-dev"
+    error_message = "This root is restricted to the isolated staging project."
+  }
 }
 
 provider "google" {

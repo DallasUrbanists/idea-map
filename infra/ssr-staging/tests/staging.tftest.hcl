@@ -1,9 +1,9 @@
 mock_provider "google" {}
 
 variables {
-  project_id              = "synthetic-idea-map-staging"
+  project_id              = "dallasurbanists-idea-map-dev"
   web_image               = "example.invalid/web@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-  session_origin          = "https://staging.example.invalid"
+  session_origin          = "https://staging.ideam.app"
   firebase_api_key        = "synthetic-public-key"
   firebase_auth_domain    = "synthetic.example.invalid"
   database_secret_id      = "synthetic-staging-database"
@@ -21,6 +21,10 @@ run "isolated_web_configuration" {
     error_message = "The staging service should have bounded scaling and deletion protection."
   }
   assert {
+    condition     = anytrue([for env in google_cloud_run_v2_service.web.template[0].containers[0].env : env.name == "NUXT_STAGING_HTML_CACHE" && env.value == "true"])
+    error_message = "Only the isolated staging service should enable the synthetic HTML cache."
+  }
+  assert {
     condition     = google_cloud_run_v2_service.web.invoker_iam_disabled
     error_message = "The staging web service must allow unauthenticated invocation."
   }
@@ -29,7 +33,7 @@ run "isolated_web_configuration" {
     error_message = "The runtime receives access only to the named test database secret."
   }
   assert {
-    condition     = google_project_iam_member.cloud_sql_client.role == "roles/cloudsql.client" && contains(google_cloud_run_v2_service.web.template[0].volumes[0].cloud_sql_instance[0].instances, "synthetic-idea-map-staging:us-central1:idea-map-ssr-staging")
+    condition     = google_project_iam_member.cloud_sql_client.role == "roles/cloudsql.client" && contains(google_cloud_run_v2_service.web.template[0].volumes[0].cloud_sql_instance[0].instances, "dallasurbanists-idea-map-dev:us-central1:idea-map-ssr-staging")
     error_message = "The runtime connects to the staging Cloud SQL instance through its mounted connector."
   }
   assert {
@@ -48,4 +52,16 @@ run "reject_unpinned_image" {
   command = plan
   variables { web_image = "example.invalid/web:latest" }
   expect_failures = [var.web_image]
+}
+
+run "reject_other_project" {
+  command = plan
+  variables { project_id = "unrelated-production-project" }
+  expect_failures = [var.project_id]
+}
+
+run "reject_other_origin" {
+  command = plan
+  variables { session_origin = "https://production.example.invalid" }
+  expect_failures = [var.session_origin]
 }

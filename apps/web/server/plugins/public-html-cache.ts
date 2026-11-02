@@ -10,7 +10,12 @@ export default defineNitroPlugin((nitro) => {
     const cacheKey = Object.keys(headers).find(key => key.toLowerCase() === 'cache-control') || 'cache-control'
     // Nuxt supplies its own cache header on rendered pages; override it by default.
     headers[cacheKey] = 'private, no-store'
-    if (event.context.publicIdeaHtml === true && status === 200 && !event.context.nitro?.errors?.length &&
+    const config = useRuntimeConfig(event)
+    const isolatedStaging = config.stagingHtmlCache === true &&
+      config.firebaseProjectId === 'dallasurbanists-idea-map-dev' &&
+      config.sessionOrigin === 'https://staging.ideam.app' &&
+      process.env.K_SERVICE === 'idea-map-ssr-staging'
+    if (isolatedStaging && event.context.publicIdeaHtml === true && status === 200 && !event.context.nitro?.errors?.length &&
         (event.method === 'GET' || event.method === 'HEAD') &&
         getHeader(event, 'cookie') === undefined && getHeader(event, 'authorization') === undefined &&
         !hasSetCookie && typeof contentType === 'string' && contentType.toLowerCase().includes('text/html')) {

@@ -1,6 +1,6 @@
 mock_provider "google" {}
 
-variables { project_id = "synthetic-idea-map-staging" }
+variables { project_id = "dallasurbanists-idea-map-dev" }
 
 run "isolated_disposable_database" {
   command = plan
@@ -16,4 +16,10 @@ run "isolated_disposable_database" {
     condition     = google_sql_database_instance.staging.deletion_protection && google_sql_database_instance.staging.settings[0].deletion_protection_enabled
     error_message = "Both Terraform and Cloud SQL deletion protection must be enabled."
   }
+}
+
+run "reject_other_project" {
+  command = plan
+  variables { project_id = "unrelated-production-project" }
+  expect_failures = [var.project_id]
 }

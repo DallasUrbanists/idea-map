@@ -5,6 +5,8 @@ This guide helps operators maintain and test the staging environment for
 [staging.ideam.app](https://staging.ideam.app/) in Firebase project
 `dallasurbanists-idea-map-dev` and Hosting site `dallasurbanists-idea-map-dev`.
 Operators should use this environment only for synthetic data and test accounts.
+The shared cache is restricted to this staging service; other environments use
+private, no-store responses until immediate invalidation is supported.
 
 The following sections cover the environment and its operation:
 
@@ -33,6 +35,9 @@ drive (SSD)* stores the database.
 | Cloud Storage `dallasurbanists-idea-map-dev-ssr-build` | Stores source archives, build logs, and extracted assets for the dedicated staging build identity. |
 | Cloud Storage `dallasurbanists-idea-map-dev_cloudbuild` | Was created by the first unsuccessful build attempt. Its source archive was removed; later builds use the dedicated staging build bucket. |
 
+The Terraform roots accept only the isolated staging project, and the web root
+sets `NUXT_STAGING_HTML_CACHE=true` for its synthetic cache checks.
+
 The Terraform roots do not create the Hosting release, Firebase Auth settings,
 secrets and their versions, build identity, buckets, artifact repository, or
 database roles and fixtures. Operators should manage and review those resources
@@ -52,7 +57,9 @@ The November 1, 2026 deployment used image digest
 `sha256:ed93775f9365e74f8ebba29388b3ffa8a4ebb99987fdd43f54b9876390e1e0ed`
 from Cloud Build `b54d170d-31fe-42fb-bcbf-add71c87e2e3`. The build included
 uncommitted changes on top of commit `35d09741eb229c6275c454af673149f131cc0e87`,
-so that commit alone cannot reproduce the deployed image. This first Hosting
+so that commit alone cannot reproduce the deployed image. That deployed image
+predates the staging-only cache guard in the current source; the guard takes
+effect after an authorized deployment of a new image. This first Hosting
 release had no earlier application release to restore.
 
 ## One-time setup for operators
@@ -93,7 +100,7 @@ should keep them out of Git, build uploads, logs, and review notes.
 ## Start a deployment
 
 From the repository root, an authorized operator should review the source,
-target project, cost, current image digest, matching asset archive, and rollback
+target project, current image digest, matching asset archive, and rollback
 destination before deploying. The root `.gcloudignore` and `.dockerignore`
 exclude local environment files, Terraform state, and generated dependencies;
 the operator should still inspect `gcloud meta list-files-for-upload .` for
