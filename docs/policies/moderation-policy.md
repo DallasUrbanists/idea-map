@@ -302,6 +302,11 @@ remain valid. Exact trust-history, upload, and account retention periods remain
 unresolved beyond the Privacy Policy deadlines; operators should document them
 without inventing periods or legal-hold exceptions.
 
+Only the Executive Director or a person explicitly delegated in writing can
+place or release a legal hold under the Privacy Policy. A moderator's review
+hold does not grant that authority. Legal-hold placement and release must be
+recorded with the scope and authorization evidence required by that policy.
+
 ## User-facing messages and appeals
 
 The interface presents these messages for each state:
