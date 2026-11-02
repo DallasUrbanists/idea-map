@@ -7,9 +7,20 @@ a passing local test authorizes deployment or changes to hosted resources.
 
 The following contents links navigate within this procedure:
 
+- [When to use this guide](#when-to-use-this-guide)
 - [Prepare the review](#prepare-the-review)
 - [Record the synthetic evidence](#record-the-synthetic-evidence)
 - [Finish the test](#finish-the-test)
+
+## When to use this guide
+
+Operators and reviewers can use this procedure in the following situations:
+
+| When this happens... | Use this guide to... |
+| --- | --- |
+| You are preparing an isolated staging review of task delivery. | Identify the required resource boundaries, ownership, and authorization before requesting a plan. |
+| You are evaluating an authorized synthetic delivery test. | Record evidence for deadlines, retries, recovery, races, authentication, and privacy. |
+| You are finishing an authorized test. | Record the results and follow the reviewed cleanup and recovery plan. |
 
 ## Prepare the review
 
