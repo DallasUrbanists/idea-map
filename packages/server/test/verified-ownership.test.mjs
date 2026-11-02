@@ -107,11 +107,11 @@ test('verified ownership claims are atomic, private, and tied to an authenticate
     const trust = await pool.connect()
     try {
       await trust.query('BEGIN')
-      assert.deepEqual(await evaluateTrustedShortcut(trust, target, { userId: owner.owner_id, emailVerified: true }, 94.6), { eligible: true, priorApprovals: 1, threshold: 94.5 })
+      assert.deepEqual(await evaluateTrustedShortcut(trust, target, { userId: owner.owner_id, identityId: evidence.verified_identity_id, verifiedEmail: 'Foo+tag@example.test', emailVerified: true }, 94.6), { eligible: true, priorApprovals: 1, threshold: 94.5 })
       await trust.query('COMMIT')
       await pool.query('UPDATE approval_records SET excluded_for_violation=true WHERE idea_id=$1', [prior])
       await trust.query('BEGIN')
-      assert.deepEqual(await evaluateTrustedShortcut(trust, target, { userId: owner.owner_id, emailVerified: true }, 94.6), { eligible: false, priorApprovals: 0, threshold: 95 })
+      assert.deepEqual(await evaluateTrustedShortcut(trust, target, { userId: owner.owner_id, identityId: evidence.verified_identity_id, verifiedEmail: 'Foo+tag@example.test', emailVerified: true }, 94.6), { eligible: false, priorApprovals: 0, threshold: 95 })
       await trust.query('COMMIT')
     } finally { trust.release() }
 
@@ -120,7 +120,7 @@ test('verified ownership claims are atomic, private, and tied to an authenticate
     try {
       await client.query('BEGIN')
       await client.query('UPDATE ideas SET owner_id=$2 WHERE id=$1', [current, owner.owner_id])
-      assert.deepEqual(await evaluateTrustedShortcut(client, current, { userId: owner.owner_id, emailVerified: true }, 99), { eligible: false, priorApprovals: null, threshold: null })
+      assert.deepEqual(await evaluateTrustedShortcut(client, current, { userId: owner.owner_id, identityId: evidence.verified_identity_id, verifiedEmail: 'Foo+tag@example.test', emailVerified: true }, 99), { eligible: false, priorApprovals: null, threshold: null })
       await client.query('ROLLBACK')
     } finally { client.release() }
     const other = (await pool.query('INSERT INTO users DEFAULT VALUES RETURNING id')).rows[0].id

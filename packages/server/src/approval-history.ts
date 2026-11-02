@@ -1,4 +1,5 @@
 import type pg from 'pg'
+import { normalizeOwnershipEmail } from './verified-ownership.js'
 
 /** Call after locking the affected ideas, in the transaction that changes their owner or history. */
 export async function lockApprovalHistoryOwners(client: pg.PoolClient, ownerIds: string[]): Promise<void> {
@@ -22,8 +23,10 @@ export async function recordApprovedSubmission(client: pg.PoolClient, ideaId: st
 }
 
 export interface VerifiedOwnerEvidence {
-  /** The caller must verify this identity and email through the server-side identity provider. */
+  /** Resolve both IDs from the same currently verified server-side provider identity. */
   userId: string
+  identityId: string
+  verifiedEmail: string
   emailVerified: boolean
 }
 
@@ -38,14 +41,18 @@ export async function evaluateTrustedShortcut(client: pg.PoolClient, currentIdea
   identity: VerifiedOwnerEvidence | null, score: number): Promise<TrustDecision> {
   if (!Number.isFinite(score) || score < 0 || score > 100) throw new Error('Invalid compliance score')
   const fallback: TrustDecision = { eligible: false, priorApprovals: null, threshold: null }
-  if (!identity || identity.emailVerified !== true || !identity.userId) return fallback
+  if (!identity || identity.emailVerified !== true || !identity.userId ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identity.identityId)) return fallback
+  const email = normalizeOwnershipEmail(identity.verifiedEmail)
+  if (!email) return fallback
   const current = await client.query<{ owner_id: string | null }>('SELECT owner_id FROM ideas WHERE id = $1 FOR UPDATE', [currentIdeaId])
   if (!current.rowCount || current.rows[0].owner_id !== identity.userId) return fallback
   await lockApprovalHistoryOwners(client, [identity.userId])
   // Existing owner pointers or legacy claims alone cannot establish verified ownership.
   const ownership = await client.query(`SELECT 1 FROM ownership_claims c
     JOIN identities i ON i.id = c.verified_identity_id AND i.user_id = c.user_id
-    WHERE c.idea_id = $1 AND c.user_id = $2 AND c.verified_at IS NOT NULL`, [currentIdeaId, identity.userId])
+    JOIN contacts contact ON contact.id = c.contact_id
+    WHERE c.idea_id = $1 AND c.user_id = $2 AND i.id = $3 AND c.verified_at IS NOT NULL AND contact.normalized_email = $4`, [currentIdeaId, identity.userId, identity.identityId, email])
   if (!ownership.rowCount) return fallback
   const result = await client.query<{ total: number, unknown: number }>(`
     SELECT count(*) FILTER (WHERE a.verified_for_trust AND NOT a.excluded_for_violation AND c.verified_at IS NOT NULL AND v.id IS NOT NULL)::int AS total,

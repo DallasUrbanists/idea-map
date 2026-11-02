@@ -113,7 +113,10 @@ rows and then the affected user rows in sorted order. A trust decision holds the
 same locks through publication. An identity supplied to that decision must come
 from verified server-side ownership evidence; an email string alone is not enough.
 The current submission and each counted prior approval require a claim tied to
-the same internal user's verified identity. Missing ownership evidence makes
+the same internal user's verified identity. The current claim must match the
+exact identity and email that the caller has reverified with the provider; the
+caller must resolve both the identity and user IDs from that provider result.
+Missing or mismatched ownership evidence makes
 the trusted shortcut unavailable rather than inventing a history count.
 Unverified ownership or unknown history must retain the original standard
 deadline. The migration marks backfilled approved pointers as unverified because
