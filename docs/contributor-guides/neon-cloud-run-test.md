@@ -58,17 +58,20 @@ scope before deploying:
 1. Migrate the disposable database through its direct connection and load the
     synthetic SSR fixture. Apply the
     [test runtime grants](../../packages/server/test/cloud-run-runtime-grants.sql)
-    to that database, set a separate password securely, and verify PostGIS and
-    the pooled role's access without printing connection strings or passwords.
-2. Create the `idea-map-neon-test-url` secret in the development project and
+    to that database; the script creates the runtime role with login disabled.
+2. Set a separate password securely, then apply the
+    [login-enabling script](../../packages/server/test/cloud-run-runtime-enable-login.sql)
+    to the same database. Verify PostGIS and authenticate with the pooled role
+    without printing connection strings or passwords.
+3. Create the `idea-map-neon-test-url` secret in the development project and
     add a version containing only the pooled runtime connection to that test
     database. Keep the migration credential separate and note the numeric secret
     version; do not put secret values in Terraform variables or logs.
-3. Build the reviewed application commit from a clean checkout as described in
+4. Build the reviewed application commit from a clean checkout as described in
     the [staging build procedure](ssr-staging.md#start-a-deployment), and record
     its immutable image digest. Inspect the upload list before building to
     ensure local credentials, environment files and Terraform state are excluded.
-4. Create an ignored `infra/neon-cloud-run-test/test.tfvars` file with the
+5. Create an ignored `infra/neon-cloud-run-test/test.tfvars` file with the
     reviewed, non-secret values shown below. Replace each uppercase placeholder
     with the actual value, including `user:EMAIL` or `serviceAccount:EMAIL` for
     the one approved invoker.
@@ -80,30 +83,34 @@ scope before deploying:
     invoker_member          = "user:EMAIL"
     ```
 
-5. Initialize this root against the existing versioned staging state bucket
+6. Initialize this root against the existing versioned staging state bucket
     with its own `staging/neon-test` prefix. Confirm that no other root owns the
     proposed service, runtime identity or IAM grants.
 
     ```sh
-    terraform -chdir=infra/neon-cloud-run-test init -backend-config="bucket=dallasurbanists-idea-map-dev-ssr-tfstate" -backend-config="prefix=staging/neon-test"
+    terraform "-chdir=infra/neon-cloud-run-test" init "-backend-config=bucket=dallasurbanists-idea-map-dev-ssr-tfstate" "-backend-config=prefix=staging/neon-test"
     ```
 
-6. Create and inspect a plan, including the exact service, secret access and
+7. Create and inspect a plan, including the exact service, secret access and
     invoker grant. Stop if it proposes changes to the existing SSR staging
     service, Cloud SQL, production, or unrelated resources.
 
     ```sh
-    terraform -chdir=infra/neon-cloud-run-test plan "-var-file=test.tfvars" "-out=review.tfplan"
-    terraform -chdir=infra/neon-cloud-run-test show review.tfplan
+    terraform "-chdir=infra/neon-cloud-run-test" plan "-var-file=test.tfvars" "-out=review.tfplan"
+    terraform "-chdir=infra/neon-cloud-run-test" show review.tfplan
     ```
 
-7. Apply only the reviewed plan after authorization, then confirm the service
+8. Apply only the reviewed plan after authorization, then confirm the service
     has the expected image, secret version, scale settings and effective invoker
     permissions. Keep state and plan files private because they can contain
     sensitive configuration.
 
 The root does not create the database, fixture, secret or secret version. The
 service is separate from Hosting and does not configure end-user authentication.
+Neon requires a plaintext password when setting a SQL-created role's password;
+its [role guide](https://neon.com/docs/manage/roles#manage-roles-with-sql)
+describes the requirements. Use a secure session that does not record the
+password in client history, SQL logs, query statistics, or command arguments.
 The test role has no grants on the long-lived development tables, but PostgreSQL
 `PUBLIC` privileges can still allow it to connect to other databases on the
 same compute. The role's column grants permit reading test revision content
@@ -111,16 +118,19 @@ beyond approved rows; the application query enforces the publication filter.
 
 To verify the grants without changing an existing role, use a separate local
 PostGIS database named `idea_map_test_cloudrun`, apply the repository migrations,
-and set `TEST_DATABASE_URL` to its direct connection on `127.0.0.1`. Then run
-this command from the repository root:
+and set `TEST_DATABASE_URL` to its direct connection on `127.0.0.1`. The test
+connection needs permission to create roles and grant the query's table columns.
+Then run this command from the repository root:
 
 ```sh
 pnpm --filter @idea-map/server exec node --test test/cloud-run-runtime-grants.test.mjs
 ```
 
-The test creates the role and grants inside a rolled-back transaction. It fails
-if the role already exists, so use a disposable PostgreSQL instance rather than
-the hosted development compute where the test role is already present.
+The tests create a cluster-wide role, exercise authentication and privileges,
+and remove the role afterward. They fail if the role already exists, so use a
+disposable PostgreSQL instance rather than the hosted development compute where
+the test role is already present. Configure local password authentication to
+check that an incorrect runtime password is rejected.
 
 ## Measure and finish
 

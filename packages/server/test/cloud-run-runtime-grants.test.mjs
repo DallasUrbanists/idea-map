@@ -67,3 +67,71 @@ test('the grants script refuses to change an existing role', async () => {
     await client.end()
   }
 })
+
+test('the login script refuses to enable a missing role', async () => {
+  const admin = new pg.Client({ connectionString: url })
+  await admin.connect()
+  try {
+    await admin.query('BEGIN')
+    const sql = await readFile(new URL('./cloud-run-runtime-enable-login.sql', import.meta.url), 'utf8')
+    await assert.rejects(admin.query(sql), { message: /Test runtime role does not exist/ })
+  } finally {
+    await admin.query('ROLLBACK')
+    await admin.end()
+  }
+})
+
+test('the runtime role can authenticate only after login is enabled', async () => {
+  const admin = new pg.Client({ connectionString: url })
+  const runtimeUrl = new URL(url)
+  runtimeUrl.username = 'idea_map_cloudrun_test'
+  runtimeUrl.password = 'local-only-runtime-test'
+  let ownsRole = false
+  await admin.connect()
+  try {
+    await admin.query('BEGIN')
+    await admin.query(await readFile(new URL('./cloud-run-runtime-grants.sql', import.meta.url), 'utf8'))
+    await admin.query("ALTER ROLE idea_map_cloudrun_test PASSWORD 'local-only-runtime-test'")
+    await admin.query('COMMIT')
+    ownsRole = true
+
+    const disabled = new pg.Client({ connectionString: runtimeUrl.toString() })
+    try {
+      await assert.rejects(disabled.connect(), { code: '28000' })
+    } finally {
+      await disabled.end()
+    }
+
+    await admin.query(await readFile(new URL('./cloud-run-runtime-enable-login.sql', import.meta.url), 'utf8'))
+    const incorrectUrl = new URL(runtimeUrl)
+    incorrectUrl.password = 'incorrect-local-only-password'
+    const incorrect = new pg.Client({ connectionString: incorrectUrl.toString() })
+    try {
+      await assert.rejects(incorrect.connect(), { code: '28P01' })
+    } finally {
+      await incorrect.end()
+    }
+
+    const runtime = new pg.Client({ connectionString: runtimeUrl.toString() })
+    try {
+      await runtime.connect()
+      const identity = await runtime.query('SELECT current_user AS role, current_database() AS database')
+      assert.deepEqual(identity.rows[0], { role: 'idea_map_cloudrun_test', database: 'idea_map_test_cloudrun' })
+      await runtime.query('SELECT id, publication_state FROM public.ideas LIMIT 1')
+      await assert.rejects(runtime.query('SELECT id FROM public.contacts LIMIT 1'), { code: '42501' })
+    } finally {
+      await runtime.end()
+    }
+  } finally {
+    try {
+      if (ownsRole) {
+        await admin.query('DROP OWNED BY idea_map_cloudrun_test')
+        await admin.query('DROP ROLE idea_map_cloudrun_test')
+      } else {
+        await admin.query('ROLLBACK')
+      }
+    } finally {
+      await admin.end()
+    }
+  }
+})
