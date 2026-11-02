@@ -11,6 +11,7 @@ The following contents links navigate within this guide:
 - [Schema and migration boundary](#schema-and-migration-boundary)
 - [Database verification](#database-verification)
 - [Ownership and publication](#ownership-and-publication)
+- [Approval history and corrections](#approval-history-and-corrections)
 - [Outbox recovery](#outbox-recovery)
 - [Consent and retention](#consent-and-retention)
 
@@ -75,6 +76,31 @@ The server must enforce the [API policy](../policies/api-policy.md),
 [moderation policy](../policies/moderation-policy.md), and
 [Privacy Policy](../policies/privacy-policy.md) when reading, publishing, or
 deleting stored data.
+
+## Approval history and corrections
+
+Trust history is derived from durable approval records, one per idea, rather
+than from a mutable user counter. Approval and its record must be committed in
+the same transaction. A later approval updates the revision pointer without
+counting the idea twice. Withdrawal does not erase a prior approval; a violation
+reversal must be recorded as a correction. Correction changes and their private
+actor and reason are committed together, and the caller must enforce moderator
+authorization on the server. Reasons must not include submission content.
+
+Before changing an idea's ownership or approval history, lock the affected idea
+rows and then the affected user rows in sorted order. A trust decision holds the
+same locks through publication. An identity supplied to that decision must come
+from verified server-side ownership evidence; an email string alone is not enough.
+Unverified ownership or unknown history must retain the original standard
+deadline. The migration marks backfilled approved pointers as unverified because
+it cannot reconstruct prior reversals; an authorized correction can resolve each
+record after reviewing evidence. Older approvals without a current pointer cannot
+be reconstructed automatically.
+
+These primitives are not a complete moderator workflow. Before enabling them in
+production, implement verified ownership and authorized moderator controls,
+privacy-safe deletion and the policy's correction-audit retention and legal-hold
+rules. All ownership and approval writers must follow the locking protocol.
 
 ## Outbox recovery
 

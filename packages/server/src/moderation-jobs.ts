@@ -1,5 +1,6 @@
 import type pg from 'pg'
 import { dispatchJob, enqueueJob, executeJob, type DurableJob, type JobDispatcher } from './outbox.js'
+import { recordApprovedSubmission } from './approval-history.js'
 
 export interface AcceptedAssessment {
   id: string
@@ -100,6 +101,7 @@ export async function executeModerationJob(pool: pg.Pool, jobId: string, policy:
     await client.query("UPDATE idea_revisions SET review_state = 'approved' WHERE id = $1", [job.revisionId])
     await client.query('INSERT INTO approved_revisions (idea_id, revision_id) VALUES ($1, $2) ON CONFLICT (idea_id) DO UPDATE SET revision_id = EXCLUDED.revision_id', [result.rows[0].idea_id, job.revisionId])
     await client.query("UPDATE ideas SET publication_state = 'approved' WHERE id = $1", [result.rows[0].idea_id])
+    await recordApprovedSubmission(client, result.rows[0].idea_id, job.revisionId)
     await enqueueJob(client, { idempotencyKey: `projection:${job.revisionId}:${job.assessmentId}`, kind: 'projection',
       revisionId: job.revisionId, scheduledAt: new Date() })
     return 'completed'

@@ -99,6 +99,12 @@ set `TEST_DATABASE_URL`, and run `pnpm --filter @idea-map/worker test:integratio
 These tests use synthetic assessments and injected authentication and policy;
 they do not validate live provider permissions or authorize publication.
 
+For approval history and correction races, use another empty disposable PostGIS
+database with the `idea_map_test_` prefix, set `TEST_DATABASE_URL`, and run
+`pnpm --filter @idea-map/server test:approval-history`. The test uses synthetic
+identities and injected moderator authorization; it does not verify the real
+identity provider or moderator permissions.
+
 To exercise the built webhook endpoint against a disposable local database, set
 `TEST_DATABASE_URL` to a migrated `idea_map_test_` database on `127.0.0.1`, run
 `pnpm build`, and then run `pnpm test:webhook`. The test uses a synthetic webhook
