@@ -76,6 +76,23 @@ test('durable dispatch, recovery and transactional execution', async () => {
     assert.equal(await retryExhaustedDispatch(pool, exhausted.id), false)
     assert.equal(await dispatchJob(pool, { async dispatch() {} }, exhausted.id), 'dispatched')
 
+    const hung = (await createJobIntent(pool, { idempotencyKey: 'hung', kind: 'test', scheduledAt: deadline }, async () => {})).job
+    const next = (await createJobIntent(pool, { idempotencyKey: 'after-hung', kind: 'test', scheduledAt: deadline }, async () => {})).job
+    let timedOutSignal
+    const observed = []
+    const sometimesHung = { async dispatch(value, signal) {
+      observed.push(value.id)
+      if (value.id === hung.id) {
+        timedOutSignal = signal
+        await new Promise(() => {})
+      }
+    } }
+    assert.deepEqual(await reconcileOutbox(pool, sometimesHung, 2, { timeoutMs: 20 }), { attempted: 2, failed: 1 })
+    assert.equal(timedOutSignal.aborted, true)
+    assert.deepEqual(observed, [hung.id, next.id])
+    assert.equal(await dispatchJob(pool, { async dispatch() {} }, hung.id), 'dispatched')
+    await assert.rejects(reconcileOutbox(pool, sometimesHung, 1, { timeoutMs: 240_001 }), /Dispatch timeout/)
+
     const terminal = (await createJobIntent(pool, { idempotencyKey: 'terminal', kind: 'test', scheduledAt: deadline }, async () => {})).job
     await pool.query('UPDATE outbox SET dispatch_attempts = 5 WHERE job_id = $1', [terminal.id])
     assert.equal(await executeJob(pool, terminal.id, async () => 'stale'), 'stale')

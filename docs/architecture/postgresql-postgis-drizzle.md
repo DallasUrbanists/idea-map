@@ -88,7 +88,11 @@ dispatch and replay do not calculate or change it.
 
 An injected dispatcher receives the durable job ID and original schedule. It
 must deduplicate task creation by that ID, including when a provider accepted a
-request but its response was lost. A caller can attempt `dispatchJob` after the
+request but its response was lost or timed out. The dispatcher must honor its
+abort signal. Each call times out after 30 seconds by default, with a configurable
+maximum of four minutes, shorter than the dispatch lease; a timed-out request can
+still have reached the provider and must be treated as an uncertain delivery.
+A caller can attempt `dispatchJob` after the
 transaction commits. `reconcileOutbox` makes a bounded repair pass and attempts
 each selected job at most once per pass. It claims work with a five-minute lease
 and allows five dispatch attempts. Expired leases can be reclaimed; a late

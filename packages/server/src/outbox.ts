@@ -3,6 +3,8 @@ import type pg from 'pg'
 
 const MAX_DISPATCH_ATTEMPTS = 5
 const LEASE_SECONDS = 300
+const DEFAULT_DISPATCH_TIMEOUT_MS = 30_000
+const MAX_DISPATCH_TIMEOUT_MS = 240_000
 
 export interface JobIntent {
   idempotencyKey: string
@@ -23,9 +25,19 @@ export interface DurableJob {
   scheduledAt: Date
 }
 
-/** A dispatcher must deduplicate by job.id, including after an ambiguous response. */
+/** A dispatcher must deduplicate by job.id and stop promptly when the signal is aborted. */
 export interface JobDispatcher {
-  dispatch(job: DurableJob): Promise<void>
+  dispatch(job: DurableJob, signal: AbortSignal): Promise<void>
+}
+
+export interface DispatchOptions { timeoutMs?: number }
+
+function dispatchTimeout(options: DispatchOptions): number {
+  const timeout = options.timeoutMs ?? DEFAULT_DISPATCH_TIMEOUT_MS
+  if (!Number.isInteger(timeout) || timeout < 1 || timeout > MAX_DISPATCH_TIMEOUT_MS) {
+    throw new Error('Dispatch timeout must be between 1 and 240000 milliseconds')
+  }
+  return timeout
 }
 
 type JobRow = { id: string, idempotency_key: string, kind: string, revision_id: string | null,
@@ -116,13 +128,24 @@ async function claim(pool: pg.Pool, excluded: string[], jobId?: string): Promise
   return result.rows[0] ?? null
 }
 
-async function dispatchClaim(pool: pg.Pool, dispatcher: JobDispatcher, row: ClaimRow): Promise<boolean> {
+async function dispatchClaim(pool: pg.Pool, dispatcher: JobDispatcher, row: ClaimRow, timeoutMs: number): Promise<boolean> {
   let succeeded = false
   let acknowledged = false
+  const controller = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
   try {
-    await dispatcher.dispatch(jobFromRow(row))
+    await Promise.race([
+      dispatcher.dispatch(jobFromRow(row), controller.signal),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort()
+          reject(new Error('Job dispatch timed out'))
+        }, timeoutMs)
+      }),
+    ])
     succeeded = true
   } finally {
+    if (timer) clearTimeout(timer)
     // A timed-out claimant must never overwrite a newer lease or its result.
     const result = await pool.query(`UPDATE outbox SET published_at = CASE WHEN $3 THEN clock_timestamp() ELSE published_at END,
       lease_token = NULL, lease_until = NULL WHERE job_id = $1 AND lease_token = $2`, [row.id, row.lease_token, succeeded])
@@ -132,22 +155,24 @@ async function dispatchClaim(pool: pg.Pool, dispatcher: JobDispatcher, row: Clai
 }
 
 /** Attempt one committed job; failures remain eligible for a later repair. */
-export async function dispatchJob(pool: pg.Pool, dispatcher: JobDispatcher, jobId: string): Promise<'dispatched' | 'unavailable'> {
+export async function dispatchJob(pool: pg.Pool, dispatcher: JobDispatcher, jobId: string, options: DispatchOptions = {}): Promise<'dispatched' | 'unavailable'> {
+  const timeout = dispatchTimeout(options)
   const row = await claim(pool, [], jobId)
   if (!row) return 'unavailable'
-  return await dispatchClaim(pool, dispatcher, row) ? 'dispatched' : 'unavailable'
+  return await dispatchClaim(pool, dispatcher, row, timeout) ? 'dispatched' : 'unavailable'
 }
 
 /** Run one bounded repair pass. A failed job is attempted at most once per pass. */
-export async function reconcileOutbox(pool: pg.Pool, dispatcher: JobDispatcher, limit: number): Promise<{ attempted: number, failed: number }> {
+export async function reconcileOutbox(pool: pg.Pool, dispatcher: JobDispatcher, limit: number, options: DispatchOptions = {}): Promise<{ attempted: number, failed: number }> {
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('Repair limit must be between 1 and 100')
+  const timeout = dispatchTimeout(options)
   const attempted: string[] = []
   let failed = 0
   while (attempted.length < limit) {
     const row = await claim(pool, attempted)
     if (!row) break
     attempted.push(row.id)
-    try { if (!await dispatchClaim(pool, dispatcher, row)) failed++ } catch { failed++ }
+    try { if (!await dispatchClaim(pool, dispatcher, row, timeout)) failed++ } catch { failed++ }
   }
   return { attempted: attempted.length, failed }
 }

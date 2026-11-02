@@ -86,8 +86,8 @@ name starts with `idea_map_test_`, set `TEST_DATABASE_URL`, and run
 `pnpm --filter @idea-map/server test:outbox`. This check applies migrations and
 creates synthetic fixtures. It exercises transaction rollback, duplicate and
 ambiguous delivery, lease recovery, bounded retries, and concurrent execution
-with a fake dispatcher. It does not validate Cloud Tasks or the moderation
-handler.
+with a fake dispatcher, including a stalled request. It does not validate Cloud
+Tasks or the moderation handler.
 
 To exercise the built webhook endpoint against a disposable local database, set
 `TEST_DATABASE_URL` to a migrated `idea_map_test_` database on `127.0.0.1`, run
