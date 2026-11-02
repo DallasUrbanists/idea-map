@@ -196,14 +196,36 @@ functions do not provide an operator interface or grant database access.
 If a pending job was accepted by the queue but execution exhausted its retries,
 or dispatch attempts were exhausted with an uncertain outcome, inspect its
 `outbox.delivery_generation` and the corresponding task in the intended queue.
-The task name is `job-JOB_UUID-GENERATION`. An authorized recovery tool can use
-`inspectCloudTask` with the reviewed queue and short-lived credentials, then pass
-that check to `rearmMissingDelivery` with the job ID and observed generation.
-The reset proceeds only when the provider confirms absence, the generation has
-not changed, the job remains pending, and no dispatch lease is active. It assigns
-a new task generation without changing the job ID or deadline. An uninspectable
-task must remain unchanged and be escalated. The worker's transactional
-execution must remain idempotent even if an old in-flight delivery later arrives.
+The task name is `job-JOB_UUID-GENERATION`. An authorized operator can use
+the worker recovery command after reviewing the intended database, exact queue,
+job, generation, execution records, active dispatches, and recovery ownership.
+A missing task response does not prove that a previously sent request cannot
+still arrive; recently deleted task names can remain reserved. Operators must
+establish that replay is safe and that execution is idempotent before proceeding.
+
+From the repository root, the operator should build the worker with
+`pnpm exec tsc --build`, configure `WORKER_DATABASE_URL` and `CLOUD_TASKS_QUEUE`
+through the approved environment, and use short-lived application-default
+credentials with queue inspection access. The operator should then run:
+
+```sh
+node apps/worker/dist/recover-cli.js --queue REVIEWED_QUEUE --job JOB_UUID --generation GENERATION --confirm-reviewed-recovery
+```
+
+Replace `REVIEWED_QUEUE` with the exact reviewed queue resource name, `JOB_UUID`
+with the inspected job, and `GENERATION` with its observed delivery generation.
+The supplied queue must also match `CLOUD_TASKS_QUEUE`. Never put credentials in
+command arguments or shared logs.
+
+The command checks that the queue exists and matches the reviewed name, then
+checks the task. It rearms only if the provider reports the task absent, the
+generation is unchanged, the job remains pending, and no dispatch lease is
+active. It creates a new delivery generation without changing the job ID or
+deadline; a later configured repair pass dispatches it. The `rearmed` result
+confirms the database reset, not a new task or successful execution. Results
+`present`, `unknown`, or `unchanged` leave the job unchanged; inspect and
+escalate rather than bypassing those guards. Operators must preserve idempotency
+because a previous in-flight delivery can arrive after the inspection.
 
 For a moderator hold or unavailable eligibility, the moderation job remains
 pending and the worker must return a retryable result. If queue retries are
