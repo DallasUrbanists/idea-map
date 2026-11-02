@@ -394,10 +394,11 @@ notifications. Complete those paths, privacy and access controls, and rollout
 review before enabling it. Responses and errors use `private, no-store`.
 
 The separately default-disabled action endpoint accepts manual approval,
-rejection, request-changes, resolve-changes, hold, and hold-release operations. It requires the
+rejection, request-changes, resolve-changes, hold, hold-release, escalation, and
+escalation-transfer operations. It requires the
 configured browser origin, JSON and a non-simple request header, a verified
 session and current moderator assignment; it rejects extra fields and method
-overrides. It grants no database permissions. Escalations, removals,
+overrides. It grants no database permissions. Removals,
 private media, reviewer interfaces, rate limiting, privacy-safe retention and
 projection delivery remain separate work. Do not enable this endpoint until
 those requirements and the scoped grants are reviewed.
@@ -459,8 +460,8 @@ and an owner who has an active database moderator assignment. The transaction
 locks both assignments and checks the current revision and assessment. The
 escalation remains a hold across later edits and when the owner's assignment is
 revoked; it must be explicitly released. It does not clear or replace an
-ordinary hold. The record retains the initial owner's internal user ID for a
-future authorized interface; it does not prove the owner can still sign in.
+ordinary hold. The private review response includes the current owner's internal
+user ID; it does not prove the owner can still sign in.
 Notifications and a usable interface remain open. Do not enable live
 escalations until those processes and privacy controls are reviewed.
 
