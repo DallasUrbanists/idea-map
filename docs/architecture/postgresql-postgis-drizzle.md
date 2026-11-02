@@ -389,6 +389,15 @@ implemented. It does not expose private media, review controls, a queue, or
 notifications. Complete those paths, privacy and access controls, and rollout
 review before enabling it. Responses and errors use `private, no-store`.
 
+The separately default-disabled action endpoint accepts only manual approval,
+rejection, request-changes, and resolve-changes operations. It requires the
+configured browser origin, JSON and a non-simple request header, a verified
+session and current moderator assignment; it rejects extra fields and method
+overrides. It grants no database permissions. Holds, escalations, removals,
+private media, reviewer interfaces, rate limiting, privacy-safe retention and
+projection delivery remain separate work. Do not enable this endpoint until
+those requirements and the scoped grants are reviewed.
+
 ### Manual moderator approval
 
 An authorized moderator can also manually approve the exact current revision

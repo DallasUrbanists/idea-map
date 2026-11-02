@@ -16,7 +16,7 @@ const { initializeApp, deleteApp } = webRequire('firebase-admin/app')
 const { getAuth } = webRequire('firebase-admin/auth')
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
-test('moderator status and private review verify emulator sessions and current database roles', { timeout: 30000 }, async () => {
+test('moderator review and actions verify emulator sessions, authorization and request origin', { timeout: 30000 }, async () => {
   const probe = createServer()
   await new Promise((resolve, reject) => probe.once('error', reject).listen(0, '127.0.0.1', resolve))
   const port = probe.address().port
@@ -39,6 +39,7 @@ test('moderator status and private review verify emulator sessions and current d
     await pool.query(`GRANT USAGE ON SCHEMA public TO "${role}"`)
     await pool.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text) TO "${role}"`)
     await pool.query(`GRANT EXECUTE ON FUNCTION public.read_moderator_revision(text,text,uuid) TO "${role}"`)
+    await pool.query(`GRANT EXECUTE ON FUNCTION public.approve_moderation_revision(text,text,uuid,text,text), public.reject_moderation_revision(text,text,uuid,text,text), public.apply_moderator_change_request(text,text,text,uuid,text,uuid,text) TO "${role}"`)
     const contact = (await pool.query("INSERT INTO contacts(normalized_email) VALUES ('private-contact@example.invalid') RETURNING id")).rows[0].id
     const idea = (await pool.query('INSERT INTO ideas(author_contact_id) VALUES ($1) RETURNING id', [contact])).rows[0].id
     const revision = (await pool.query("INSERT INTO idea_revisions(idea_id,version,content) VALUES ($1,1,'{\"text\":\"synthetic pending content\"}') RETURNING id", [idea])).rows[0].id
@@ -46,7 +47,7 @@ test('moderator status and private review verify emulator sessions and current d
     runtimeUrl.searchParams.set('options', `-c role=${role}`)
     server = spawn(process.execPath, ['apps/web/.output/server/index.mjs'], {
       env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), NUXT_SESSION_ORIGIN: base,
-        NUXT_FIREBASE_PROJECT_ID: project, NUXT_DATABASE_URL: runtimeUrl.toString(), NUXT_MODERATION_REVIEW_ENABLED: 'true' }, stdio: 'ignore',
+        NUXT_FIREBASE_PROJECT_ID: project, NUXT_DATABASE_URL: runtimeUrl.toString(), NUXT_MODERATION_REVIEW_ENABLED: 'true', NUXT_MODERATION_ACTIONS_ENABLED: 'true' }, stdio: 'ignore',
     })
     exited = new Promise(resolve => server.once('exit', resolve))
     let ready = false
@@ -77,10 +78,22 @@ test('moderator status and private review verify emulator sessions and current d
     let cookie = login.headers.get('set-cookie').split(';')[0]
     const status = (value = cookie) => fetch(`${base}/api/moderation/status`, { headers: { cookie: value } })
     const review = (id = revision, value = cookie) => fetch(`${base}/api/moderation/revisions/${id}`, { headers: { cookie: value } })
+    const action = (body, value = cookie, origin = base, extra = {}) => fetch(`${base}/api/moderation/actions`, {
+      method: 'POST', headers: { cookie: value, origin, 'content-type': 'application/json', 'x-idea-map-session': 'IdeaMapSession', ...extra }, body: JSON.stringify(body),
+    })
+    const decision = { action: 'approve', revisionId: revision, assessmentId: null, reason: 'synthetic review' }
     assert.equal((await status('__session=forged')).status, 401)
     assert.equal((await status()).status, 403)
     assert.equal((await review(revision, '__session=forged')).status, 401)
     assert.equal((await review()).status, 403)
+    assert.equal((await action(decision, '__session=forged')).status, 401)
+    assert.equal((await action(decision)).status, 403)
+    assert.equal((await action(decision, cookie, 'https://attacker.example')).status, 403)
+    assert.equal((await action(decision, cookie, base, { 'x-idea-map-session': '' })).status, 403)
+    assert.equal((await action(decision, cookie, base, { 'x-http-method-override': 'DELETE' })).status, 403)
+    assert.equal((await action({ ...decision, actorId: 'forged' })).status, 400)
+    assert.equal((await action({ ...decision, reason: 'x'.repeat(1001) })).status, 400)
+    assert.equal((await action({ ...decision, reason: 'x'.repeat(5000) })).status, 413)
     assert.equal((await fetch(`${base}/api/moderation/status`, { headers: { cookie, 'x-role': 'moderator', 'x-user-id': 'forged' } })).status, 403)
     const user = (await pool.query('INSERT INTO users DEFAULT VALUES RETURNING id')).rows[0].id
     const actor = (await pool.query('INSERT INTO users DEFAULT VALUES RETURNING id')).rows[0].id
@@ -99,6 +112,22 @@ test('moderator status and private review verify emulator sessions and current d
     const next = (await pool.query("INSERT INTO idea_revisions(idea_id,version,content) VALUES ($1,2,'{\"text\":\"new synthetic content\"}') RETURNING id", [idea])).rows[0].id
     assert.equal((await review()).status, 404)
     assert.deepEqual((await (await review(next)).json()).content, { text: 'new synthetic content' })
+    const nextDecision = { ...decision, revisionId: next }
+    assert.equal((await action({ ...nextDecision, action: 'request-changes' })).status, 200)
+    const blocked = await action(nextDecision)
+    assert.equal(blocked.status, 409)
+    assert.match(blocked.headers.get('cache-control'), /private.*no-store/)
+    assert.deepEqual(await blocked.json(), { outcome: 'blocked' })
+    const requestId = (await pool.query('SELECT id FROM moderator_change_requests WHERE idea_id=$1 AND resolved_at IS NULL', [idea])).rows[0].id
+    assert.equal((await action({ ...nextDecision, action: 'resolve-changes', requestId })).status, 200)
+    const approved = await action(nextDecision)
+    assert.equal(approved.status, 200)
+    assert.deepEqual(await approved.json(), { outcome: 'approved' })
+    assert.equal((await action(nextDecision)).status, 409)
+    const otherIdea = (await pool.query('INSERT INTO ideas(author_contact_id) VALUES ($1) RETURNING id', [contact])).rows[0].id
+    const otherRevision = (await pool.query("INSERT INTO idea_revisions(idea_id,version,content) VALUES ($1,1,'{}') RETURNING id", [otherIdea])).rows[0].id
+    assert.equal((await action({ ...nextDecision, action: 'reject', revisionId: otherRevision })).status, 200)
+    assert.equal((await pool.query('SELECT review_state FROM idea_revisions WHERE id=$1', [otherRevision])).rows[0].review_state, 'rejected')
     assert.equal((await fetch(`${base}/api/moderation/status`, { method: 'POST', headers: { cookie } })).status, 403)
     await auth.updateUser(uid, { emailVerified: false })
     assert.ok([401, 403].includes((await status()).status))
@@ -115,6 +144,7 @@ test('moderator status and private review verify emulator sessions and current d
     await pool.query("UPDATE moderator_assignments SET revoked_at=now(), revoked_by=$2, revoke_reason='synthetic revocation' WHERE id=$1", [assignment, actor])
     assert.equal((await status()).status, 403)
     assert.equal((await review(next)).status, 403)
+    assert.equal((await action({ ...nextDecision, revisionId: otherRevision })).status, 403)
     await pool.query("INSERT INTO moderator_assignments(user_id,granted_by,grant_reason) VALUES ($1,$2,'synthetic regrant')", [user, actor])
     await auth.updateUser(uid, { disabled: true })
     assert.equal((await status()).status, 401)
