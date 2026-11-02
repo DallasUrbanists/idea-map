@@ -11,6 +11,7 @@ The following contents links navigate within this guide:
 - [Schema and migration boundary](#schema-and-migration-boundary)
 - [Database verification](#database-verification)
 - [Ownership and publication](#ownership-and-publication)
+- [Outbox recovery](#outbox-recovery)
 - [Consent and retention](#consent-and-retention)
 
 ## Schema and migration boundary
@@ -74,6 +75,80 @@ The server must enforce the [API policy](../policies/api-policy.md),
 [moderation policy](../policies/moderation-policy.md), and
 [Privacy Policy](../policies/privacy-policy.md) when reading, publishing, or
 deleting stored data.
+
+## Outbox recovery
+
+The server records a job and its outbox entry in the same transaction as the
+associated domain change. A caller may use `createJobIntent` to make that
+change once or `enqueueJob` inside an existing transaction. The idempotency key
+identifies an immutable intent; changing its revision, assessment, receipt time,
+or schedule under the same key is an error. An assessment job also has a unique
+kind, revision, and assessment identity. The caller supplies the policy deadline;
+dispatch and replay do not calculate or change it.
+
+An injected dispatcher receives the durable job ID and original schedule. It
+must deduplicate task creation by that ID, including when a provider accepted a
+request but its response was lost or timed out. The dispatcher must honor its
+abort signal. Each call times out after 30 seconds by default, with a configurable
+maximum of four minutes, shorter than the dispatch lease; a timed-out request can
+still have reached the provider and must be treated as an uncertain delivery.
+A caller can attempt `dispatchJob` after the
+transaction commits. `reconcileOutbox` makes a bounded repair pass and attempts
+each selected job at most once per pass. It claims work with a five-minute lease
+and allows five dispatch attempts. Expired leases can be reclaimed; a late
+claimant cannot overwrite a newer claim. The application needs a separately
+authenticated hourly scheduler and a provider dispatcher to invoke this repair;
+the database code does not run a polling loop or configure those services.
+
+`executeJob` locks the job, checks its deadline, and runs a database-only handler
+in the same transaction as the final job state. A handler must lock the relevant
+domain records and recheck the current revision, assessment, withdrawal and
+moderator decision before publishing. It must write publication and projection
+intents in that transaction. All domain writers must use compatible locking so a
+moderator decision committed first wins. External effects need their own
+idempotent delivery; a database transaction cannot make a provider call atomic.
+The moderation implementation owns the eligibility checks and the task service
+owns authenticated invocation and execution retry limits.
+
+To investigate an unpublished job, an authorized operator can connect to the
+intended environment's database with `psql` using its approved read-only role.
+Set `job_id` to the known job ID with `\set job_id 'JOB_UUID'` in that session,
+then inspect its state:
+
+```sql
+SELECT j.id, j.kind, j.state, j.scheduled_at, o.published_at,
+       o.dispatch_attempts, o.lease_until
+FROM jobs j JOIN outbox o ON o.job_id = j.id
+WHERE j.id = :'job_id'::uuid;
+```
+
+Avoid logging assessments, credentials, or private content. A null
+`published_at` with five attempts and no live lease needs investigation; a
+published outbox entry only means the dispatcher acknowledged the request, not
+that execution succeeded.
+
+Before retrying an exhausted dispatch, check provider delivery and execution
+records, confirm that the job remains eligible and that the dispatcher preserves
+the same task identity, and coordinate with the recovery owner. After obtaining
+authorization for write access, set `job_id` in a `psql` session for that same
+environment and run this guarded reset:
+
+```sql
+UPDATE outbox SET dispatch_attempts = 0, lease_token = NULL, lease_until = NULL
+WHERE job_id = :'job_id'::uuid AND published_at IS NULL AND dispatch_attempts = 5
+  AND (lease_until IS NULL OR lease_until <= clock_timestamp())
+  AND EXISTS (SELECT 1 FROM jobs WHERE id = outbox.job_id AND state = 'pending')
+RETURNING job_id;
+```
+
+One returned row means the job can be picked up by the next configured repair
+pass. No returned row means the state changed or the job is not eligible; inspect
+it again instead of removing the guards. A trusted operator tool can instead
+call `retryExhaustedDispatch(pool, jobId)` and `dispatchJob(pool, dispatcher,
+jobId)`. Neither reset changes the deadline or execution state. If delivery is
+uncertain and task deduplication or execution idempotency cannot be established,
+do not replay the job. Record the investigation and escalate instead. These
+functions do not provide an operator interface or grant database access.
 
 ## Consent and retention
 

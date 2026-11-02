@@ -80,16 +80,28 @@ export const jobs = pgTable('jobs', {
   revisionId: uuid('revision_id').references(() => ideaRevisions.id),
   kind: text('kind').notNull(),
   idempotencyKey: text('idempotency_key').notNull(),
+  assessmentId: text('assessment_id'),
+  assessmentReceivedAt: timestamp('assessment_received_at', { withTimezone: true }),
+  scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
   state: text('state').notNull().default('pending'),
   attempts: integer('attempts').notNull().default(0),
   createdAt: createdAt(),
-}, table => [uniqueIndex('jobs_idempotency_key').on(table.idempotencyKey), index('jobs_revision_idx').on(table.revisionId)])
+}, table => [uniqueIndex('jobs_idempotency_key').on(table.idempotencyKey), index('jobs_revision_idx').on(table.revisionId),
+  uniqueIndex('jobs_assessment_kind_key').on(table.kind, table.revisionId, table.assessmentId).where(sql`${table.assessmentId} IS NOT NULL`),
+  check('jobs_assessment_identity', sql`(${table.assessmentId} IS NULL AND ${table.assessmentReceivedAt} IS NULL) OR (${table.assessmentId} IS NOT NULL AND ${table.assessmentReceivedAt} IS NOT NULL AND ${table.revisionId} IS NOT NULL AND ${table.scheduledAt} IS NOT NULL AND ${table.scheduledAt} >= ${table.assessmentReceivedAt})`),
+])
 export const outbox = pgTable('outbox', {
   id: uuid('id').primaryKey().defaultRandom(),
   jobId: uuid('job_id').notNull().references(() => jobs.id),
   publishedAt: timestamp('published_at', { withTimezone: true }),
+  dispatchAttempts: integer('dispatch_attempts').notNull().default(0),
+  leaseToken: uuid('lease_token'),
+  leaseUntil: timestamp('lease_until', { withTimezone: true }),
   createdAt: createdAt(),
-}, table => [uniqueIndex('outbox_job_key').on(table.jobId), index('outbox_published_idx').on(table.publishedAt)])
+}, table => [uniqueIndex('outbox_job_key').on(table.jobId), index('outbox_published_idx').on(table.publishedAt),
+  check('outbox_dispatch_attempts_range', sql`${table.dispatchAttempts} between 0 and 5`),
+  check('outbox_lease_pair', sql`(${table.leaseToken} IS NULL) = (${table.leaseUntil} IS NULL)`),
+])
 // Store only the provider identifiers and delivery state, never message content or recipients.
 export const emailDeliveryEvents = pgTable('email_delivery_events', {
   eventId: text('event_id').primaryKey(),

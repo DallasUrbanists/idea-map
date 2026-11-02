@@ -36,6 +36,13 @@
       "when": 1793591360498,
       "tag": "0004_media_previews",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793633122224,
+      "tag": "0005_durable_outbox",
+      "breakpoints": true
     }
   ]
 }
