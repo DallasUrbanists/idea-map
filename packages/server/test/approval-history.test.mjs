@@ -34,14 +34,18 @@ test('approval history counts distinct verified records and serializes correctio
       } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
     }
     const current = await idea(owner, false)
-    const evaluate = async (score, identity = { userId: owner, emailVerified: true }) => {
+    const evaluate = async (score, identity = { userId: owner, identityId: ownerIdentity, verifiedEmail: 'trust@example.invalid', emailVerified: true }) => {
       const client = await pool.connect()
       try { await client.query('BEGIN'); const result = await evaluateTrustedShortcut(client, current.id, identity, score); await client.query('COMMIT'); return result }
       catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
     }
     assert.deepEqual(await evaluate(95), { eligible: false, priorApprovals: 0, threshold: 95 })
-    assert.deepEqual(await evaluate(99, { userId: owner, emailVerified: false }), { eligible: false, priorApprovals: null, threshold: null })
-    assert.deepEqual(await evaluate(99, { userId: other, emailVerified: true }), { eligible: false, priorApprovals: null, threshold: null })
+    assert.deepEqual(await evaluate(99, { userId: owner, identityId: ownerIdentity, verifiedEmail: 'trust@example.invalid', emailVerified: false }), { eligible: false, priorApprovals: null, threshold: null })
+    assert.deepEqual(await evaluate(99, { userId: other, identityId: otherIdentity, verifiedEmail: 'trust@example.invalid', emailVerified: true }), { eligible: false, priorApprovals: null, threshold: null })
+    const alternateIdentity = (await pool.query("INSERT INTO identities(user_id,provider,subject) VALUES ($1,'firebase:demo-idea-map','owner-alternate') RETURNING id", [owner])).rows[0].id
+    assert.deepEqual(await evaluate(99, { userId: owner, identityId: alternateIdentity, verifiedEmail: 'trust@example.invalid', emailVerified: true }), { eligible: false, priorApprovals: null, threshold: null })
+    assert.deepEqual(await evaluate(99, { userId: owner, identityId: ownerIdentity, verifiedEmail: 'different@example.invalid', emailVerified: true }), { eligible: false, priorApprovals: null, threshold: null })
+    assert.deepEqual(await evaluate(99, { userId: owner, identityId: 'invalid', verifiedEmail: 'trust@example.invalid', emailVerified: true }), { eligible: false, priorApprovals: null, threshold: null })
     await pool.query('UPDATE ownership_claims SET verified_identity_id=NULL, verified_at=NULL WHERE idea_id=$1', [current.id])
     assert.deepEqual(await evaluate(99), { eligible: false, priorApprovals: null, threshold: null })
     await pool.query('UPDATE ownership_claims SET verified_identity_id=$2, verified_at=now() WHERE idea_id=$1', [current.id, ownerIdentity])
@@ -84,7 +88,7 @@ test('approval history counts distinct verified records and serializes correctio
     const reader = await pool.connect()
     try {
       await reader.query('BEGIN')
-      await evaluateTrustedShortcut(reader, current.id, { userId: owner, emailVerified: true }, 95)
+      await evaluateTrustedShortcut(reader, current.id, { userId: owner, identityId: ownerIdentity, verifiedEmail: 'trust@example.invalid', emailVerified: true }, 95)
       let authorized
       const started = new Promise(resolve => { authorized = resolve })
       const pending = correctApprovalEligibility(pool, { ...correction, excluded: true }, async () => { authorized(); return true })
@@ -105,7 +109,7 @@ test('approval history counts distinct verified records and serializes correctio
       await claim.query('UPDATE ideas SET owner_id = $2 WHERE id = $1 AND owner_id IS NULL', [unclaimed.id, other])
       await claim.query('COMMIT')
       await claim.query('BEGIN')
-      assert.equal((await evaluateTrustedShortcut(claim, otherCurrent.id, { userId: other, emailVerified: true }, 95)).priorApprovals, 2)
+      assert.equal((await evaluateTrustedShortcut(claim, otherCurrent.id, { userId: other, identityId: otherIdentity, verifiedEmail: 'trust@example.invalid', emailVerified: true }, 95)).priorApprovals, 2)
       await claim.query('COMMIT')
     } finally { claim.release() }
   } finally { await pool.end() }
