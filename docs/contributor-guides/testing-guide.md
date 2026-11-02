@@ -110,6 +110,8 @@ transactions, use a separate empty disposable PostGIS database with the
 `idea_map_test_` prefix and run `pnpm --filter @idea-map/server test:moderation-jobs`.
 For the worker integration check, migrate a different disposable database,
 set `TEST_DATABASE_URL`, and run `pnpm --filter @idea-map/worker test:integration`.
+The worker integration test also checks recovery with fake queue responses,
+including inaccessible queues, timeouts, concurrent recovery, and active leases.
 These tests use synthetic assessments and injected authentication and policy;
 they do not validate live provider permissions or authorize publication.
 
