@@ -54,7 +54,8 @@ export async function withVerifiedModerator<T>(databaseUrl: string, projectId: s
   if (session.state !== 'verified') return session
   const client = await runtimeDatabasePool(databaseUrl).connect()
   try {
-    await client.query('BEGIN')
+    // Review actions recheck the current revision after waiting for its lock.
+    await client.query('BEGIN ISOLATION LEVEL READ COMMITTED')
     const result = await client.query<{ user_id: string | null }>(
       'SELECT public.lock_active_moderator($1, $2) AS user_id', [`firebase:${projectId}`, session.uid])
     const userId = result.rows[0]?.user_id

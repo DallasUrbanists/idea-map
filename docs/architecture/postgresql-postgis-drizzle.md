@@ -301,3 +301,25 @@ For more background on data and publication, you can read these references:
 [accounts and guest submissions](https://github.com/DallasUrbanists/idea-map/wiki/Accounts-and-Guest-Submissions),
 [moderation and publication](https://github.com/DallasUrbanists/idea-map/wiki/Moderation-and-Publication),
 [background jobs](https://github.com/DallasUrbanists/idea-map/wiki/Background-Jobs-and-Enrichment).
+
+### Moderator holds
+
+The server-only moderator hold primitive checks the current database assignment
+and locks the idea and revision before checking the moderator's assessment
+snapshot. It records the actor, time, and reason for placing and releasing a
+hold. Publication checks active holds after taking the same idea lock. A hold
+is separate from other review blocks, so releasing it cannot resolve a rejection
+or request for changes. Opening a review does not create a hold.
+Assessment, review, and job transactions explicitly use PostgreSQL READ
+COMMITTED isolation so a recheck sees changes committed while waiting for locks.
+
+This primitive does not expose moderator controls or grant database permissions.
+Do not enable it for live data until review access, reason handling, privacy,
+90-day audit retention, legal holds, deletion, and recovery are implemented and
+reviewed. Do not put contacts, raw content, or provider payloads in a reason.
+The migration adds a separate table and leaves existing review blocks intact.
+Before a rollback to code that does not check this table, disable timed
+publication and preserve hold records for review.
+Releasing a hold does not itself rearm an exhausted delivery; an authorized
+operator must inspect and recover the durable job using the
+[outbox recovery procedure](#outbox-recovery).

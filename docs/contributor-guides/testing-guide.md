@@ -163,6 +163,11 @@ The test enables the endpoint only for its synthetic server and uses a restricte
 test database role. It does not authorize live claims or validate hosted
 permissions.
 
+For the server-only moderator hold primitive and publication races, run
+`pnpm --filter @idea-map/server test:moderator-holds` with `TEST_DATABASE_URL`
+set to a fresh disposable PostGIS database. The test uses synthetic moderator
+identities; it does not enable moderator controls or grant live permissions.
+
 To exercise the built webhook endpoint against a disposable local database, set
 `TEST_DATABASE_URL` to a migrated `idea_map_test_` database on `127.0.0.1`, run
 `pnpm build`, and then run `pnpm test:webhook`. The test uses a synthetic webhook
