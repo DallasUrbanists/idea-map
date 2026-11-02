@@ -13,7 +13,7 @@ test('production server renders, responds safely, and keeps private config priva
   await new Promise((resolve) => probe.close(resolve));
   const secret = 'test-private-runtime-value-847329';
   const server = spawn(process.execPath, ['apps/web/.output/server/index.mjs'], {
-    env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), NUXT_API_SECRET: secret, NUXT_DATABASE_URL: '', NUXT_APPROVED_MEDIA_BUCKET: '', NUXT_PENDING_MEDIA_BUCKET: '', NUXT_RESEND_WEBHOOK_SECRET: '' },
+    env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), NUXT_API_SECRET: secret, NUXT_DATABASE_URL: '', NUXT_APPROVED_MEDIA_BUCKET: '', NUXT_PENDING_MEDIA_BUCKET: '', NUXT_RESEND_WEBHOOK_SECRET: '', NUXT_MODERATION_REVIEW_ENABLED: 'false' },
     stdio: 'ignore',
   });
   const base = 'http://127.0.0.1:' + port;
@@ -62,6 +62,9 @@ test('production server renders, responds safely, and keeps private config priva
     assert.equal(preview.status, 503);
     assert.equal(preview.headers.get('cache-control'), 'private, no-store');
     assert.equal((await fetch(base + '/api/media/not-an-id')).status, 404);
+    const review = await fetch(base + '/api/moderation/revisions/11111111-1111-4111-8111-111111111111');
+    assert.equal(review.status, 404);
+    assert.match(review.headers.get('cache-control'), /no-store/);
     assert.equal((await fetch(base + '/api/webhooks/resend', { method: 'POST' })).status, 503);
     const page = await fetch(base + '/suggestion/missing');
     assert.equal(page.status, 404);

@@ -16,7 +16,7 @@ const { initializeApp, deleteApp } = webRequire('firebase-admin/app')
 const { getAuth } = webRequire('firebase-admin/auth')
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
-test('moderator status verifies emulator sessions and current database roles', { timeout: 30000 }, async () => {
+test('moderator status and private review verify emulator sessions and current database roles', { timeout: 30000 }, async () => {
   const probe = createServer()
   await new Promise((resolve, reject) => probe.once('error', reject).listen(0, '127.0.0.1', resolve))
   const port = probe.address().port
@@ -38,11 +38,15 @@ test('moderator status verifies emulator sessions and current database roles', {
     roleCreated = true
     await pool.query(`GRANT USAGE ON SCHEMA public TO "${role}"`)
     await pool.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text) TO "${role}"`)
+    await pool.query(`GRANT EXECUTE ON FUNCTION public.read_moderator_revision(text,text,uuid) TO "${role}"`)
+    const contact = (await pool.query("INSERT INTO contacts(normalized_email) VALUES ('private-contact@example.invalid') RETURNING id")).rows[0].id
+    const idea = (await pool.query('INSERT INTO ideas(author_contact_id) VALUES ($1) RETURNING id', [contact])).rows[0].id
+    const revision = (await pool.query("INSERT INTO idea_revisions(idea_id,version,content) VALUES ($1,1,'{\"text\":\"synthetic pending content\"}') RETURNING id", [idea])).rows[0].id
     const runtimeUrl = new URL(url)
     runtimeUrl.searchParams.set('options', `-c role=${role}`)
     server = spawn(process.execPath, ['apps/web/.output/server/index.mjs'], {
       env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), NUXT_SESSION_ORIGIN: base,
-        NUXT_FIREBASE_PROJECT_ID: project, NUXT_DATABASE_URL: runtimeUrl.toString() }, stdio: 'ignore',
+        NUXT_FIREBASE_PROJECT_ID: project, NUXT_DATABASE_URL: runtimeUrl.toString(), NUXT_MODERATION_REVIEW_ENABLED: 'true' }, stdio: 'ignore',
     })
     exited = new Promise(resolve => server.once('exit', resolve))
     let ready = false
@@ -72,8 +76,11 @@ test('moderator status verifies emulator sessions and current database roles', {
     assert.equal(login.status, 200)
     let cookie = login.headers.get('set-cookie').split(';')[0]
     const status = (value = cookie) => fetch(`${base}/api/moderation/status`, { headers: { cookie: value } })
+    const review = (id = revision, value = cookie) => fetch(`${base}/api/moderation/revisions/${id}`, { headers: { cookie: value } })
     assert.equal((await status('__session=forged')).status, 401)
     assert.equal((await status()).status, 403)
+    assert.equal((await review(revision, '__session=forged')).status, 401)
+    assert.equal((await review()).status, 403)
     assert.equal((await fetch(`${base}/api/moderation/status`, { headers: { cookie, 'x-role': 'moderator', 'x-user-id': 'forged' } })).status, 403)
     const user = (await pool.query('INSERT INTO users DEFAULT VALUES RETURNING id')).rows[0].id
     const actor = (await pool.query('INSERT INTO users DEFAULT VALUES RETURNING id')).rows[0].id
@@ -83,6 +90,15 @@ test('moderator status verifies emulator sessions and current database roles', {
     assert.equal(allowed.status, 200)
     assert.match(allowed.headers.get('cache-control'), /private.*no-store/)
     assert.deepEqual(await allowed.json(), { moderator: true })
+    const privateReview = await review()
+    assert.equal(privateReview.status, 200)
+    assert.match(privateReview.headers.get('cache-control'), /private.*no-store/)
+    const reviewed = await privateReview.text()
+    assert.equal(reviewed.includes('private-contact@example.invalid'), false)
+    assert.deepEqual(JSON.parse(reviewed).content, { text: 'synthetic pending content' })
+    const next = (await pool.query("INSERT INTO idea_revisions(idea_id,version,content) VALUES ($1,2,'{\"text\":\"new synthetic content\"}') RETURNING id", [idea])).rows[0].id
+    assert.equal((await review()).status, 404)
+    assert.deepEqual((await (await review(next)).json()).content, { text: 'new synthetic content' })
     assert.equal((await fetch(`${base}/api/moderation/status`, { method: 'POST', headers: { cookie } })).status, 403)
     await auth.updateUser(uid, { emailVerified: false })
     assert.ok([401, 403].includes((await status()).status))
@@ -98,6 +114,7 @@ test('moderator status verifies emulator sessions and current database roles', {
     assert.equal((await status()).status, 200)
     await pool.query("UPDATE moderator_assignments SET revoked_at=now(), revoked_by=$2, revoke_reason='synthetic revocation' WHERE id=$1", [assignment, actor])
     assert.equal((await status()).status, 403)
+    assert.equal((await review(next)).status, 403)
     await pool.query("INSERT INTO moderator_assignments(user_id,granted_by,grant_reason) VALUES ($1,$2,'synthetic regrant')", [user, actor])
     await auth.updateUser(uid, { disabled: true })
     assert.equal((await status()).status, 401)

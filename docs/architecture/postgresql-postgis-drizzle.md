@@ -377,6 +377,18 @@ including other applicable holds, authority records, backups, and restore safety
 before live use. Do not grant live access or schedule retention based on these
 tests alone.
 
+### Private moderator review
+
+The default-disabled private review endpoint reads one current pending revision
+after checking the registered identity and active moderator assignment. It
+returns submitted revision content, the current assessment identity and timing,
+and counts of active review blocks; it excludes contact and ownership records.
+The database function and endpoint do not grant live access. Content larger than
+256 KiB is unavailable through this endpoint until a bounded review process is
+implemented. It does not expose private media, review controls, a queue, or
+notifications. Complete those paths, privacy and access controls, and rollout
+review before enabling it. Responses and errors use `private, no-store`.
+
 ### Manual moderator approval
 
 An authorized moderator can also manually approve the exact current revision

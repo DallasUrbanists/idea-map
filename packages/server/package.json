@@ -44,6 +44,7 @@
     "test:cloud-tasks": "tsc --build && node --test test/cloud-tasks.test.mjs",
     "test:database": "node --test test/database.test.mjs",
     "test:legal-disposition": "tsc --build && node --test test/legal-disposition.test.mjs",
-    "test:moderator-manual-approval": "tsc --build && node --test test/moderator-manual-approval.test.mjs"
+    "test:moderator-manual-approval": "tsc --build && node --test test/moderator-manual-approval.test.mjs",
+    "test:moderator-review": "tsc --build && node --test test/moderator-review.test.mjs"
   }
 }
