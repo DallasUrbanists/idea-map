@@ -1,0 +1,71 @@
+name: Moderation foundation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgis/postgis:17-3.6
+        env:
+          POSTGRES_USER: idea_map
+          POSTGRES_PASSWORD: local-only
+          POSTGRES_DB: idea_map_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U idea_map -d idea_map_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Workspace checks
+        run: |
+          pnpm lint
+          pnpm test
+          pnpm typecheck
+          pnpm build
+          pnpm test:web
+      - name: Provider-fake and authentication checks
+        run: |
+          pnpm --filter @idea-map/server test:cloud-tasks
+          pnpm --filter @idea-map/worker test
+      - name: Create disposable test databases
+        run: |
+          docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_outbox
+          docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderation
+          docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_history
+          docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_worker
+      - name: Outbox transactions
+        env:
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_outbox
+        run: pnpm --filter @idea-map/server test:outbox
+      - name: Moderation transactions
+        env:
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_moderation
+        run: pnpm --filter @idea-map/server test:moderation-jobs
+      - name: Approval history
+        env:
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_history
+        run: pnpm --filter @idea-map/server test:approval-history
+      - name: Migrate worker test database
+        env:
+          DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_worker
+        run: pnpm --filter @idea-map/server db:migrate
+      - name: Worker integration
+        env:
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_worker
+        run: pnpm --filter @idea-map/worker test:integration
