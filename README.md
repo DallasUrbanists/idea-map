@@ -3,14 +3,17 @@
 A place to share and explore ideas for improving our communities.
 
 Want to help? Start with the [contributing guide](CONTRIBUTING.md).
-The [wiki](https://github.com/DallasUrbanists/idea-map/wiki) explains the project
-and its plans.
+The [documentation index](docs/README.md) covers user guidance, contributor
+instructions, architecture, and policies.
 
 ## Learn more
 
-- [Architecture and technology decisions](https://github.com/DallasUrbanists/idea-map/wiki/Architecture-and-Technology-Decisions)
-- [API contracts and authorization](docs/api-contracts.md)
-- [Design system and Storybook](https://github.com/DallasUrbanists/idea-map/wiki/Design-System-and-Storybook)
-- [Workspace dependencies](docs/workspace-dependencies.md)
-- [Releases](docs/releases.md)
-- [Infrastructure setup](docs/terraform-foundation.md)
+The following documents explain the project:
+
+- [Architecture overview](docs/architecture/architecture-overview.md)
+- [Development guide](docs/contributor-guides/development-guide.md)
+- [Design system](docs/design/design-system.md)
+- [API policy](docs/policies/api-policy.md)
+- [Privacy Policy](docs/policies/privacy-policy.md)
+- [Terms of Use](docs/policies/terms-of-use-policy.md)
+- [Release procedure](docs/policies/release-procedure.md)

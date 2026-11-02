@@ -26,9 +26,9 @@ content security and untrusted-input resource limits; impose size limits at the
 server boundary.
 
 The sample fixture is original synthetic geometry and uses no third-party assets.
-This minimal contract does not claim v1 geometry cleanup, labels, rail catalog,
-artwork or raster preview parity. Those features and provenance/license audits
-belong to subsequent issues. Keep the package's source and tests independent of
-workspace app imports to support a future standalone repository; publishing and
-release automation require separate authorization. After the root build, run
+The application owns geometry acquisition, labels, asset permissions, and raster
+previews around the core renderer; the [renderer inputs](../../docs/architecture/architecture-overview.md#workspace-boundaries)
+remain provider independent. Keep the package's source and tests independent of
+workspace app imports to preserve package independence; publishing and release automation require
+separate authorization. After the root build, run
 `pnpm --filter @idea-map/street-renderer test` for the focused checks.
