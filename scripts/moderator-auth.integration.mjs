@@ -115,9 +115,11 @@ test('moderator review and actions verify emulator sessions, authorization and r
     assert.deepEqual((await (await review(next)).json()).content, { text: 'new synthetic content' })
     const nextDecision = { ...decision, revisionId: next }
     assert.equal((await action({ ...nextDecision, action: 'place-hold' })).status, 200)
-    assert.equal((await (await review(next)).json()).activeHoldCount, 1)
+    const heldReview = await (await review(next)).json()
+    assert.equal(heldReview.activeHoldCount, 1)
+    assert.equal(heldReview.activeHolds[0].reason, 'synthetic review')
     assert.equal((await action(nextDecision)).status, 409)
-    const holdId = (await pool.query('SELECT id FROM moderator_holds WHERE revision_id=$1 AND released_at IS NULL', [next])).rows[0].id
+    const holdId = heldReview.activeHolds[0].id
     assert.equal((await action({ ...nextDecision, action: 'release-hold', holdId })).status, 200)
     assert.equal((await action({ ...nextDecision, action: 'release-hold', holdId })).status, 409)
     assert.equal((await action({ ...nextDecision, action: 'request-changes' })).status, 200)
@@ -125,7 +127,10 @@ test('moderator review and actions verify emulator sessions, authorization and r
     assert.equal(blocked.status, 409)
     assert.match(blocked.headers.get('cache-control'), /private.*no-store/)
     assert.deepEqual(await blocked.json(), { outcome: 'blocked' })
-    const requestId = (await pool.query('SELECT id FROM moderator_change_requests WHERE idea_id=$1 AND resolved_at IS NULL', [idea])).rows[0].id
+    const changeReview = await (await review(next)).json()
+    assert.equal(changeReview.activeChangeRequestCount, 1)
+    assert.equal(changeReview.activeChangeRequests[0].reason, 'synthetic review')
+    const requestId = changeReview.activeChangeRequests[0].id
     assert.equal((await action({ ...nextDecision, action: 'resolve-changes', requestId })).status, 200)
     const approved = await action(nextDecision)
     assert.equal(approved.status, 200)
