@@ -39,6 +39,14 @@ Build it from the repository root with:
 docker build -f Dockerfile.worker -t idea-map-worker:local .
 ```
 
+For a build behind an HTTPS proxy with a custom CA, pass the CA as a BuildKit
+secret; it is mounted only during dependency installation:
+
+```sh
+docker build --secret id=proxy_ca,src="$CODEX_PROXY_CERT" -f Dockerfile.worker -t idea-map-worker:local .
+```
+
+Use your environment’s CA file in place of `CODEX_PROXY_CERT` when applicable.
 The image does not configure identities, secrets, queues, or a scheduler. The
 [Google Cloud guide](google-cloud.md#tasks-and-reconciliation) describes the
 required environment and the gates on using the worker. A local image build is

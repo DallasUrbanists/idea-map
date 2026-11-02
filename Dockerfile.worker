@@ -1,8 +1,14 @@
 FROM node:24.22.1-trixie-slim AS build
 WORKDIR /app
-RUN corepack enable && corepack prepare pnpm@11.25.0 --activate
+RUN --mount=type=secret,id=proxy_ca \
+    export NODE_USE_ENV_PROXY=1 \
+    && if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi \
+    && corepack enable && corepack prepare pnpm@11.25.0 --activate
 COPY . .
-RUN pnpm install --frozen-lockfile --filter @idea-map/worker... --filter idea-map \
+RUN --mount=type=secret,id=proxy_ca \
+    export NODE_USE_ENV_PROXY=1 \
+    && if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi \
+    && pnpm install --frozen-lockfile --filter @idea-map/worker... --filter idea-map \
     && pnpm exec tsc --build apps/worker \
     && pnpm --filter @idea-map/worker deploy --prod --legacy /worker \
     && test -f /worker/dist/index.js \
