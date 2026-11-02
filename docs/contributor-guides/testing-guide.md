@@ -13,6 +13,7 @@ covers wording changes; code changes need the checks relevant to their behavior.
 The following contents links navigate within this guide:
 
 - [Everyday checks](#everyday-checks)
+- [Offline provider fixtures](#offline-provider-fixtures)
 - [Package tests](#package-tests)
 - [Database tests](#database-tests)
 - [UI changes](#ui-changes)
@@ -56,6 +57,35 @@ synthetic outbox, moderation, approval-history, and worker checks on pull
 requests, including forks. It uses a disposable PostGIS service and requires no
 hosted credentials. It does not test real moderation authorization or enable
 automatic publication.
+
+## Offline provider fixtures
+
+You can exercise the existing Streetmix, email, and task-dispatch interfaces with
+in-memory synthetic adapters without provider credentials or services. After the
+one-time setup, build the packages and run the demonstration from the repository
+root:
+
+```sh
+pnpm exec tsc --build
+node scripts/provider-fixtures-demo.mjs --mode=offline
+```
+
+The output identifies the offline design provider, accepted fake email, and
+in-memory task. No email is sent, and tasks are not executed. The adapters exist
+only for the calling process and disappear when it exits. `pnpm test` checks
+that their selection and the existing interfaces behave as expected.
+
+Code using `selectFixtureProvider` must explicitly choose `offline` or `provider`
+and supply the corresponding factory. An unavailable or failing factory does not
+fall back to the other mode. The demonstration supplies only offline factories;
+`--mode=provider` fails because it has no real adapters. A separate caller may
+supply its own explicitly configured provider adapter and is responsible for
+credentials, authorization, and provider data handling.
+
+These fixtures do not configure the running application or worker, validate a
+real provider, or implement map, Gemini, boundary, or representative adapters.
+Browse, submission, and end-to-end job workflows need their own integrations
+before contributors can exercise them through the application.
 
 ## Package tests
 
@@ -434,7 +464,13 @@ You can run the automated server and browser checks during the same session:
     [everyday checks section](#everyday-checks).
 
 The tests start temporary web servers on free ports, create synthetic accounts,
-and stop their servers when finished. Playwright's clock advances the renewal
+attempt to delete their accounts even if an assertion fails, and stop their
+servers when finished. Cleanup uses captured account tokens against the local Auth
+emulator; it does not clear other accounts. If a response cannot be captured or
+cleanup fails, a test account may remain until the emulator is stopped, and the
+test reports the failure. The server check uses a synthetic Google credential;
+the browser check separately exercises the Google popup. Neither validates a real
+Google provider. Playwright's clock advances the renewal
 and retry timers. The tests set up demo credentials automatically. You do not
 need shell variable assignments, and the tests do not read credentials from your
 `.env`.
