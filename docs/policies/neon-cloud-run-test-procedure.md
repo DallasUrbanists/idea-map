@@ -9,6 +9,7 @@ The service does not replace the Cloud SQL-backed
 The following contents links navigate within this guide:
 
 - [Resources and prerequisites](#resources-and-prerequisites)
+- [Reuse the test service](#reuse-the-test-service)
 - [Prepare the test service](#prepare-the-test-service)
 - [Measure and finish](#measure-and-finish)
 
@@ -33,22 +34,44 @@ The test service keeps CPU allocated for each instance's lifetime. Zero minimum
 instances does not mean immediate scale-down; an instance can remain running
 after a request finishes.
 
-Operators need the pinned tools in the [development guide](../contributor-guides/development-guide.md),
-Terraform 1.13 through 1.x, Google Cloud CLI credentials and Application Default
-Credentials with access to the development project. Operators also need access
-to the existing staging build identity, Artifact Registry and versioned
-Terraform state bucket, plus permission to inspect and plan the isolated test
-resources. Builds, secret creation, IAM grants, provisioning, deployment, and
-load tests require explicit authorization and a reviewed target and test limits.
+To invoke an existing test service, operators need its URL and Google Cloud CLI
+credentials for an authorized Cloud Run invoker. Inspecting the service and
+database configuration and confirming cold starts or connection capacity also
+requires read access to the relevant Cloud Run and Neon resources and metrics,
+or help from an operator with that access. The invoker does not need the runtime
+database password or permission to change the infrastructure.
 
-Use an empty, disposable Neon database named `idea_map_test_cloudrun`, separate
-from the long-lived development database, with synthetic data only. Its
-dedicated pooled runtime role needs the same column-level grants as the web
-query and a separate credential from the long-lived development role. The
-migration role needs a direct connection. Do not load the
-[`ssr-fixture.sql`](../../packages/server/test/ssr-fixture.sql) fixture into the
-long-lived database. The [database guide](../architecture/postgresql-postgis-drizzle.md#database-verification)
+Operators preparing or changing resources also need the pinned tools in the
+[development guide](../contributor-guides/development-guide.md), Terraform 1.13
+through 1.x, and Application Default Credentials with access to the development
+project. They also need access to the staging build identity, Artifact Registry,
+and versioned Terraform state bucket, plus permission to inspect and plan the
+isolated test resources. Builds, secret creation, IAM grants, provisioning,
+deployment, and load tests require explicit authorization and a reviewed target
+and test limits.
+
+For a new setup, use an empty, disposable Neon database named
+`idea_map_test_cloudrun`, separate from the long-lived development database,
+with synthetic data only. Its dedicated pooled runtime role needs the same
+column-level grants as the web query and a separate credential from the
+long-lived development role. The migration role needs a direct connection. Do
+not load the [`ssr-fixture.sql`](../../packages/server/test/ssr-fixture.sql)
+fixture into the long-lived database. The
+[database guide](../architecture/postgresql-postgis-drizzle.md#database-verification)
 describes the test database boundary.
+
+## Reuse the test service
+
+Before testing, operators should inspect the existing service and database and
+confirm that they are the intended isolated resources with synthetic fixtures,
+the expected image, scale settings, and authorized invoker access. If they match
+the test, proceed to [measure and finish](#measure-and-finish) without recreating
+the database or role, reloading fixtures, or resetting credentials.
+
+If the resources are missing, follow [prepare the test service](#prepare-the-test-service).
+If the image or configuration needs to change, review and authorize the necessary
+build or infrastructure plan before applying it. The grant script deliberately
+refuses to change an existing role; do not bypass its guard to reuse the service.
 
 ## Prepare the test service
 
