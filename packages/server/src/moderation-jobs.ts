@@ -103,7 +103,8 @@ export async function executeModerationJob(pool: pg.Pool, jobId: string, policy:
     if (result.rows[0].blocked) throw new Error('Moderation is on hold')
     // Query after acquiring the idea lock so a hold committed while this job
     // waited is visible under READ COMMITTED. Other review blocks remain separate.
-    const hold = await client.query('SELECT 1 FROM moderator_holds WHERE revision_id = $1 AND released_at IS NULL', [job.revisionId])
+    const hold = await client.query(`SELECT 1 FROM moderator_holds h JOIN idea_revisions r ON r.id = h.revision_id
+      WHERE r.idea_id = $1 AND h.released_at IS NULL`, [result.rows[0].idea_id])
     if (hold.rowCount) throw new Error('Moderation is on hold')
     const decision = await policy(client, job)
     if (decision === 'retry') throw new Error('Moderation eligibility is unavailable')
