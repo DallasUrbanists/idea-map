@@ -195,6 +195,16 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_moderator_emulator
         run: pnpm test:moderator-auth
+      - name: Prepare moderator screen test database
+        run: docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderator_screen
+      - name: Migrate moderator screen test database
+        env:
+          DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_moderator_screen
+        run: pnpm --filter @idea-map/server db:migrate
+      - name: Verify moderator screen end to end
+        env:
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_moderator_screen
+        run: CHROME_PATH="$(command -v google-chrome || command -v chromium)" pnpm test:moderation-ui-integration
       - name: Prepare ownership test database
         run: docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_ownership_emulator
       - name: Migrate ownership test database

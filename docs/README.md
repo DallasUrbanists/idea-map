@@ -37,6 +37,7 @@ Use these procedures to reproduce focused evaluations and review their evidence:
 | --- | --- |
 | [Compliance-scoring evaluation](test-procedures/compliance-scoring-evaluation.md) | Reproduce the offline scoring experiment and review its limits |
 | [Task-delivery staging](test-procedures/task-delivery-staging.md) | Review synthetic evidence in an isolated delivery environment |
+| [Local moderator review](test-procedures/moderator-review-local.md) | Test the private review screen with disposable local services |
 
 ## User guides
 
