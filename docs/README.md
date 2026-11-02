@@ -24,6 +24,7 @@ for project work:
 | [Agent operating guide](../AGENTS.md) | Shared rules for coding agents working on the project |
 | [Development guide](contributor-guides/development-guide.md) | Setup, configuration, native/container sessions, shutdown, and troubleshooting |
 | [Testing guide](contributor-guides/testing-guide.md) | Required checks, package/database tests, and manual/automated authentication checks |
+| [Compliance-scoring evaluation](contributor-guides/compliance-scoring-evaluation.md) | Reproduce the offline scoring experiment and review its limits |
 | [SSR staging guide](contributor-guides/ssr-staging.md) | Operate and validate the isolated server-rendering staging environment |
 | [Pull-request review guide](contributor-guides/pull-request-review-guide.md) | Check behavior, documentation, and evidence, and leave actionable feedback |
 | [Documentation style guide](contributor-guides/documentation-style-guide.md) | Mandatory writing rules, audience boundaries, and documentation review |
