@@ -163,6 +163,15 @@ The test enables the endpoint only for its synthetic server and uses a restricte
 test database role. It does not authorize live claims or validate hosted
 permissions.
 
+For the default-disabled guest verification page, build the app, migrate a fresh
+local `idea_map_test_` PostGIS database, set `TEST_DATABASE_URL` to it, and run
+`CHROME_PATH=/usr/bin/chromium pnpm test:guest-verification-ui` from the
+repository root. Set `CHROME_PATH` to your local Chrome or Chromium executable if
+different. The test uses a synthetic proof and restricted database role; it sends
+no email, grants no ownership, and does not validate live provider access. Stop
+only the local services started for the test and remove only the disposable
+database you created.
+
 For the server-only moderator hold primitive and publication races, run
 `pnpm --filter @idea-map/server test:moderator-holds` with `TEST_DATABASE_URL`
 set to a fresh disposable PostGIS database. The test uses synthetic moderator

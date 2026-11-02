@@ -32,7 +32,8 @@
     "dev:stop": "node scripts/dev-services.mjs stop",
     "changeset": "changeset",
     "release:status": "changeset status",
-    "test:moderation-ui-integration": "node --test scripts/moderator-screen.integration.mjs"
+    "test:moderation-ui-integration": "node --test scripts/moderator-screen.integration.mjs",
+    "test:guest-verification-ui": "node --test scripts/guest-verification.integration.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "3.0.3",
