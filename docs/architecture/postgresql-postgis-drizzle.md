@@ -377,6 +377,19 @@ including other applicable holds, authority records, backups, and restore safety
 before live use. Do not grant live access or schedule retention based on these
 tests alone.
 
+### Manual moderator approval
+
+An authorized moderator can also manually approve the exact current revision
+and the assessment visible at review, including a revision with no assessment.
+The transaction verifies the current moderator, checks for independent review
+blocks and unresolved holds or change requests, and writes the approval event,
+approved revision, durable approval record, and projection intent atomically.
+This is a manual decision, not an accepted scoring method or an automatic
+publication path. The primitive grants no live permissions and exposes no
+interface. Projection delivery, private review access, media checks, retention,
+and rollout controls must be completed before live use. All writers of review
+blocks and revisions must use the same idea lock.
+
 ### Moderator rejection
 
 A server-verified moderator can reject the current pending revision against the
