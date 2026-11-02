@@ -393,9 +393,10 @@ implemented. A separate private queue lists at most 50 current pending revision
 identifiers per page in creation order, without content or contact data; it does
 not yet prioritize risk flags. Queue results are snapshots and the revision
 read and actions recheck current state. The reviewer screen can inspect content,
-place or release holds, and request or resolve changes; it deliberately cannot
+place or release holds, request or resolve changes, and assign or transfer an
+escalation; it deliberately cannot
 approve or reject while media review is unavailable. Private media, full
-decision and escalation controls, notifications, load limits, privacy controls,
+decision controls, notifications, load limits, privacy controls,
 and rollout review remain open. Responses and errors use `private, no-store`.
 
 The separately default-disabled action endpoint accepts manual approval,
@@ -467,8 +468,14 @@ escalation remains a hold across later edits and when the owner's assignment is
 revoked; it must be explicitly released. It does not clear or replace an
 ordinary hold. The private review response includes the current owner's internal
 user ID; it does not prove the owner can still sign in.
-Notifications and a usable interface remain open. Do not enable live
-escalations until those processes and privacy controls are reviewed.
+Notifications and human-readable moderator identification remain open. Do not
+enable live escalations until those processes and privacy controls are reviewed.
+
+The private owner selector lists only active database moderator IDs and marks
+the current user; it does not disclose contact records. More than 100 active
+assignments fail closed pending a paginated selection procedure. Assignment and
+transfer recheck the chosen role in the decision transaction. An active role
+alone does not show that the selected person can sign in or receive notice.
 
 The migration preserves existing holds as ordinary holds and replaces their
 partial uniqueness index. Older code that expects the prior index cannot place

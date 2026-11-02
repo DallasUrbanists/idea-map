@@ -17,7 +17,7 @@ const { getAuth } = webRequire('firebase-admin/auth')
 const { chromium } = webRequire('@playwright/test')
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
-test('browser, authenticated endpoints and database compose for private moderator holds and change requests', { timeout: 60000 }, async () => {
+test('browser, authenticated endpoints and database compose for moderator holds, changes and escalation handoff', { timeout: 60000 }, async () => {
   const probe = createServer()
   await new Promise((resolve, reject) => probe.once('error', reject).listen(0, '127.0.0.1', resolve))
   const port = probe.address().port
@@ -39,7 +39,7 @@ test('browser, authenticated endpoints and database compose for private moderato
     await pool.query(`CREATE ROLE "${role}" NOLOGIN`)
     roleCreated = true
     await pool.query(`GRANT USAGE ON SCHEMA public TO "${role}"`)
-    await pool.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text), public.list_moderator_queue(text,text,timestamptz,uuid), public.read_moderator_revision(text,text,uuid), public.apply_moderator_hold(text,text,text,uuid,text,uuid,text), public.apply_moderator_change_request(text,text,text,uuid,text,uuid,text) TO "${role}"`)
+    await pool.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text), public.list_moderator_queue(text,text,timestamptz,uuid), public.read_moderator_revision(text,text,uuid), public.list_moderator_owners(text,text), public.apply_moderator_hold(text,text,text,uuid,text,uuid,text), public.apply_moderator_change_request(text,text,text,uuid,text,uuid,text), public.escalate_moderation_revision(text,text,uuid,text,uuid,text), public.transfer_moderator_escalation(text,text,uuid,uuid,text,integer,uuid,text) TO "${role}"`)
     const runtimeUrl = new URL(url)
     runtimeUrl.searchParams.set('options', `-c role=${role}`)
     server = spawn(process.execPath, ['apps/web/.output/server/index.mjs'], {
@@ -71,6 +71,8 @@ test('browser, authenticated endpoints and database compose for private moderato
     const user = (await pool.query('INSERT INTO users DEFAULT VALUES RETURNING id')).rows[0].id
     await pool.query("INSERT INTO identities(user_id,provider,subject) VALUES ($1,'firebase:demo-idea-map',$2)", [user, uid])
     const assignment = (await pool.query("INSERT INTO moderator_assignments(user_id,granted_by,grant_reason) VALUES ($1,$1,'synthetic') RETURNING id", [user])).rows[0].id
+    const successor = (await pool.query('INSERT INTO users DEFAULT VALUES RETURNING id')).rows[0].id
+    await pool.query("INSERT INTO moderator_assignments(user_id,granted_by,grant_reason) VALUES ($1,$2,'synthetic successor')", [successor, user])
     const contact = (await pool.query("INSERT INTO contacts(normalized_email) VALUES ('private-screen@example.invalid') RETURNING id")).rows[0].id
     const idea = (await pool.query('INSERT INTO ideas(author_contact_id) VALUES ($1) RETURNING id', [contact])).rows[0].id
     const revision = (await pool.query("INSERT INTO idea_revisions(idea_id,version,content) VALUES ($1,1,'{\"text\":\"synthetic screen content\"}') RETURNING id", [idea])).rows[0].id
@@ -105,6 +107,26 @@ test('browser, authenticated endpoints and database compose for private moderato
     await page.getByLabel('Action').selectOption('resolve-changes')
     await page.getByLabel('Change request to resolve').selectOption({ label: 'Synthetic requested change' })
     await reason().fill('Synthetic change resolved')
+    await submit()
+    await waitRecorded()
+    await open()
+    await page.getByLabel('Action').selectOption('escalate')
+    await page.getByLabel('Moderator').selectOption(user)
+    await reason().fill('Synthetic escalation')
+    await submit()
+    await waitRecorded()
+    await open()
+    await page.getByLabel('Action').selectOption('transfer-escalation')
+    await page.getByLabel('Escalation to transfer').selectOption({ label: 'Synthetic escalation' })
+    await page.getByLabel('Moderator').selectOption(successor)
+    await reason().fill('Synthetic handoff')
+    await submit()
+    await waitRecorded()
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM moderator_escalation_transfers WHERE owner_id=$1 AND sequence=1', [successor])).rows[0].n, 1)
+    await open()
+    await page.getByLabel('Action').selectOption('release-hold')
+    await page.getByLabel('Hold to release').selectOption({ label: 'escalation: Synthetic escalation' })
+    await reason().fill('Synthetic escalation resolved')
     await submit()
     await waitRecorded()
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM moderator_holds WHERE revision_id=$1 AND released_at IS NULL', [revision])).rows[0].n, 0)

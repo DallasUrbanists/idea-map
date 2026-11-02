@@ -52,3 +52,15 @@ export async function listModeratorQueue(databaseUrl: string, projectId: string,
     return { entries, next: result.rows.length > 50 && last ? { createdAt: last.createdAt, revisionId: last.revisionId } : null }
   })
 }
+
+/** Internal IDs only; assignment transactions independently recheck active roles. */
+export async function listModeratorOwners(databaseUrl: string, projectId: string, cookie: string, verifier: RegisteredSessionVerifier):
+  Promise<ModeratorAccess<Array<{ userId: string, isSelf: boolean }>>> {
+  return withVerifiedModerator(databaseUrl, projectId, cookie, verifier, async (client, _actor, subject) => {
+    await client.query("SET LOCAL lock_timeout = '5s'")
+    await client.query("SET LOCAL statement_timeout = '10s'")
+    const result = await client.query<{ user_id: string, is_self: boolean }>('SELECT * FROM public.list_moderator_owners($1,$2)',
+      [`firebase:${projectId}`, subject])
+    return result.rows.map(row => ({ userId: row.user_id, isSelf: row.is_self }))
+  })
+}

@@ -3,8 +3,9 @@
 Use this procedure for the synthetic moderator path prepared for issue #17. It
 runs a real local browser, web server, Firebase Auth emulator, and disposable
 PostGIS database. It does not enable live review or test automatic publication.
-The screen can place and release holds and request and resolve changes; it does
-not offer approval or rejection while private media review is unavailable.
+The screen can place and release holds, request and resolve changes, and assign
+and transfer escalations. It does not offer approval or rejection while private
+media review is unavailable.
 
 1. Follow the [development setup](../contributor-guides/development-guide.md)
    and start this checkout's services with `pnpm dev:services`. Run
@@ -25,8 +26,8 @@ not offer approval or rejection while private media review is unavailable.
    Set `CHROME_PATH` to the local Chromium or Chrome executable if it differs.
    The test creates a synthetic emulator user and a scoped database role, then
    removes those test identities. It starts and stops its own web server and
-   browser. A passing test exercises hold and change-request actions and role
-   revocation; it does not validate cloud permissions, media access, caching,
+   browser. A passing test exercises hold and change-request actions, escalation
+   handoff, and role revocation; it does not validate cloud permissions, media access, caching,
    scoring, or production readiness.
 3. When finished, verify that the named database is the disposable database you
    created for this test and that no other process is using it. Remove only that

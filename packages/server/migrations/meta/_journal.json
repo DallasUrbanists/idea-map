@@ -239,6 +239,13 @@
       "when": 1793659204916,
       "tag": "0033_moderator_review_queue",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793659758218,
+      "tag": "0034_moderator_owner_selection",
+      "breakpoints": true
     }
   ]
 }

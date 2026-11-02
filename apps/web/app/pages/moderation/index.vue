@@ -4,7 +4,7 @@ type Cursor = { revisionId: string, createdAt: string }
 type Hold = { id: string, kind: string, reason: string, ownerId: string | null, sequence: number }
 type Change = { id: string, reason: string }
 type Review = { revisionId: string, version: number, content: unknown, assessmentId: string | null, reviewState: string, activeHolds: Hold[], activeChangeRequests: Change[] }
-type Action = 'place-hold' | 'release-hold' | 'request-changes' | 'resolve-changes'
+type Action = 'place-hold' | 'release-hold' | 'request-changes' | 'resolve-changes' | 'escalate' | 'transfer-escalation'
 
 useHead({ title: 'Moderation review', meta: [{ name: 'robots', content: 'noindex, nofollow' }] })
 const entries = ref<Entry[]>([])
@@ -15,6 +15,8 @@ const message = ref('')
 const reason = ref('')
 const action = ref<Action>('place-hold')
 const target = ref('')
+const owner = ref('')
+const moderators = ref<Array<{ userId: string, isSelf: boolean }>>([])
 
 function failure(status: number): string {
   if (status === 401) return 'Sign in with your moderator account to continue.'
@@ -52,6 +54,24 @@ async function loadRevision(id: string) {
   } catch { review.value = null; reason.value = ''; target.value = ''; message.value = failure(0) }
   finally { busy.value = false }
 }
+async function changeAction() {
+  target.value = ''
+  owner.value = ''
+  moderators.value = []
+  message.value = ''
+  if (!['escalate', 'transfer-escalation'].includes(action.value)) return
+  busy.value = true
+  try {
+    const response = await fetch('/api/moderation/moderators', { cache: 'no-store' })
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) { review.value = null; entries.value = []; next.value = null }
+      message.value = failure(response.status)
+      return
+    }
+    moderators.value = (await response.json() as { moderators: Array<{ userId: string, isSelf: boolean }> }).moderators
+  } catch { message.value = failure(0) }
+  finally { busy.value = false }
+}
 async function submitAction() {
   if (busy.value || !review.value) return
   const current = review.value
@@ -59,14 +79,24 @@ async function submitAction() {
   if (!trimmed || new TextEncoder().encode(trimmed).byteLength > 1000) { message.value = 'Enter a reason of at most 1,000 bytes.'; return }
   if (action.value === 'release-hold' && !current.activeHolds.some(hold => hold.id === target.value)) { message.value = 'Select an active hold.'; return }
   if (action.value === 'resolve-changes' && !current.activeChangeRequests.some(request => request.id === target.value)) { message.value = 'Select an active change request.'; return }
-  const body: Record<string, string | null> = { action: action.value, revisionId: current.revisionId, assessmentId: current.assessmentId, reason: trimmed }
+  if (['escalate', 'transfer-escalation'].includes(action.value) && !moderators.value.some(moderator => moderator.userId === owner.value)) { message.value = 'Select a moderator.'; return }
+  const escalation = current.activeHolds.find(hold => hold.id === target.value && hold.kind === 'escalation')
+  if (action.value === 'transfer-escalation' && !escalation) { message.value = 'Select an active escalation.'; return }
+  const body: Record<string, string | number | null> = { action: action.value, revisionId: current.revisionId, assessmentId: current.assessmentId, reason: trimmed }
   if (action.value === 'release-hold') body.holdId = target.value
   if (action.value === 'resolve-changes') body.requestId = target.value
+  if (action.value === 'escalate' || action.value === 'transfer-escalation') body.ownerId = owner.value
+  if (action.value === 'transfer-escalation' && escalation) { body.holdId = escalation.id; body.expectedSequence = escalation.sequence }
   busy.value = true
   message.value = ''
   try {
     const response = await fetch('/api/moderation/actions', { method: 'POST', cache: 'no-store', headers: { 'content-type': 'application/json', 'x-idea-map-session': 'IdeaMapSession' }, body: JSON.stringify(body) })
-    if (!response.ok) { review.value = null; reason.value = ''; target.value = ''; message.value = failure(response.status); return }
+    if (!response.ok) {
+      review.value = null; reason.value = ''; target.value = ''; moderators.value = []
+      if (response.status === 401 || response.status === 403) { entries.value = []; next.value = null }
+      message.value = failure(response.status)
+      return
+    }
     review.value = null
     reason.value = ''
     target.value = ''
@@ -113,17 +143,33 @@ onMounted(() => { void loadQueue() })
       <form @submit.prevent="submitAction">
         <h3>Review action</h3>
         <label for="action">Action</label>
-        <select id="action" v-model="action" :disabled="busy" @change="target = ''">
+        <select id="action" v-model="action" :disabled="busy" @change="changeAction">
           <option value="place-hold">Place a hold</option>
           <option value="request-changes">Request changes</option>
           <option value="release-hold">Release a hold</option>
           <option value="resolve-changes">Resolve a change request</option>
+          <option value="escalate">Escalate for review</option>
+          <option value="transfer-escalation">Transfer an escalation</option>
         </select>
         <template v-if="action === 'release-hold'">
           <label for="hold">Hold to release</label>
           <select id="hold" v-model="target" :disabled="busy" required>
             <option value="">Select a hold</option>
             <option v-for="hold in review.activeHolds" :key="hold.id" :value="hold.id">{{ hold.kind }}: {{ hold.reason }}</option>
+          </select>
+        </template>
+        <template v-if="action === 'transfer-escalation'">
+          <label for="escalation">Escalation to transfer</label>
+          <select id="escalation" v-model="target" :disabled="busy" required>
+            <option value="">Select an escalation</option>
+            <option v-for="hold in review.activeHolds.filter(item => item.kind === 'escalation')" :key="hold.id" :value="hold.id">{{ hold.reason }}</option>
+          </select>
+        </template>
+        <template v-if="action === 'escalate' || action === 'transfer-escalation'">
+          <label for="owner">Moderator</label>
+          <select id="owner" v-model="owner" :disabled="busy" required>
+            <option value="">Select a moderator</option>
+            <option v-for="moderator in moderators" :key="moderator.userId" :value="moderator.userId">{{ moderator.userId }}{{ moderator.isSelf ? ' (you)' : '' }}</option>
           </select>
         </template>
         <template v-if="action === 'resolve-changes'">
