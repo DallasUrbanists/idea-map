@@ -15,12 +15,18 @@ test('fixture is deterministic and cleanup preserves unrelated or conflicting re
   try {
     const other = (await client.query("INSERT INTO contacts(normalized_email) VALUES ('unrelated@example.invalid') RETURNING id")).rows[0].id
     assert.equal(await seedLocalJobFixture(client), 'seeded')
-    const before = (await client.query("SELECT j.id,j.state,j.scheduled_at,o.published_at FROM jobs j JOIN outbox o ON o.job_id=j.id WHERE j.kind='synthetic-fixture'")).rows
+    const snapshot = () => client.query(`SELECT row_to_json(c) AS contact, row_to_json(i) AS idea, row_to_json(r) AS revision,
+      row_to_json(a) AS assessment, row_to_json(g) AS gate, row_to_json(j) AS job, row_to_json(o) AS outbox, row_to_json(e) AS marker
+      FROM contacts c JOIN ideas i ON i.author_contact_id=c.id JOIN idea_revisions r ON r.idea_id=i.id
+      JOIN revision_assessments a ON a.revision_id=r.id JOIN review_gates g ON g.revision_id=r.id
+      JOIN jobs j ON j.revision_id=r.id JOIN outbox o ON o.job_id=j.id JOIN audit_events e ON e.idea_id=i.id
+      WHERE c.id=$1`, [fixtureContact])
+    const before = (await snapshot()).rows
     assert.equal(before.length, 1)
-    assert.equal(before[0].state, 'stale')
-    assert.ok(before[0].published_at)
+    assert.equal(before[0].job.state, 'stale')
+    assert.ok(before[0].outbox.published_at)
     assert.equal(await seedLocalJobFixture(client), 'already-seeded')
-    assert.deepEqual((await client.query("SELECT j.id,j.state,j.scheduled_at,o.published_at FROM jobs j JOIN outbox o ON o.job_id=j.id WHERE j.kind='synthetic-fixture'")).rows, before)
+    assert.deepEqual((await snapshot()).rows, before)
     await client.query("UPDATE revision_assessments SET fingerprint=repeat('b',64) WHERE id='synthetic-local-job-fixture-v1'")
     await assert.rejects(cleanLocalJobFixture(client), /changed or are incomplete/)
     await client.query("UPDATE revision_assessments SET fingerprint=repeat('a',64) WHERE id='synthetic-local-job-fixture-v1'")
@@ -31,6 +37,9 @@ test('fixture is deterministic and cleanup preserves unrelated or conflicting re
     assert.equal(await cleanLocalJobFixture(client), 'cleaned')
     assert.equal(await cleanLocalJobFixture(client), 'absent')
     assert.equal((await client.query('SELECT normalized_email FROM contacts WHERE id=$1', [other])).rows[0].normalized_email, 'unrelated@example.invalid')
+    assert.equal(await seedLocalJobFixture(client), 'seeded')
+    assert.deepEqual((await snapshot()).rows, before)
+    assert.equal(await cleanLocalJobFixture(client), 'cleaned')
     await client.query("INSERT INTO contacts(id,normalized_email) VALUES ($1,'collision@example.invalid')", [fixtureContact])
     await assert.rejects(seedLocalJobFixture(client), { code: '23505' })
     assert.equal(await cleanLocalJobFixture(client), 'absent')

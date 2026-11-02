@@ -56,17 +56,17 @@ export async function seedLocalJobFixture(client) {
   return transaction(client, async () => {
     if (await hasMarker(client)) { await verifyOwnedRows(client); return 'already-seeded' }
     // Explicit IDs never overwrite an existing record; any collision rolls back.
-    await client.query("INSERT INTO contacts(id,normalized_email) VALUES ($1,'job-fixture@example.invalid')", [ids.contact])
-    await client.query('INSERT INTO ideas(id,author_contact_id) VALUES ($1,$2)', [ids.idea, ids.contact])
-    await client.query('INSERT INTO idea_revisions(id,idea_id,version,content) VALUES ($1,$2,1,$3)', [ids.revision, ids.idea, content])
+    await client.query("INSERT INTO contacts(id,normalized_email,created_at) VALUES ($1,'job-fixture@example.invalid','2026-01-01T00:00:00Z')", [ids.contact])
+    await client.query("INSERT INTO ideas(id,author_contact_id,created_at) VALUES ($1,$2,'2026-01-01T00:00:00Z')", [ids.idea, ids.contact])
+    await client.query("INSERT INTO idea_revisions(id,idea_id,version,content,created_at) VALUES ($1,$2,1,$3,'2026-01-01T00:00:00Z')", [ids.revision, ids.idea, content])
     await client.query('INSERT INTO review_gates(revision_id) VALUES ($1)', [ids.revision])
     await client.query(`INSERT INTO revision_assessments(id,revision_id,fingerprint,received_at,deadline,wait_milliseconds)
       VALUES ($1,$2,$3,'2026-01-01T00:00:00Z','2026-01-02T00:00:00Z',86400000)`, [assessment, ids.revision, 'a'.repeat(64)])
     // The fixture starts terminal and acknowledged so a repair process cannot dispatch it.
-    await client.query(`INSERT INTO jobs(id,revision_id,kind,idempotency_key,assessment_id,assessment_received_at,scheduled_at,state)
-      VALUES ($1,$2,'synthetic-fixture',$3,$3,'2026-01-01T00:00:00Z','2026-01-02T00:00:00Z','stale')`, [ids.job, ids.revision, assessment])
-    await client.query("INSERT INTO outbox(id,job_id,published_at) VALUES ($1,$2,'2026-01-01T00:00:00Z')", [ids.outbox, ids.job])
-    await client.query('INSERT INTO audit_events(id,idea_id,event_type) VALUES ($1,$2,$3)', [ids.marker, ids.idea, marker])
+    await client.query(`INSERT INTO jobs(id,revision_id,kind,idempotency_key,assessment_id,assessment_received_at,scheduled_at,state,created_at)
+      VALUES ($1,$2,'synthetic-fixture',$3,$3,'2026-01-01T00:00:00Z','2026-01-02T00:00:00Z','stale','2026-01-01T00:00:00Z')`, [ids.job, ids.revision, assessment])
+    await client.query("INSERT INTO outbox(id,job_id,published_at,created_at) VALUES ($1,$2,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')", [ids.outbox, ids.job])
+    await client.query("INSERT INTO audit_events(id,idea_id,event_type,created_at) VALUES ($1,$2,$3,'2026-01-01T00:00:00Z')", [ids.marker, ids.idea, marker])
     return 'seeded'
   })
 }
