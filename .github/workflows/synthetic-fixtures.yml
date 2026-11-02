@@ -1,0 +1,62 @@
+name: Synthetic fixtures
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  fixtures:
+    runs-on: ubuntu-latest
+    services:
+      postgis:
+        image: postgis/postgis:17-3.6
+        env:
+          POSTGRES_DB: idea_map_test_fixtures
+          POSTGRES_USER: fixture_test
+          POSTGRES_PASSWORD: fixture_test
+        ports:
+          - 54329:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U fixture_test -d idea_map_test_fixtures"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://fixture_test:fixture_test@127.0.0.1:54329/idea_map_test_fixtures
+      TEST_DATABASE_URL: postgresql://fixture_test:fixture_test@127.0.0.1:54329/idea_map_test_fixtures
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsc --build
+      - run: pnpm --filter @idea-map/server db:migrate
+      - run: pnpm test:fixtures
+      - run: pnpm --filter @idea-map/streetmix test
+      - run: pnpm --filter @idea-map/server test:resend
+      - run: pnpm --filter @idea-map/server test:cloud-tasks
+      - run: pnpm --filter @idea-map/worker test
+      - name: Create separate databases for job checks
+        run: |
+          docker exec '${{ job.services.postgis.id }}' createdb -U fixture_test idea_map_test_outbox
+          docker exec '${{ job.services.postgis.id }}' createdb -U fixture_test idea_map_test_moderation
+          docker exec '${{ job.services.postgis.id }}' createdb -U fixture_test idea_map_test_worker
+      - run: pnpm --filter @idea-map/server test:outbox
+        env:
+          TEST_DATABASE_URL: postgresql://fixture_test:fixture_test@127.0.0.1:54329/idea_map_test_outbox
+      - run: pnpm --filter @idea-map/server test:moderation-jobs
+        env:
+          TEST_DATABASE_URL: postgresql://fixture_test:fixture_test@127.0.0.1:54329/idea_map_test_moderation
+      - run: pnpm --filter @idea-map/server db:migrate
+        env:
+          DATABASE_URL: postgresql://fixture_test:fixture_test@127.0.0.1:54329/idea_map_test_worker
+      - run: pnpm --filter @idea-map/worker test:integration
+        env:
+          TEST_DATABASE_URL: postgresql://fixture_test:fixture_test@127.0.0.1:54329/idea_map_test_worker

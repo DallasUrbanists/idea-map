@@ -192,6 +192,17 @@ The check restores the synthetic idea after its withdrawal assertion. If the tes
 process is interrupted before cleanup, contributors should inspect and restore
 that fixture in the disposable test database before reusing it.
 
+To check local fixture repeatability, privacy, and cleanup, migrate a separate
+empty local `idea_map_test_*` database and set `TEST_DATABASE_URL` to its
+connection string. Run `pnpm exec tsc --build`, then `pnpm test:fixtures`. The
+check inserts synthetic records, verifies that the public reader excludes the
+private idea, and checks that cleanup refuses changes and unrelated references.
+It removes the records it creates. Use a disposable database so an interrupted
+test can be discarded safely. The synthetic fixtures CI job runs the same check
+against its own disposable PostGIS service. It also runs the existing offline
+Streetmix, email, Cloud Tasks, worker, outbox, and moderation checks using
+separate databases for the job tests.
+
 ## UI changes
 
 You should look for an existing Storybook example before adding a new one. Check

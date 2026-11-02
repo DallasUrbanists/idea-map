@@ -20,6 +20,7 @@ The following contents links navigate within this guide:
     - [Start of each work session](#start-of-each-work-session-1)
     - [End of each work session](#end-of-each-work-session-1)
 - [Ports and troubleshooting](#ports-and-troubleshooting)
+- [Local synthetic fixtures](#local-synthetic-fixtures)
 - [Authentication outside the emulator](#authentication-outside-the-emulator)
 - [Document user-facing changes](#document-user-facing-changes)
 - [Prepare and review a pull request](#prepare-and-review-a-pull-request)
@@ -282,6 +283,36 @@ cannot run these services simultaneously. The readiness command checks
 connectivity rather than migrations, application authentication or Firestore
 rules. Authentication connects to the emulator. Tests use synthetic fixtures and
 isolated provider checks to exercise application flows.
+
+## Local synthetic fixtures
+
+After starting the local database and applying migrations, you can add two
+synthetic ideas to the local `idea_map_dev` database:
+
+```sh
+pnpm dev:fixtures:seed
+```
+
+Run the command again to verify the existing fixtures. One idea and its revision
+are approved; the other is private and waiting for review. Their coordinates
+are fictional. The fixture does not implement the map, list, or submission
+workflows. Use the published idea ID `22000000-0000-4000-8000-000000000011`
+when checking the existing page at
+`/suggestion/22000000-0000-4000-8000-000000000011`.
+
+To remove only these fixtures, run:
+
+```sh
+pnpm dev:fixtures:clean
+```
+
+Both commands use `DATABASE_URL` from the shell or the root `.env`. They accept
+only loopback PostgreSQL URLs for `idea_map_dev` or `idea_map_test_*`, without
+URL options. The cleanup refuses changed or incomplete fixtures and cascading
+foreign keys to fixture tables. It rolls back if other records reference the
+fixtures. Inspect and resolve those records before retrying; the command does
+not remove the related records for you. The commands do not remove
+unrelated contacts, emulator accounts, or generated files.
 
 ## Authentication outside the emulator
 
