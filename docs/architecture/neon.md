@@ -122,7 +122,8 @@ isolated Neon database and a Cloud Run test service with synthetic data. The
 environment needs the reviewed runtime and migration roles, a migrated database,
 the intended compute and scale settings, and access to provider metrics. Never
 use production records for these checks. Provisioning, deployment, and access
-changes require separate authorization.
+changes require separate authorization. The [Neon Cloud Run test procedure](../policies/neon-cloud-run-test-procedure.md)
+explains how operators prepare and use the test service.
 
 1. Confirm the application and database regions, compute size, scale-to-zero
     settings, service revision and instance limits, and pool sizes. Record the

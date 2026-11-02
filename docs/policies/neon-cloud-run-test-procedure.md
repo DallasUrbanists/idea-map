@@ -3,7 +3,7 @@
 Operators can use a separate, authenticated Cloud Run service to check Idea
 Map's pooled Neon connection and measure request latency with synthetic data.
 The service does not replace the Cloud SQL-backed
-[SSR staging service](ssr-staging.md). Its Terraform configuration is in
+[SSR staging service](../contributor-guides/ssr-staging.md). Its Terraform configuration is in
 [`infra/neon-cloud-run-test`](../../infra/neon-cloud-run-test).
 
 The following contents links navigate within this guide:
@@ -33,7 +33,7 @@ The test service keeps CPU allocated for each instance's lifetime. Zero minimum
 instances does not mean immediate scale-down; an instance can remain running
 after a request finishes.
 
-Operators need the pinned tools in the [development guide](development-guide.md),
+Operators need the pinned tools in the [development guide](../contributor-guides/development-guide.md),
 Terraform 1.13 through 1.x, Google Cloud CLI credentials and Application Default
 Credentials with access to the development project. Operators also need access
 to the existing staging build identity, Artifact Registry and versioned
@@ -68,7 +68,7 @@ scope before deploying:
     database. Keep the migration credential separate and note the numeric secret
     version; do not put secret values in Terraform variables or logs.
 4. Build the reviewed application commit from a clean checkout as described in
-    the [staging build procedure](ssr-staging.md#start-a-deployment), and record
+    the [staging build procedure](../contributor-guides/ssr-staging.md#start-a-deployment), and record
     its immutable image digest. Inspect the upload list before building to
     ensure local credentials, environment files and Terraform state are excluded.
 5. Create an ignored `infra/neon-cloud-run-test/test.tfvars` file with the

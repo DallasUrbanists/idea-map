@@ -23,7 +23,6 @@ for project work:
 | [AI contributor guide](contributor-guides/ai-agent-guide.md) | Choose a tool, load project instructions, and review assisted work |
 | [Agent operating guide](../AGENTS.md) | Shared rules for coding agents working on the project |
 | [Development guide](contributor-guides/development-guide.md) | Setup, configuration, native/container sessions, shutdown, and troubleshooting |
-| [Neon Cloud Run test](contributor-guides/neon-cloud-run-test.md) | Prepare and measure an isolated, authenticated Neon-backed test service |
 | [Testing guide](contributor-guides/testing-guide.md) | Required checks, package/database tests, and manual/automated authentication checks |
 | [SSR staging guide](contributor-guides/ssr-staging.md) | Operate and validate the isolated server-rendering staging environment |
 | [Pull-request review guide](contributor-guides/pull-request-review-guide.md) | Check behavior, documentation, and evidence, and leave actionable feedback |
@@ -63,8 +62,8 @@ the project stylesheet.
 
 ## Policies and procedures
 
-These policies explain how the app handles requests and content, and how
-maintainers release changes:
+These policies and procedures explain how the app handles requests and content,
+and how maintainers operate services and release changes:
 
 | Document | Purpose |
 | --- | --- |
@@ -73,6 +72,7 @@ maintainers release changes:
 | [Privacy Policy](policies/privacy-policy.md) | Personal-data handling, providers, retention, deletion, and requests |
 | [Terms of Use](policies/terms-of-use-policy.md) | Submission rights, service license, consent, acceptable use, and reuse restrictions |
 | [Release procedure](policies/release-procedure.md) | Changesets, validation, versioning, release authorization, and recovery |
+| [Neon Cloud Run test procedure](policies/neon-cloud-run-test-procedure.md) | Verify hosted Neon connectivity and scaling with a synthetic test service |
 
 ## Migration history
 
