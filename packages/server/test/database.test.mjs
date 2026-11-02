@@ -36,7 +36,7 @@ test('bootstrap, forward migrations, ownership constraints and PostGIS', async (
     const idea = (await client.query("INSERT INTO ideas(author_contact_id, location) VALUES ($1, ST_SetSRID(ST_MakePoint(-96.8,32.8),4326)::geography) RETURNING id", [contact])).rows[0].id
     await migrate(db, { migrationsFolder: migrations })
     await migrate(db, { migrationsFolder: migrations })
-    assert.equal((await client.query('SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations')).rows[0].count, 6)
+    assert.equal((await client.query('SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations')).rows[0].count, 7)
     const deliveryPool = new pg.Pool({ connectionString: url, max: 2 })
     try {
       const store = createDeliveryEventStore(deliveryPool)

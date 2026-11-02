@@ -3,5 +3,15 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@idea-map/server": "workspace:*",
+    "google-auth-library": "11.3.2",
+    "pg": "8.16.3"
+  },
+  "devDependencies": { "@types/pg": "8.15.6" },
+  "scripts": {
+    "test": "tsc --build && node --test test/*.test.mjs",
+    "test:integration": "tsc --build && node --test test/worker-database.integration.mjs"
+  }
 }

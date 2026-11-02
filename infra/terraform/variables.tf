@@ -57,6 +57,11 @@ variable "enable_media_access" {
   type        = bool
   default     = false
 }
+variable "enable_task_delivery" {
+  description = "Opt in to task invoker identities and a paused hourly repair scheduler."
+  type        = bool
+  default     = false
+}
 variable "resend_webhook_secret_version" {
   description = "Pinned numeric webhook secret version for the web service; empty leaves the endpoint unconfigured."
   type        = string
