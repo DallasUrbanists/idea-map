@@ -70,3 +70,30 @@ test('webhook verifies raw requests and acknowledges only durable events', async
     assert.ok(!(await response.text()).includes(secret))
   } finally { unavailable.server.kill() }
 })
+
+test('isolated webhook service exposes only health and signed delivery events', async () => {
+  const key = Buffer.from('synthetic-isolated-webhook-secret')
+  const secret = `whsec_${key.toString('base64')}`
+  const id = `synthetic-${randomUUID()}`
+  const payload = JSON.stringify({ type: 'email.delivered', created_at: '2026-01-01T00:00:00Z', data: { email_id: 'synthetic-mail' } })
+  const timestamp = String(Math.floor(Date.now() / 1000))
+  const signature = createHmac('sha256', key).update(`${id}.${timestamp}.${payload}`).digest('base64')
+  const { base, server } = await startServer({ NUXT_RESEND_WEBHOOK_SECRET: secret, NUXT_STAGING_WEBHOOK_ONLY: 'true' })
+  const db = new Client({ connectionString: databaseUrl })
+  await db.connect()
+  try {
+    for (const path of ['/', '/account', '/api/session', '/api/ideas/11111111-1111-4111-8111-111111111111', '/api/media/11111111-1111-4111-8111-111111111111']) {
+      assert.equal((await fetch(`${base}${path}`)).status, 404, path)
+    }
+    assert.equal((await fetch(`${base}/api/session`, { method: 'POST' })).status, 404)
+    const headers = { 'svix-id': id, 'svix-timestamp': timestamp, 'svix-signature': `v1,${signature}`, 'content-type': 'application/json' }
+    const response = await fetch(`${base}/api/webhooks/resend`, { method: 'POST', headers, body: payload })
+    assert.equal(response.status, 200)
+    assert.equal((await db.query('SELECT count(*)::int AS n FROM email_delivery_events WHERE event_id = $1', [id])).rows[0].n, 1)
+    assert.equal((await fetch(`${base}/api/webhooks/resend`, { method: 'POST', headers: { ...headers, 'x-http-method-override': 'GET' }, body: payload })).status, 403)
+  } finally {
+    await db.query('DELETE FROM email_delivery_events WHERE event_id = $1', [id])
+    await db.end()
+    server.kill()
+  }
+})
