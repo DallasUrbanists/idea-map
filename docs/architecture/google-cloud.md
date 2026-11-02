@@ -114,8 +114,8 @@ exact origins. The empty default
 allows no origins; operators must review any change to an existing bucket's CORS
 before applying it.
 
-The [staging media guide](../contributor-guides/media-staging.md) identifies the
-owning configuration, existing state, and reviewed operational procedure.
+The [staging media procedure](../policies/media-staging-procedure.md) identifies
+the resources, their owning configuration, and their Terraform state.
 
 The delivery boundary must check that the idea and exact media revision remain
 approved before serving an immutable versioned preview. It must not expose the

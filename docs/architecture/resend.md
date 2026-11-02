@@ -72,7 +72,7 @@ and [verification status](https://resend.com/changelog/domain-verification-event
 
 ## Staging provider details
 
-The [staging media guide](../contributor-guides/media-staging.md) identifies the
+The [staging media procedure](../policies/media-staging-procedure.md) identifies the
 test domain, DNS provider, Resend team, and the development project's secret
 containers. Operators should verify provider status, DNS records, and effective
 secret access before enabling delivery.

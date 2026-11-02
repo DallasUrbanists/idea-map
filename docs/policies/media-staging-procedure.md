@@ -1,6 +1,6 @@
 # Maintain staging media resources
 
-This guide helps operators review the isolated Idea Map staging media buckets,
+This procedure helps operators review the isolated Idea Map staging media buckets,
 Resend secret containers, and upload CORS policy without changing unrelated
 resources. The staging project is `dallasurbanists-idea-map-dev`, the browser
 origin and test sending domain are `https://staging.ideam.app` and
