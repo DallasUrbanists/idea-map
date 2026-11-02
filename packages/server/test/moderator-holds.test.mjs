@@ -86,6 +86,24 @@ test('authorized holds serialize with publication and do not release unrelated b
     assert.deepEqual(await releaseModeratorHold(...args, { ...superseded.request, holdId: supersededHold }), { state: 'authorized', value: 'stale' })
     assert.deepEqual(await releaseModeratorHold(...args, { ...superseded.request, assessmentId: 'held-after-replacement', holdId: supersededHold }), { state: 'authorized', value: 'released' })
 
+    const editedHold = await create('held-before-edit')
+    assert.deepEqual(await placeModeratorHold(...args, editedHold.request), { state: 'authorized', value: 'placed' })
+    const editedHoldId = (await pool.query('SELECT id FROM moderator_holds WHERE revision_id=$1', [editedHold.revision])).rows[0].id
+    const newRevision = (await pool.query("INSERT INTO idea_revisions(idea_id,version,content) VALUES ($1,2,'{}') RETURNING id", [editedHold.idea])).rows[0].id
+    const newAssessment = await recordAcceptedAssessment(pool, { id: 'held-after-edit', revisionId: newRevision, fingerprint: 'c'.repeat(64), waitMilliseconds: 0, shortcutRequested: false })
+    await assert.rejects(executeModerationJob(pool, newAssessment.jobIds[0], async () => 'allow'), /on hold/)
+    assert.deepEqual(await releaseModeratorHold(...args, { ...editedHold.request, holdId: editedHoldId }), { state: 'authorized', value: 'stale' })
+    const unrelated = await create('unrelated-release')
+    assert.deepEqual(await releaseModeratorHold(...args, { ...unrelated.request, holdId: editedHoldId }), { state: 'authorized', value: 'not-held' })
+    assert.deepEqual(await releaseModeratorHold(...args, { ...editedHold.request, revisionId: newRevision, assessmentId: 'held-after-edit', holdId: editedHoldId }), { state: 'authorized', value: 'released' })
+    assert.equal(await executeModerationJob(pool, newAssessment.jobIds[0], async () => 'allow'), 'completed')
+    const rejectedHold = await create('held-then-rejected')
+    assert.deepEqual(await placeModeratorHold(...args, rejectedHold.request), { state: 'authorized', value: 'placed' })
+    const rejectedHoldId = (await pool.query('SELECT id FROM moderator_holds WHERE revision_id=$1', [rejectedHold.revision])).rows[0].id
+    await pool.query("UPDATE idea_revisions SET review_state='rejected' WHERE id=$1", [rejectedHold.revision])
+    assert.deepEqual(await releaseModeratorHold(...args, { ...rejectedHold.request, holdId: rejectedHoldId }), { state: 'authorized', value: 'released' })
+    assert.equal(await executeModerationJob(pool, rejectedHold.job, async () => 'allow'), 'stale')
+
     const waiting = await create('committed-hold-race')
     const transaction = await pool.connect()
     const stricterDefault = new pg.Pool({ connectionString: url, max: 1 })
