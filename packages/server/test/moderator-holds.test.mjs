@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomBytes } from 'node:crypto'
 import { test } from 'node:test'
 import pg from 'pg'
 import { drizzle } from 'drizzle-orm/node-postgres'
@@ -8,6 +9,41 @@ import { recordAcceptedAssessment, executeModerationJob } from '../dist/moderati
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !new URL(url).pathname.startsWith('/idea_map_test_')) throw new Error('TEST_DATABASE_URL must name a disposable database beginning idea_map_test_')
+
+test('hold control can use only scoped function grants', async () => {
+  const pool = new pg.Pool({ connectionString: url })
+  const role = `hold_test_${randomBytes(8).toString('hex')}`
+  let roleCreated = false
+  try {
+    await migrate(drizzle(pool), { migrationsFolder: 'migrations' })
+    const user = (await pool.query('INSERT INTO users DEFAULT VALUES RETURNING id')).rows[0].id
+    await pool.query("INSERT INTO identities(user_id,provider,subject) VALUES ($1,'firebase:demo-idea-map','hold-scoped')", [user])
+    await pool.query("INSERT INTO moderator_assignments(user_id,granted_by,grant_reason) VALUES ($1,$1,'synthetic')", [user])
+    const contact = (await pool.query("INSERT INTO contacts(normalized_email) VALUES ('hold-scoped@example.invalid') RETURNING id")).rows[0].id
+    const idea = (await pool.query('INSERT INTO ideas(author_contact_id) VALUES ($1) RETURNING id', [contact])).rows[0].id
+    const revisionId = (await pool.query("INSERT INTO idea_revisions(idea_id,version,content) VALUES ($1,1,'{}') RETURNING id", [idea])).rows[0].id
+    const verifier = { async verifySessionCookie() { return { uid: 'hold-scoped', email: 'hold-scoped@example.invalid', email_verified: true, firebase: { sign_in_provider: 'password' } } }, async getUser() { return { uid: 'hold-scoped', email: 'hold-scoped@example.invalid', emailVerified: true, disabled: false } } }
+    await pool.query(`CREATE ROLE "${role}" NOLOGIN`)
+    roleCreated = true
+    const limited = await pool.connect()
+    try {
+      await limited.query(`SET ROLE "${role}"`)
+      await assert.rejects(limited.query("SELECT public.apply_moderator_hold('firebase:demo-idea-map','hold-scoped','place',$1,NULL,NULL,'synthetic')", [revisionId]), { code: '42501' })
+      await assert.rejects(limited.query('SELECT * FROM moderator_holds'), { code: '42501' })
+    } finally { await limited.query('RESET ROLE'); limited.release() }
+    await pool.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text), public.apply_moderator_hold(text,text,text,uuid,text,uuid,text) TO "${role}"`)
+    const restricted = new URL(url)
+    restricted.searchParams.set('options', `-c role=${role}`)
+    const args = [restricted.toString(), 'demo-idea-map', 'cookie', verifier]
+    const input = { revisionId, assessmentId: null, reason: 'synthetic hold' }
+    assert.deepEqual(await placeModeratorHold(...args, input), { state: 'authorized', value: 'placed' })
+    const holdId = (await pool.query('SELECT id FROM moderator_holds WHERE revision_id=$1', [revisionId])).rows[0].id
+    assert.deepEqual(await releaseModeratorHold(...args, { ...input, holdId }), { state: 'authorized', value: 'released' })
+  } finally {
+    if (roleCreated) { await pool.query(`DROP OWNED BY "${role}"`); await pool.query(`DROP ROLE "${role}"`) }
+    await pool.end()
+  }
+})
 
 test('authorized holds serialize with publication and do not release unrelated blocks', async () => {
   const pool = new pg.Pool({ connectionString: url, max: 8 })
