@@ -87,6 +87,10 @@ To exercise the built webhook endpoint against a disposable local database, set
 secret, removes its own event, and checks signature rejection, concurrent retries,
 request limits, and database failure.
 
+With the same disposable database, run `pnpm test:pool` to check that concurrent
+published reads, preview reads, and delivery-event writes share the two-client
+runtime pool. The test removes its own synthetic delivery event.
+
 With the same disposable database and build, run `pnpm test:preview` to check the
 preview endpoint with synthetic database records and a local storage fake. The
 test removes its own fixtures and checks approval, generation selection, response

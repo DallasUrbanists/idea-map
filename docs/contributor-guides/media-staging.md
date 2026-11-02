@@ -5,6 +5,9 @@ Resend secret containers, and upload CORS policy without changing unrelated
 resources. The staging project is `dallasurbanists-idea-map-dev`, the browser
 origin and test sending domain are `https://staging.ideam.app` and
 `staging.ideam.app`, and Namecheap manages the domain's DNS.
+The Resend team is `dallasurbanists`, and the sending domain uses the North
+Virginia (`us-east-1`) region. Operators should verify the provider's domain
+status and current DNS records before enabling delivery.
 
 The following contents links navigate within this guide:
 
@@ -24,7 +27,7 @@ The root also manages the `idea-map-staging-upload` service account. It can
 create objects in the upload bucket, while `idea-map-ssr-staging` can sign as
 that account and read objects in the preview bucket. Review inherited access
 before changing either identity: the token-creator grant also permits
-impersonation. These grants do not activate an upload workflow or publisher.
+impersonation.
 
 The upload bucket is `dallasurbanists-idea-map-dev-media-uploads`, and the
 preview bucket is `dallasurbanists-idea-map-dev-media-previews`. Both enforce
@@ -35,7 +38,8 @@ staging browser origin; CORS is not a grant to read or upload objects.
 The secret containers are `idea-map-staging-resend-api-key` and
 `idea-map-staging-resend-webhook-secret`. The
 [Resend guide](../architecture/resend.md#staging-provider-details) records the
-maintainer's provider choices and the current verification evidence. The
+credential and delivery requirements. Operators should inspect the available
+secret versions and use a sending-only key scoped to `staging.ideam.app`. The
 separate [foundation root](../architecture/terraform.md) uses different names;
 operators must not create duplicate staging resources or manage the same object
 from two Terraform states.
@@ -68,7 +72,7 @@ Reviewers should use only synthetic files and test-owned object names and record
 their exact generations. They should verify anonymous denial for pending media,
 signed upload expiry and scope, approved preview access, withdrawal, and the
 staging-origin CORS response. The [Google Cloud guide](../architecture/google-cloud.md#media-access-and-cleanup)
-records completed provider checks and the remaining publication boundary.
+describes the publication boundary.
 
 After a test, reviewers should wait until its signed access has expired and
 remove only the exact test-owned object generations using generation-match

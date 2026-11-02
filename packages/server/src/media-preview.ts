@@ -1,10 +1,10 @@
 import { Storage } from '@google-cloud/storage'
 import pg from 'pg'
 import { exactGenerationFile } from './storage-generation.js'
+import { runtimeDatabasePool } from './runtime-database.js'
 
 export interface PublicPreview { readonly bytes: Buffer; readonly contentType: string }
 export const MAX_MEDIA_PREVIEW_BYTES = 16 * 1024 * 1024
-const pools = new Map<string, pg.Pool>()
 let defaultStorage: Storage | undefined
 
 const query = `
@@ -56,12 +56,6 @@ export async function readMediaPreview(
 
 /** Use a bounded shared database pool and application-default storage credentials. */
 export async function getMediaPreview(databaseUrl: string, bucket: string, previewId: string, maxBytes: number): Promise<PublicPreview | null> {
-  let pool = pools.get(databaseUrl)
-  if (!pool) {
-    pool = new pg.Pool({ connectionString: databaseUrl, max: 2, connectionTimeoutMillis: 5000, idleTimeoutMillis: 10000 })
-    pool.on('error', () => console.error('Unexpected error on idle preview database client'))
-    pools.set(databaseUrl, pool)
-  }
   defaultStorage ??= new Storage()
-  return readMediaPreview(pool, defaultStorage, bucket, previewId, maxBytes)
+  return readMediaPreview(runtimeDatabasePool(databaseUrl), defaultStorage, bucket, previewId, maxBytes)
 }

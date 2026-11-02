@@ -1,5 +1,6 @@
 import pg from 'pg'
 import type { DeliveryEventStore } from './resend.js'
+import { runtimeDatabasePool } from './runtime-database.js'
 
 const stores = new Map<string, DeliveryEventStore>()
 
@@ -22,9 +23,7 @@ export function createDeliveryEventStore(pool: pg.Pool): DeliveryEventStore {
 export function deliveryEventStore(databaseUrl: string): DeliveryEventStore {
   let store = stores.get(databaseUrl)
   if (!store) {
-    const pool = new pg.Pool({ connectionString: databaseUrl, max: 2, connectionTimeoutMillis: 5000, idleTimeoutMillis: 10000 })
-    pool.on('error', () => console.error('Unexpected error on idle delivery database client'))
-    store = createDeliveryEventStore(pool)
+    store = createDeliveryEventStore(runtimeDatabasePool(databaseUrl))
     stores.set(databaseUrl, store)
   }
   return store
