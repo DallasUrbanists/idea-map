@@ -51,6 +51,12 @@ changes. The root test command doesn't include every package test.
 For documentation changes, you should follow the
 [documentation review checklist](documentation-style-guide.md#documentation-review-checklist).
 
+The moderation foundation workflow runs these workspace checks and the
+synthetic outbox, moderation, approval-history, and worker checks on pull
+requests, including forks. It uses a disposable PostGIS service and requires no
+hosted credentials. It does not test real moderation authorization or enable
+automatic publication.
+
 ## Package tests
 
 You should run the test for the package you changed.
