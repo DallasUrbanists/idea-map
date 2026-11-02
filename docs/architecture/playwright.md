@@ -1,8 +1,9 @@
 # Playwright architecture
 
-Browser tests help you check what happens when someone signs in, opens a dialog,
-or loses their connection. This guide explains how Playwright runs those checks
-with isolated servers, synthetic accounts, and controlled timers. The
+Playwright is a tool for automating web browsers so you can test how an
+application behaves. This guide explains how Idea Map uses it to check
+experiences such as sign-in, dialogs, and lost connections with isolated
+servers, synthetic accounts, and controlled timers. The
 [testing guide](../contributor-guides/testing-guide.md) has the commands,
 prerequisites, manual checks, and cleanup steps.
 

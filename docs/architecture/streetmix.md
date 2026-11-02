@@ -1,8 +1,9 @@
 # Streetmix architecture
 
-Generating a street design connects an accepted idea to a provider and brings
-the result back into Idea Map. This guide helps you understand which work
-belongs in the application and which belongs in the reusable generation
+Streetmix is a tool for designing and visualizing street layouts. Idea Map's
+reusable generation package defines how an accepted idea can become a street
+plan and how a supplied provider can return a design. This guide helps you
+understand which work belongs in the application and which belongs in the
 package. The [package README](../../packages/streetmix/README.md) describes its
 input, result, and provider contracts.
 

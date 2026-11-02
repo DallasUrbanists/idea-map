@@ -1,8 +1,10 @@
 # Node.js and TypeScript architecture
 
-A change to a shared package needs to work both as source code and as a built
-dependency. Here you'll find how Node.js and TypeScript run, compile, and check
-Idea Map's code, and how applications use the packages' public exports.
+Node.js lets you run JavaScript outside a web browser. TypeScript builds on
+JavaScript and helps catch mistakes before the code runs. A change to a shared
+package needs to work both as source code and as a built dependency. This guide
+explains how Node.js and TypeScript run, compile, and check Idea Map's code, and
+how applications use the packages' public exports.
 
 The following contents links navigate within this guide:
 

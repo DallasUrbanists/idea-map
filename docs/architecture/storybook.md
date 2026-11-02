@@ -1,9 +1,10 @@
 # Storybook architecture
 
-You can explore existing components in Storybook before building a new one.
-This guide explains how the catalog is organized, how stories show different
-component states, and how they support design and testing. Storybook uses
-`@storybook/vue3-vite`; its
+Storybook is a tool for developing and exploring interface components in
+isolation from the full application. You can use it to explore existing
+components before building a new one. This guide explains how Idea Map's catalog
+is organized, how stories show different component states, and how they support
+design and testing. Storybook uses `@storybook/vue3-vite`; its
 [configuration](../../apps/web/.storybook/main.js) loads stories from
 `apps/web/stories/**/*.stories.js`.
 

@@ -1,8 +1,10 @@
 # Reka architecture
 
-Building a dialog or menu means handling keyboard access and focus as well as
-appearance. Reka UI supplies interaction primitives that you can use behind
-project-owned components. This guide explains how to choose and wrap them; the
+Reka UI is a Vue component library that provides reusable building blocks for
+interface behavior, such as dialogs and menus. These building blocks help with
+interactions such as keyboard access and focus, while project-owned components
+provide the appearance and content. This guide explains how to choose and wrap
+them; the
 [design system](../design/design-system.md) covers component contracts, visual
 tokens, and accessibility expectations.
 
