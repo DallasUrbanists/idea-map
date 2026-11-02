@@ -62,14 +62,21 @@ export async function recordAcceptedAssessment(pool: pg.Pool, input: AcceptedAss
   } finally { client.release() }
 }
 
-/** Attempt delivery after the assessment transaction commits; failed attempts remain repairable. */
+/**
+ * Attempt delivery after commit. An unconfirmed result means the dispatcher did
+ * not confirm this attempt; it may already have been delivered or be leased by
+ * another dispatcher. Inspect durable state before recovery or replay.
+ */
 export async function recordAndDispatchAssessment(pool: pg.Pool, input: AcceptedAssessment, dispatcher: JobDispatcher) {
   const accepted = await recordAcceptedAssessment(pool, input)
   let dispatchFailures = 0
+  let dispatchUnconfirmed = 0
   for (const jobId of accepted.jobIds) {
-    try { await dispatchJob(pool, dispatcher, jobId) } catch { dispatchFailures++ }
+    try {
+      if (await dispatchJob(pool, dispatcher, jobId) === 'unavailable') dispatchUnconfirmed++
+    } catch { dispatchFailures++ }
   }
-  return { ...accepted, dispatchFailures }
+  return { ...accepted, dispatchFailures, dispatchUnconfirmed }
 }
 
 /** Use stale only for permanent ineligibility; unavailable evidence must return retry. */
