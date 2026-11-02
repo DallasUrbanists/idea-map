@@ -42,6 +42,8 @@ The smoke script removes its own local container after checking a non-root
 runtime, health, private configuration, no-store caching, and disabled
 moderation. For a build behind a proxy with a custom CA, pass the CA with
 `--secret id=proxy_ca,src="$CODEX_PROXY_CERT"` as in the worker example below.
+The Node base image is pinned by digest; update it through a reviewed change
+and rebuild to receive base-image fixes.
 The CI workflow builds and tests an image locally without pushing or deploying
 it; it does not establish hosted authentication, privacy, or rollout readiness.
 
