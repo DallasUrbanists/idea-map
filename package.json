@@ -24,14 +24,14 @@
     "dev:all": "node scripts/dev-services.mjs all",
     "dev:status": "node scripts/dev-services.mjs status",
     "dev:check": "node scripts/dev-check.mjs",
+    "fixture:jobs": "node scripts/local-job-fixture.mjs",
+    "test:job-fixture": "node --test scripts/local-job-fixture.integration.mjs",
     "dev:logs": "node scripts/dev-services.mjs logs",
     "dev:db:migrate": "node scripts/dev-migrate.mjs",
     "dev:db:migrate:container": "node scripts/dev-services.mjs migrate",
     "dev:stop": "node scripts/dev-services.mjs stop",
     "changeset": "changeset",
-    "release:status": "changeset status",
-    "fixture:jobs": "node scripts/local-job-fixture.mjs",
-    "test:job-fixture": "node --test scripts/local-job-fixture.integration.mjs"
+    "release:status": "changeset status"
   },
   "devDependencies": {
     "@changesets/cli": "3.0.3",
