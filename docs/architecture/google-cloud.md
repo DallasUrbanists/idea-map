@@ -11,6 +11,7 @@ The following contents links navigate within this guide:
 - [Hosting and compute](#hosting-and-compute)
 - [Tasks and reconciliation](#tasks-and-reconciliation)
 - [Media and secrets](#media-and-secrets)
+- [Media access and cleanup](#media-access-and-cleanup)
 - [Identity and deployment boundaries](#identity-and-deployment-boundaries)
 - [Regions and provider integrations](#regions-and-provider-integrations)
 
@@ -60,6 +61,157 @@ Encryption at rest and restricted backup access protect stored data. Secret
 Manager holds environment-specific credentials, and each identity can access
 only its required secret versions. Operators should rotate credentials and
 review the access audit records.
+
+## Media access and cleanup
+
+The foundation buckets alone do not implement upload authorization or public
+delivery. The server package can sign a bounded single-object upload form and
+the web app has an approval-aware preview endpoint, but the upload endpoint,
+publishing process, and cleanup worker must be implemented and validated before
+media is enabled. The
+[submission work](https://github.com/DallasUrbanists/idea-map/issues/50) owns
+the draft and resumable upload experience.
+
+The server must authorize the author or guest against the draft before issuing
+upload access. It must choose an opaque object name, restrict the authorization
+to the pending bucket and that object, and use a short expiry and a server-enforced
+size limit. A signed URL is a bearer credential, not proof of ownership; avoid
+logging it or returning it in public data. A resumable upload session URI is also
+a bearer credential, and its lifetime must be considered separately from the
+initial signed request. Google documents these properties in its
+[signed URL guide](https://cloud.google.com/storage/docs/access-control/signed-urls).
+
+The implementation must enforce the size limit at the storage or upload
+boundary, not just trust a client-supplied size. A
+[signed POST policy](https://cloud.google.com/storage/docs/authentication/signatures#policy-document)
+can constrain a content-length range; a PUT URL must sign and require Cloud
+Storage's `x-goog-content-length-range` header. The implementation must also validate the uploaded bytes
+and bind the exact object generation to the draft before accepting it for review.
+Allowed formats, size limits, expiry, and the resumable protocol need a reviewed
+contract before implementation.
+
+The server package's `createPendingUploadUrl` signs a PUT URL with an exact
+content type, byte range, and create-only generation precondition. Its
+`createPendingUpload` helper also signs a POST form. Both select a random pending
+object and expire within 15 minutes. The caller must authorize the draft first, choose reviewed
+type and size limits, persist the allocation before returning the form, and keep
+the response private. The signer must have create-only access to the pending
+bucket and must not be able to overwrite objects; the form itself does not enforce
+that identity's permissions. Cleanup must not delete an allocated object while
+its authorization remains valid, because the bearer could otherwise create it
+again. Neither method is a resumable upload session, validates file contents, or
+establishes a public preview.
+
+The opt-in `enable_media_access` Terraform setting defines a dedicated signer
+with object-creation access to the pending bucket, gives the web identity token
+creation access to that signer, and grants web read access to the approved bucket.
+The token-creator role can impersonate the signer as well as sign blobs, so
+operators must check the signer's inherited permissions before authorizing a live
+plan. These definitions do not activate the upload workflow or a publisher.
+The `createUploadSigningStorage` helper accepts a trusted source credential and
+uses that dedicated same-project signer through service-account impersonation;
+it does not require a downloaded private key.
+For browser form uploads, `upload_allowed_origins` configures CORS only on the
+pending bucket, allowing POST and PUT with the required headers from the listed
+exact origins. The empty default
+allows no origins; operators must review any change to an existing bucket's CORS
+before applying it.
+
+On November 1, 2026, the development project already contained
+`dallasurbanists-idea-map-dev-media-uploads` and
+`dallasurbanists-idea-map-dev-media-previews`. Both reported uniform bucket
+access, enforced public-access prevention, versioning, and seven-day soft-delete
+retention. Their observed configuration does not establish that signed uploads,
+runtime permissions, public delivery, or cleanup are configured in the deployed
+application; the checks below describe the evidence separately.
+The [staging media guide](../contributor-guides/media-staging.md) identifies the
+owning configuration, existing state, and reviewed operational procedure.
+On November 1, 2026, a reviewed staging plan added a dedicated upload signer,
+its upload-bucket object-creator grant, and scoped signer and preview-reader
+grants for the existing staging web identity. No application deployment or
+publisher was enabled by that change.
+
+On November 1, 2026, an operator uploaded a synthetic object to the staging
+pending bucket. An authenticated read of its exact generation matched the
+fixture, while an anonymous read returned `403`. The operator removed that
+test-owned generation; the bucket's soft-delete retention continues to apply.
+An isolated signer with create-only access then generated a signed form and PUT
+URL through the service-account impersonation helper, after allowing time for IAM
+permissions to propagate. Cloud Storage accepted each valid upload and rejected oversized files,
+altered object names or types, replay, and expired authorization; anonymous reads
+remained forbidden. The operator removed the exact test generations after their
+authorizations expired and removed the temporary signer and grants. These checks
+did not exercise deployed approved-preview delivery. A separate local endpoint
+test read an approved synthetic generation from the real staging preview bucket,
+confirmed direct anonymous bucket access was forbidden, and confirmed withdrawal
+returned `404`. The test removed its own generation and database fixtures; the
+bucket's soft-delete retention still applies.
+
+The delivery boundary must check that the idea and exact media revision remain
+approved before serving an immutable versioned preview. It must not expose the
+pending bucket, unapproved originals, or arbitrary object generations. Withdrawal,
+replacement, and removal must revoke access to older previews and invalidate
+cached copies; an immutable URL alone does not provide revocation. The
+[Hosting cache guide](hosting-cache.md) describes the related cache boundary.
+
+The web endpoint `GET /api/media/{preview-id}` reads a generation only when its
+preview row is published and the idea, exact current revision, and revision
+review are approved. It rechecks that state after reading the object, validates
+the object size and image signature, and returns `private, no-store` to avoid
+leaving a withdrawn preview in a shared cache. It supports generated JPEG, PNG,
+and WebP previews; it does not publish previews or authorize original uploads.
+The endpoint remains disabled until the server has a database URL, distinct
+`NUXT_APPROVED_MEDIA_BUCKET` and `NUXT_PENDING_MEDIA_BUCKET` settings, and a
+positive `NUXT_MEDIA_PREVIEW_MAX_BYTES` no greater than 16 MiB. That ceiling
+protects server memory; the publishing workflow still needs reviewed product
+limits and must ensure the approved bucket contains only validated previews.
+
+Only the trusted publishing workflow may insert or publish preview rows. It
+must bind the exact approved revision and storage generation, revoke superseded
+rows, and prevent the web runtime from writing publication state; the endpoint
+does not substitute for those controls. Storage errors produce a generic `503`,
+while absent, unpublished, withdrawn, or superseded previews return `404`.
+
+Cleanup must preserve active drafts, review material, approved media, and any
+objects subject to retention or legal holds. Before deleting a temporary object,
+the worker must coordinate with draft and review updates so an object cannot gain
+a reference between the eligibility check and deletion. It must check the
+durable reference and expiry and use a generation precondition so a concurrent
+replacement is not deleted. Failed deletes must be retried and reported without
+logging media or signed credentials.
+Operators must choose and document retention periods and a recovery owner before
+enabling cleanup; no automatic deletion rule is configured by this foundation.
+The server's `deletePendingUploadGeneration` helper deletes only an explicitly
+named pending object generation with a generation-match precondition. Its caller
+must hold the exclusive cleanup claim and perform the reference and expiry checks;
+the helper does not make those decisions or schedule cleanup.
+
+With object versioning, deleting a live object can leave a noncurrent generation,
+and soft-delete retention can keep deleted generations longer. Operators must
+account for both when verifying cleanup and privacy retention, and must not
+restore a withdrawn preview to public access. See Google's
+[object versioning guide](https://cloud.google.com/storage/docs/object-versioning)
+and [lifecycle guide](https://cloud.google.com/storage/docs/lifecycle).
+
+Once the implementation and an isolated test environment exist, reviewers should
+use synthetic files to verify all of these outcomes:
+
+1. An unauthorized caller cannot obtain upload access or read a pending object;
+    an authorized caller can upload only the scoped object within its expiry and
+    size limit.
+2. Expired access, an oversized file, an altered object name, and an invalid file
+    are rejected; retries and interrupted uploads preserve the intended draft.
+3. Only the approved version is public; replacement or withdrawal removes access
+    to prior versions through both the origin and any configured cache.
+4. Cleanup removes only eligible test-owned generations, preserves referenced
+    objects and holds, and records failures for retry. Inspect noncurrent and
+    soft-deleted generations according to the test environment's retention.
+
+Reviewers should record the environment, object generations, results, and cleanup
+evidence without recording signed URLs, file contents, or secrets. They should
+use only isolated resources and follow the authorized environment's cleanup
+procedure; if safe cleanup is unavailable, retain the test resources and record
+the gap.
 
 ## Identity and deployment boundaries
 

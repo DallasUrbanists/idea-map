@@ -7,9 +7,10 @@ export default defineEventHandler((event) => {
   const hasMethodOverride = ['x-http-method-override', 'x-http-method', 'x-method-override']
     .some(header => getHeader(event, header) !== undefined)
 
-  // Only the session endpoint may mutate; it enforces its own Origin and CSRF checks.
+  // Each exception authenticates and authorizes its own requests.
   const sessionPost = method === 'POST' && event.path.split('?')[0] === '/api/session'
-  if (((method !== 'GET' && method !== 'HEAD') && !sessionPost) || hasMethodOverride) {
+  const webhookPost = method === 'POST' && event.path.split('?')[0] === '/api/webhooks/resend'
+  if (((method !== 'GET' && method !== 'HEAD') && !sessionPost && !webhookPost) || hasMethodOverride) {
     setResponseHeader(event, 'Cache-Control', 'private, no-store')
     throw createError({ statusCode: 403, statusMessage: 'Mutations unavailable' })
   }

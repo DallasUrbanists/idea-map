@@ -71,6 +71,32 @@ pnpm --filter @idea-map/streetmix test
 The Streetmix test builds the package and uses a fake provider, so it doesn't
 need a live Streetmix service.
 
+For the server's storage and email adapters:
+
+```sh
+pnpm --filter @idea-map/server test:media
+pnpm --filter @idea-map/server test:resend
+```
+
+These checks use a synthetic signing key and provider fakes; they do not verify
+live storage permissions, delivery, DNS, or webhook endpoint deployment.
+
+To exercise the built webhook endpoint against a disposable local database, set
+`TEST_DATABASE_URL` to a migrated `idea_map_test_` database on `127.0.0.1`, run
+`pnpm build`, and then run `pnpm test:webhook`. The test uses a synthetic webhook
+secret, removes its own event, and checks signature rejection, concurrent retries,
+request limits, and database failure.
+
+With the same disposable database and build, run `pnpm test:preview` to check the
+preview endpoint with synthetic database records and a local storage fake. The
+test removes its own fixtures and checks approval, generation selection, response
+headers, and withdrawal; it does not verify live Cloud Storage access.
+
+An authorized operator can also set `IDEA_MAP_ALLOW_STAGING_MEDIA_TEST=yes` and
+run `pnpm test:preview:provider` with the same test database and build. This check
+uses the fixed staging preview bucket and synthetic data, removes its test-owned
+generation and database records, and remains subject to soft-delete retention.
+
 For import-rule changes, you should run
 `node --test scripts/boundaries.test.mjs`. The
 [workspace guide](../architecture/architecture-overview.md) explains those

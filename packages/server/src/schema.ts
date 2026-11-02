@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { check, customType, foreignKey, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import { boolean, check, customType, foreignKey, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 
 // Contact details and moderation records are private; access control belongs to
 // server-side authorization and must not rely on these table definitions.
@@ -90,3 +90,27 @@ export const outbox = pgTable('outbox', {
   publishedAt: timestamp('published_at', { withTimezone: true }),
   createdAt: createdAt(),
 }, table => [uniqueIndex('outbox_job_key').on(table.jobId), index('outbox_published_idx').on(table.publishedAt)])
+// Store only the provider identifiers and delivery state, never message content or recipients.
+export const emailDeliveryEvents = pgTable('email_delivery_events', {
+  eventId: text('event_id').primaryKey(),
+  emailId: text('email_id').notNull(),
+  eventType: text('event_type').notNull(),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+  receivedAt: createdAt(),
+}, table => [index('email_delivery_events_email_idx').on(table.emailId, table.occurredAt)])
+// Only an authorized publishing process may expose an approved preview.
+export const mediaPreviews = pgTable('media_previews', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ideaId: uuid('idea_id').notNull(),
+  revisionId: uuid('revision_id').notNull(),
+  objectName: text('object_name').notNull(),
+  generation: text('generation').notNull(),
+  contentType: text('content_type').notNull(),
+  published: boolean('published').notNull().default(false),
+  createdAt: createdAt(),
+}, table => [
+  foreignKey({ columns: [table.ideaId, table.revisionId], foreignColumns: [ideaRevisions.ideaId, ideaRevisions.id] }),
+  uniqueIndex('media_previews_object_generation_key').on(table.objectName, table.generation),
+  check('media_previews_generation_format', sql`${table.generation} ~ '^[1-9][0-9]*$'`),
+  check('media_previews_content_type', sql`${table.contentType} IN ('image/jpeg', 'image/png', 'image/webp')`),
+])

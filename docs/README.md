@@ -23,6 +23,7 @@ for project work:
 | [AI contributor guide](contributor-guides/ai-agent-guide.md) | Choose a tool, load project instructions, and review assisted work |
 | [Agent operating guide](../AGENTS.md) | Shared rules for coding agents working on the project |
 | [Development guide](contributor-guides/development-guide.md) | Setup, configuration, native/container sessions, shutdown, and troubleshooting |
+| [Staging media](contributor-guides/media-staging.md) | Review isolated staging media resources, CORS, secrets, and cleanup |
 | [Testing guide](contributor-guides/testing-guide.md) | Required checks, package/database tests, and manual/automated authentication checks |
 | [SSR staging guide](contributor-guides/ssr-staging.md) | Operate and validate the isolated server-rendering staging environment |
 | [Pull-request review guide](contributor-guides/pull-request-review-guide.md) | Check behavior, documentation, and evidence, and leave actionable feedback |

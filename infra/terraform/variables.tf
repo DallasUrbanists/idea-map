@@ -47,3 +47,33 @@ variable "worker_image" {
     error_message = "worker_image must use an immutable sha256 digest."
   }
 }
+variable "enable_resend_secrets" {
+  description = "Opt in to empty Resend secret containers and scoped runtime grants; does not create versions."
+  type        = bool
+  default     = false
+}
+variable "enable_media_access" {
+  description = "Opt in to a create-only upload signer and web access to approved previews."
+  type        = bool
+  default     = false
+}
+variable "resend_webhook_secret_version" {
+  description = "Pinned numeric webhook secret version for the web service; empty leaves the endpoint unconfigured."
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.resend_webhook_secret_version == "" || can(regex("^[1-9][0-9]*$", var.resend_webhook_secret_version))
+    error_message = "Use an empty value or a numeric secret version, not latest."
+  }
+}
+variable "upload_allowed_origins" {
+  description = "Exact browser origins allowed to submit signed uploads; empty disables CORS."
+  type        = list(string)
+  default     = []
+  validation {
+    condition = length(distinct(var.upload_allowed_origins)) == length(var.upload_allowed_origins) && alltrue([
+      for origin in var.upload_allowed_origins : can(regex("^https://[a-zA-Z0-9.-]+(:[0-9]{1,5})?$", origin)) || origin == "http://127.0.0.1:3000"
+    ])
+    error_message = "Upload origins must be unique exact HTTPS origins or the local demo origin."
+  }
+}
