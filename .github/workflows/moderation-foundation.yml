@@ -52,11 +52,16 @@ jobs:
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_history
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderator
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_ownership
+          docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_database
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_worker
       - name: Outbox transactions
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_outbox
         run: pnpm --filter @idea-map/server test:outbox
+      - name: Database upgrade and constraints
+        env:
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_database
+        run: pnpm --filter @idea-map/server test:database
       - name: Moderation transactions
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_moderation
