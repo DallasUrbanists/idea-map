@@ -405,3 +405,28 @@ moderator or author interface. Before live use, complete privacy-safe deletion,
 legal-hold lifecycle, role administration, notification, recovery, and rollout
 review. These records refer to revisions and assessments, so deletion must honor
 those dependencies rather than silently discard evidence.
+
+### Moderator escalations
+
+A moderator can create an escalation as a separate blocking hold with a reason
+and an owner who has an active database moderator assignment. The transaction
+locks both assignments and checks the current revision and assessment. The
+escalation remains a hold across later edits and when the owner's assignment is
+revoked; it must be explicitly released. It does not clear or replace an
+ordinary hold. The current record exposes the owner's internal user ID for a
+future authorized interface; it does not prove the owner can still sign in.
+Notifications, a usable interface, and an atomic owner-transfer process remain
+open. Do not enable live escalations until those processes and privacy controls
+are reviewed.
+
+The migration preserves existing holds as ordinary holds and replaces their
+partial uniqueness index. Older code that expects the prior index cannot place
+holds after this migration. Disable hold actions and timed publication before a
+mixed-version migration or rollback, preserve the records, and review index
+locking and compatibility. A rollback to the former unique index also requires
+reviewing any ordinary and escalation holds on the same revision; do not drop
+or silently release them to make rollback succeed.
+
+A separately permissioned, unscheduled retention primitive removes released hold
+metadata only after 90 days and only when no legal hold applies. Active holds
+remain until explicitly released. The functions grant no live permissions.

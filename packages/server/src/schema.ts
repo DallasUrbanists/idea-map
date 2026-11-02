@@ -162,6 +162,8 @@ export const reviewGates = pgTable('review_gates', {
 export const moderatorHolds = pgTable('moderator_holds', {
   id: uuid('id').primaryKey().defaultRandom(),
   revisionId: uuid('revision_id').notNull().references(() => ideaRevisions.id),
+  kind: text('kind').notNull().default('hold'),
+  ownerId: uuid('owner_id').references(() => users.id),
   placedBy: uuid('placed_by').notNull().references(() => users.id),
   placedAt: createdAt(),
   reason: text('reason').notNull(),
@@ -169,7 +171,8 @@ export const moderatorHolds = pgTable('moderator_holds', {
   releasedAt: timestamp('released_at', { withTimezone: true }),
   releaseReason: text('release_reason'),
 }, table => [
-  uniqueIndex('moderator_holds_active_revision_key').on(table.revisionId).where(sql`${table.releasedAt} IS NULL`),
+  uniqueIndex('moderator_holds_active_revision_kind_key').on(table.revisionId, table.kind).where(sql`${table.releasedAt} IS NULL`),
+  check('moderator_holds_kind_owner', sql`(${table.kind} = 'hold' AND ${table.ownerId} IS NULL) OR (${table.kind} = 'escalation' AND ${table.ownerId} IS NOT NULL)`),
   check('moderator_holds_reason', sql`length(trim(${table.reason})) > 0 AND octet_length(${table.reason}) <= 1000`),
   check('moderator_holds_release_fields', sql`(${table.releasedAt} IS NULL AND ${table.releasedBy} IS NULL AND ${table.releaseReason} IS NULL) OR (${table.releasedAt} IS NOT NULL AND ${table.releasedBy} IS NOT NULL AND ${table.releaseReason} IS NOT NULL AND length(trim(${table.releaseReason})) > 0 AND octet_length(${table.releaseReason}) <= 1000)`),
 ])

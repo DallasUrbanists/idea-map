@@ -34,7 +34,7 @@ export async function placeModeratorHold(databaseUrl: string, projectId: string,
   return withVerifiedModerator(databaseUrl, projectId, cookie, verifier, async (client, actor) => {
     if (!await lockCurrentRevision(client, input)) return 'stale'
     const created = await client.query(`INSERT INTO moderator_holds (revision_id, placed_by, reason, created_at)
-      VALUES ($1, $2, $3, clock_timestamp()) ON CONFLICT (revision_id) WHERE released_at IS NULL DO NOTHING RETURNING id`,
+      VALUES ($1, $2, $3, clock_timestamp()) ON CONFLICT (revision_id, kind) WHERE released_at IS NULL DO NOTHING RETURNING id`,
     [input.revisionId, actor, input.reason.trim()])
     return created.rowCount ? 'placed' : 'already-held'
   })
