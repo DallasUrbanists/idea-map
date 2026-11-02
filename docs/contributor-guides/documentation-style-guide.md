@@ -24,6 +24,7 @@ The following contents links navigate within this guide:
     - [Audience and purpose](#audience-and-purpose)
     - [Accuracy and ownership](#accuracy-and-ownership)
     - [Documentation authority and audiences](#documentation-authority-and-audiences)
+    - [Test procedures](#test-procedures)
     - [User guides](#user-guides)
         - [Decide when to add or edit a guide](#decide-when-to-add-or-edit-a-guide)
         - [Write a how-to guide](#write-a-how-to-guide)
@@ -148,6 +149,18 @@ You should name policy files `*-policy.md` for decisions and rules, or
 `*-procedure.md` for linear processes. Omit prices, cost estimates, budgets,
 commercial-plan comparisons, financial thresholds, and billing discussions from
 repository documentation; retain technical resource limits and constraints.
+
+### Test procedures
+
+Authors must include a `When to use this guide` section as the first section
+in every new document under `docs/test-procedures/`. When updating an existing
+test procedure, authors must add that section if it is missing.
+
+Authors must include a two-column table in the section, with the headings
+`When this happens...` and `Use this guide to...`. Each row should pair a
+situation that calls for the procedure with the outcome it helps the reader
+achieve. Place the section after the introduction and any contents links, and
+include it in the contents when present.
 
 ### User guides
 
