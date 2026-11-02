@@ -33,6 +33,8 @@ ports bind loopback only.
 The worker image is built from `Dockerfile.worker`. Its build compiles the
 worker and server packages and prepares a production dependency bundle. The
 runtime runs as a non-root user and starts the authenticated worker process.
+Its Node base image is pinned by digest; update it through a reviewed change
+and rebuild to receive base-image fixes.
 Build it from the repository root with:
 
 ```sh
