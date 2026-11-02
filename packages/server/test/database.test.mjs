@@ -79,8 +79,8 @@ test('bootstrap, forward migrations, ownership constraints and PostGIS', async (
       assert.equal(name, 'synthetic-approved')
       return { file(objectName, options) {
         assert.equal(objectName, 'preview/synthetic')
-        assert.equal(options.generation, '123')
-        return { async getMetadata() { return [{ size: String(image.length), contentType: 'image/png' }] },
+        assert.equal(options.preconditionOpts.ifGenerationMatch, '123')
+        return { interceptors: [], async getMetadata() { return [{ generation: '123', size: String(image.length), contentType: 'image/png' }] },
           createReadStream() { reads++; return Readable.from([image]) } }
       } }
     } }
@@ -96,7 +96,8 @@ test('bootstrap, forward migrations, ownership constraints and PostGIS', async (
     assert.equal(await readMediaPreview(client, storage, 'synthetic-approved', previewId, 100), null)
     await client.query('UPDATE media_previews SET published = true WHERE id = $1', [previewId])
     const withdrawal = { bucket() { return { file() { return {
-      async getMetadata() { return [{ size: String(image.length), contentType: 'image/png' }] },
+      interceptors: [],
+      async getMetadata() { return [{ generation: '123', size: String(image.length), contentType: 'image/png' }] },
       createReadStream() { return Readable.from((async function* () {
         await client.query("UPDATE ideas SET publication_state = 'withdrawn' WHERE id = $1", [idea])
         yield image

@@ -5,6 +5,7 @@ import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
 import { setTimeout as delay } from 'node:timers/promises'
 import test from 'node:test'
+import { exactGenerationFile } from '../packages/server/dist/storage-generation.js'
 
 const require = createRequire(new URL('../packages/server/package.json', import.meta.url))
 const { Client } = require('pg')
@@ -75,7 +76,7 @@ test('local public preview endpoint reads only approved staging object generatio
       }
     } finally {
       if (created && generation) {
-        await storage.bucket(bucketName).file(objectName, { generation, preconditionOpts: { ifGenerationMatch: generation } }).delete({ ignoreNotFound: true })
+        await exactGenerationFile(storage, bucketName, objectName, generation).delete({ ignoreNotFound: true })
       } else if (created) {
         console.error(`Test object retained because its generation is unknown: gs://${bucketName}/${objectName}`)
       }

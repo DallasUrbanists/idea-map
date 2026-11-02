@@ -157,8 +157,9 @@ cached copies; an immutable URL alone does not provide revocation. The
 The web endpoint `GET /api/media/{preview-id}` reads a generation only when its
 preview row is published and the idea, exact current revision, and revision
 review are approved. It rechecks that state after reading the object, validates
-the object size and image signature, and returns `private, no-store` to avoid
-leaving a withdrawn preview in a shared cache. It supports generated JPEG, PNG,
+the returned generation, object size, and image signature, and returns
+`private, no-store` to avoid leaving a withdrawn preview in a shared cache. It
+supports generated JPEG, PNG,
 and WebP previews; it does not publish previews or authorize original uploads.
 The endpoint remains disabled until the server has a database URL, distinct
 `NUXT_APPROVED_MEDIA_BUCKET` and `NUXT_PENDING_MEDIA_BUCKET` settings, and a
@@ -185,6 +186,8 @@ The server's `deletePendingUploadGeneration` helper deletes only an explicitly
 named pending object generation with a generation-match precondition. Its caller
 must hold the exclusive cleanup claim and perform the reference and expiry checks;
 the helper does not make those decisions or schedule cleanup.
+Both preview reads and cleanup preserve the complete generation ID in requests,
+including values larger than JavaScript's safe integer range.
 
 With object versioning, deleting a live object can leave a noncurrent generation,
 and soft-delete retention can keep deleted generations longer. Operators must

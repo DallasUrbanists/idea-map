@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { Storage } from '@google-cloud/storage'
 import { Impersonated, type AuthClient } from 'google-auth-library'
+import { exactGenerationFile } from './storage-generation.js'
 
 /** A signed form is a bearer credential and must be returned only to its authorized owner. */
 export interface PendingUpload {
@@ -90,5 +91,5 @@ export async function createPendingUploadUrl(storage: Storage, bucketName: strin
 export async function deletePendingUploadGeneration(storage: Storage, bucketName: string, objectName: string, generation: string): Promise<void> {
   if (!bucketName || !/^pending\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(objectName) ||
       !/^[1-9][0-9]*$/.test(generation)) throw new Error('Invalid pending upload generation')
-  await storage.bucket(bucketName).file(objectName, { generation, preconditionOpts: { ifGenerationMatch: generation } }).delete({ ignoreNotFound: true })
+  await exactGenerationFile(storage, bucketName, objectName, generation).delete({ ignoreNotFound: true })
 }

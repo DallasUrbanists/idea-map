@@ -90,12 +90,13 @@ test('upload signing uses the dedicated service account through the supplied ide
 test('temporary cleanup targets only the requested generation and rejects unsafe targets', async () => {
   const calls = []
   const storage = { bucket(name) { return { file(object, options) { return {
+    interceptors: [],
     async delete(deleteOptions) { calls.push({ name, object, options, deleteOptions }) },
   } } } } }
   const object = 'pending/11111111-1111-4111-8111-111111111111'
   await deletePendingUploadGeneration(storage, 'synthetic-pending', object, '1234567890123456')
   assert.deepEqual(calls, [{ name: 'synthetic-pending', object, options: {
-    generation: '1234567890123456', preconditionOpts: { ifGenerationMatch: '1234567890123456' },
+    preconditionOpts: { ifGenerationMatch: '1234567890123456' },
   }, deleteOptions: { ignoreNotFound: true } }])
   await assert.rejects(deletePendingUploadGeneration(storage, 'synthetic-pending', 'approved/object', '123'), /Invalid pending upload generation/)
   await assert.rejects(deletePendingUploadGeneration(storage, 'synthetic-pending', object, '0'), /Invalid pending upload generation/)
@@ -103,17 +104,30 @@ test('temporary cleanup targets only the requested generation and rejects unsafe
 })
 
 test('storage client sends the exact generation and precondition for cleanup', async () => {
-  let path
-  const server = createServer((request, response) => { path = request.url; response.writeHead(204).end() })
+  const paths = []
+  let exists = true
+  const server = createServer((request, response) => {
+    const url = new URL(request.url, 'http://127.0.0.1')
+    paths.push(url)
+    const exact = url.searchParams.get('generation') === '9007199254740993' && url.searchParams.get('ifGenerationMatch') === '9007199254740993'
+    if (!exact || !exists) { response.writeHead(404, { 'content-type': 'application/json' }).end('{"error":{"code":404,"message":"not found"}}'); return }
+    exists = false
+    response.writeHead(204).end()
+  })
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   const previous = process.env.STORAGE_EMULATOR_HOST
   process.env.STORAGE_EMULATOR_HOST = `http://127.0.0.1:${server.address().port}`
   try {
     const storage = new Storage({ projectId: 'synthetic-project' })
-    await deletePendingUploadGeneration(storage, 'synthetic-pending', 'pending/11111111-1111-4111-8111-111111111111', '1234567890123456')
-    const requested = new URL(path, 'http://127.0.0.1')
-    assert.equal(requested.searchParams.get('generation'), '1234567890123456')
-    assert.equal(requested.searchParams.get('ifGenerationMatch'), '1234567890123456')
+    await deletePendingUploadGeneration(storage, 'synthetic-pending', 'pending/11111111-1111-4111-8111-111111111111', '9007199254740993')
+    assert.equal(exists, false)
+    // A retry may ignore 404 only after addressing the same exact generation.
+    await deletePendingUploadGeneration(storage, 'synthetic-pending', 'pending/11111111-1111-4111-8111-111111111111', '9007199254740993')
+    assert.equal(paths.length, 2)
+    for (const requested of paths) {
+      assert.equal(requested.searchParams.get('generation'), '9007199254740993')
+      assert.equal(requested.searchParams.get('ifGenerationMatch'), '9007199254740993')
+    }
   } finally {
     if (previous === undefined) delete process.env.STORAGE_EMULATOR_HOST
     else process.env.STORAGE_EMULATOR_HOST = previous

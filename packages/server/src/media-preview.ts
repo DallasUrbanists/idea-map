@@ -1,5 +1,6 @@
 import { Storage } from '@google-cloud/storage'
 import pg from 'pg'
+import { exactGenerationFile } from './storage-generation.js'
 
 export interface PublicPreview { readonly bytes: Buffer; readonly contentType: string }
 export const MAX_MEDIA_PREVIEW_BYTES = 16 * 1024 * 1024
@@ -32,10 +33,10 @@ export async function readMediaPreview(
   const row = first.rows[0]
   if (!row) return null
   if (!/^[1-9][0-9]*$/.test(row.generation) || !['image/jpeg', 'image/png', 'image/webp'].includes(row.content_type)) throw new Error('Invalid preview metadata')
-  const file = storage.bucket(bucket).file(row.object_name, { generation: row.generation })
+  const file = exactGenerationFile(storage, bucket, row.object_name, row.generation)
   const [metadata] = await file.getMetadata()
   const size = Number(metadata.size)
-  if (!Number.isSafeInteger(size) || size < 1 || size > maxBytes || metadata.contentType !== row.content_type ||
+  if (metadata.generation !== row.generation || !Number.isSafeInteger(size) || size < 1 || size > maxBytes || metadata.contentType !== row.content_type ||
       (metadata.contentEncoding && metadata.contentEncoding !== 'identity')) throw new Error('Invalid preview object')
   const chunks: Buffer[] = []
   let count = 0

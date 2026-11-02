@@ -16,15 +16,17 @@ if (!parsed || parsed.hostname !== '127.0.0.1' || !parsed.pathname.startsWith('/
 
 test('public preview route serves only the approved generation and stops after withdrawal', async () => {
   const image = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2])
+  const generation = '9007199254740993'
+  let metadataGeneration = generation
   const calls = []
   const fakeStorage = createHttpServer((request, response) => {
     calls.push(request.url)
     const requestUrl = new URL(request.url, 'http://127.0.0.1')
-    if (requestUrl.searchParams.get('generation') !== '123') { response.writeHead(400).end(); return }
+    if (requestUrl.searchParams.get('generation') !== generation || requestUrl.searchParams.get('ifGenerationMatch') !== generation) { response.writeHead(400).end(); return }
     if (requestUrl.searchParams.get('alt') === 'media') {
       response.writeHead(200, { 'content-type': 'image/png', 'content-length': image.length }).end(image)
     } else {
-      response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ size: String(image.length), contentType: 'image/png', generation: '123' }))
+      response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ size: String(image.length), contentType: 'image/png', generation: metadataGeneration }))
     }
   })
   await new Promise(resolve => fakeStorage.listen(0, '127.0.0.1', resolve))
@@ -47,7 +49,7 @@ test('public preview route serves only the approved generation and stops after w
     await db.query("INSERT INTO ideas(id,author_contact_id,publication_state) VALUES ($1,$2,'approved')", [ideaId, contactId])
     await db.query("INSERT INTO idea_revisions(id,idea_id,version,content,review_state) VALUES ($1,$2,1,'{}','approved')", [revisionId, ideaId])
     await db.query('INSERT INTO approved_revisions(idea_id,revision_id) VALUES ($1,$2)', [ideaId, revisionId])
-    await db.query("INSERT INTO media_previews(id,idea_id,revision_id,object_name,generation,content_type,published) VALUES ($1,$2,$3,'synthetic/preview','123','image/png',true)", [previewId, ideaId, revisionId])
+    await db.query("INSERT INTO media_previews(id,idea_id,revision_id,object_name,generation,content_type,published) VALUES ($1,$2,$3,'synthetic/preview',$4,'image/png',true)", [previewId, ideaId, revisionId, generation])
     let ready = false
     for (let i = 0; i < 60; i++) {
       if (server.exitCode !== null) throw new Error('web server exited during startup')
@@ -61,6 +63,11 @@ test('public preview route serves only the approved generation and stops after w
     assert.equal(response.headers.get('cache-control'), 'private, no-store')
     assert.deepEqual(Buffer.from(await response.arrayBuffer()), image)
     assert.ok(calls.length >= 2)
+    metadataGeneration = '9007199254740992'
+    const beforeMismatch = calls.length
+    assert.equal((await fetch(`${base}/api/media/${previewId}`)).status, 503)
+    assert.equal(calls.length, beforeMismatch + 1)
+    metadataGeneration = generation
     await db.query("UPDATE ideas SET publication_state='withdrawn' WHERE id=$1", [ideaId])
     const before = calls.length
     assert.equal((await fetch(`${base}/api/media/${previewId}`)).status, 404)
