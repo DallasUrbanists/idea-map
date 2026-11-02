@@ -85,6 +85,29 @@ concurrent, so operators must review write-locking, backups, and rollback before
 applying it. Earlier application versions can ignore the additive columns;
 operators should preserve newly recorded evidence during rollback.
 
+The server-only guest verification primitive issues a signed, random,
+single-use proof for an unowned idea and its current contact address. The
+database stores a secret digest and keyed address fingerprint, not the bearer
+token or an additional email copy. A server-configured lifetime must be between
+one minute and 24 hours; there is no default. Redemption uses database time,
+locks the idea, contact, and proof, rejects changed addresses, ownership or
+withdrawal, and invalidates other outstanding proofs for that idea. Changing a
+contact address clears its verification timestamp and invalidates outstanding
+proofs for that contact, even if the address is later changed back. Expired
+verifier records can be pruned only under the idea lock when no legal hold applies.
+
+This primitive does not send mail, create a guest session, enforce a
+registered-email gate, or authorize ownership or publication. Its authorization
+callback is a trusted server boundary, not a browser claim. Before live use,
+implement and review guest/draft authorization, account lookup and anti-enumeration,
+rate limits, private delivery and fragment-based link handling, key storage and
+rotation, retention scheduling, deletion, and recovery. No route, live grant,
+provider use, or scheduler is enabled by these functions. Rotating the signing
+key invalidates outstanding proofs and requires a recovery process. Verification
+records reference the idea; a future authorized deletion must invalidate and
+remove applicable proofs under the same idea lock and legal-hold checks without
+missing the policy's deletion deadline.
+
 A composite foreign key prevents an approved-revision pointer from referencing a
 revision belonging to another idea. A server transaction must still verify the
 revision is approved before setting the pointer and must retain the prior
