@@ -42,10 +42,17 @@ export async function evaluateTrustedShortcut(client: pg.PoolClient, currentIdea
   const current = await client.query<{ owner_id: string | null }>('SELECT owner_id FROM ideas WHERE id = $1 FOR UPDATE', [currentIdeaId])
   if (!current.rowCount || current.rows[0].owner_id !== identity.userId) return fallback
   await lockApprovalHistoryOwners(client, [identity.userId])
+  // Existing owner pointers or legacy claims alone cannot establish verified ownership.
+  const ownership = await client.query(`SELECT 1 FROM ownership_claims c
+    JOIN identities i ON i.id = c.verified_identity_id AND i.user_id = c.user_id
+    WHERE c.idea_id = $1 AND c.user_id = $2 AND c.verified_at IS NOT NULL`, [currentIdeaId, identity.userId])
+  if (!ownership.rowCount) return fallback
   const result = await client.query<{ total: number, unknown: number }>(`
-    SELECT count(*) FILTER (WHERE a.verified_for_trust AND NOT a.excluded_for_violation)::int AS total,
-      count(*) FILTER (WHERE NOT a.verified_for_trust)::int AS unknown
+    SELECT count(*) FILTER (WHERE a.verified_for_trust AND NOT a.excluded_for_violation AND c.verified_at IS NOT NULL AND v.id IS NOT NULL)::int AS total,
+      count(*) FILTER (WHERE NOT a.verified_for_trust OR (NOT a.excluded_for_violation AND (c.verified_at IS NULL OR v.id IS NULL)))::int AS unknown
     FROM approval_records a JOIN ideas i ON i.id = a.idea_id
+    LEFT JOIN ownership_claims c ON c.idea_id = i.id AND c.user_id = i.owner_id
+    LEFT JOIN identities v ON v.id = c.verified_identity_id AND v.user_id = c.user_id
     WHERE i.owner_id = $1 AND i.id <> $2`, [identity.userId, currentIdeaId])
   if (result.rows[0].unknown) return fallback
   const priorApprovals = result.rows[0].total

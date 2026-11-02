@@ -71,6 +71,20 @@
       "when": 1793651461876,
       "tag": "0009_moderator_assignment_immutability",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793652297489,
+      "tag": "0010_verified_ownership_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793652298355,
+      "tag": "0011_verified_ownership_claim",
+      "breakpoints": true
     }
   ]
 }
