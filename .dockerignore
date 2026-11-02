@@ -6,6 +6,14 @@
 **/.cache
 **/storybook-static
 **/*.tsbuildinfo
+**/.terraform
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfvars
+**/*.tfvars.json
+**/*.tfplan
 .env
 .env.*
+**/.env
+**/.env.*
 !.env.example

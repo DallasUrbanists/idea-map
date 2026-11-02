@@ -24,6 +24,7 @@ for project work:
 | [Agent operating guide](../AGENTS.md) | Shared rules for coding agents working on the project |
 | [Development guide](contributor-guides/development-guide.md) | Setup, configuration, native/container sessions, shutdown, and troubleshooting |
 | [Testing guide](contributor-guides/testing-guide.md) | Required checks, package/database tests, and manual/automated authentication checks |
+| [SSR staging guide](contributor-guides/ssr-staging.md) | Operate and validate the isolated server-rendering staging environment |
 | [Pull-request review guide](contributor-guides/pull-request-review-guide.md) | Check behavior, documentation, and evidence, and leave actionable feedback |
 | [Documentation style guide](contributor-guides/documentation-style-guide.md) | Mandatory writing rules, audience boundaries, and documentation review |
 
@@ -48,7 +49,7 @@ details about each platform in these guides:
 | --- | --- |
 | Runtime and workspace | [Node.js/TypeScript](architecture/nodejs-typescript.md), [pnpm](architecture/pnpm.md), [Vue/Nuxt](architecture/vue-nuxt.md) |
 | user interface and browser verification | [Reka](architecture/reka.md), [Storybook](architecture/storybook.md), [Playwright](architecture/playwright.md) |
-| Infrastructure | [Docker](architecture/docker.md), [Google Cloud](architecture/google-cloud.md), [Terraform](architecture/terraform.md) |
+| Infrastructure | [Docker](architecture/docker.md), [Google Cloud](architecture/google-cloud.md), [Terraform](architecture/terraform.md), [Hosting cache](architecture/hosting-cache.md) |
 | Identity and data | [Firebase](architecture/firebase.md), [PostgreSQL/PostGIS/Drizzle](architecture/postgresql-postgis-drizzle.md), [Neon](architecture/neon.md) |
 | External services | [Resend](architecture/resend.md), [Streetmix](architecture/streetmix.md) |
 
