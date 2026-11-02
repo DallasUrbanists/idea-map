@@ -311,8 +311,10 @@ The server-only moderator hold primitive checks the current database assignment
 and locks the idea and revision before checking the moderator's assessment
 snapshot. It records the actor, time, and reason for placing and releasing a
 hold. Publication checks active holds after taking the same idea lock. A hold
-is separate from other review blocks, so releasing it cannot resolve a rejection
-or request for changes. Opening a review does not create a hold.
+continues to block the idea after an edit until explicitly released against the
+current review snapshot. It is separate from other review blocks, so releasing
+it cannot resolve a rejection or request for changes. Opening a review does not
+create a hold.
 Assessment, review, and job transactions explicitly use PostgreSQL READ
 COMMITTED isolation so a recheck sees changes committed while waiting for locks.
 The moderator's current identity is rechecked before commit while the database

@@ -15,15 +15,15 @@ function validate(input: HoldRequest) {
 }
 
 /** Lock in the publication writer's order, then check the reviewer's snapshot. */
-async function lockCurrentRevision(client: pg.PoolClient, input: HoldRequest): Promise<boolean> {
+async function lockCurrentRevision(client: pg.PoolClient, input: HoldRequest, pendingOnly = true): Promise<boolean> {
   const revision = await client.query(`SELECT r.id FROM ideas i JOIN idea_revisions r ON r.idea_id = i.id
     WHERE r.id = $1 FOR UPDATE OF i, r`, [input.revisionId])
   if (!revision.rowCount) return false
   const current = await client.query(`SELECT 1 FROM ideas i JOIN idea_revisions r ON r.idea_id = i.id
-    WHERE r.id = $1 AND i.publication_state <> 'withdrawn' AND r.review_state NOT IN ('approved', 'rejected')
+    WHERE r.id = $1 AND (NOT $3::boolean OR (i.publication_state <> 'withdrawn' AND r.review_state NOT IN ('approved', 'rejected')))
       AND NOT EXISTS (SELECT 1 FROM idea_revisions newer WHERE newer.idea_id = i.id AND newer.version > r.version)
       AND (SELECT id FROM revision_assessments WHERE revision_id = r.id AND current) IS NOT DISTINCT FROM $2::text`,
-  [input.revisionId, input.assessmentId])
+  [input.revisionId, input.assessmentId, pendingOnly])
   return !!current.rowCount
 }
 
@@ -46,9 +46,11 @@ export async function releaseModeratorHold(databaseUrl: string, projectId: strin
   validate(input)
   if (!uuid.test(input.holdId)) throw new Error('Invalid moderator hold')
   return withVerifiedModerator(databaseUrl, projectId, cookie, verifier, async (client, actor) => {
-    if (!await lockCurrentRevision(client, input)) return 'stale'
+    if (!await lockCurrentRevision(client, input, false)) return 'stale'
     const released = await client.query(`UPDATE moderator_holds SET released_by = $3, released_at = clock_timestamp(), release_reason = $4
-      WHERE id = $1 AND revision_id = $2 AND released_at IS NULL RETURNING id`,
+      WHERE id = $1 AND released_at IS NULL AND revision_id IN
+        (SELECT held.id FROM idea_revisions held JOIN idea_revisions current ON current.idea_id = held.idea_id WHERE current.id = $2)
+      RETURNING id`,
     [input.holdId, input.revisionId, actor, input.reason.trim()])
     return released.rowCount ? 'released' : 'not-held'
   })
