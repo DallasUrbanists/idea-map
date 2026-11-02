@@ -166,12 +166,19 @@ You should keep credentials and private data out of review comments. Report
 security-sensitive findings privately to a maintainer, following
 [CONTRIBUTING.md](../../CONTRIBUTING.md#using-ai-tools).
 
+For a draft pull request, reviewers should check that the author has provided a
+comment with numbered, precise steps to make it ready for review. Reviewers
+should identify any missing or unclear steps and assess readiness against the
+pull request's scope; an unfinished parent issue alone is not a reason to keep a
+focused change in draft.
+
 ## Finish the review
 
 You should finish with a review that the author and other reviewers can follow:
 
-1. Summarize what you checked, what evidence you used, and any remaining blockers
-    or validation gaps.
+1. Summarize the reviewed commit and scope, what you checked, and any remaining
+    blockers or validation gaps. Distinguish checks you ran from author-reported
+    or automated evidence, and state when you found no actionable defects.
 2. Approve when the affected requirements are met and blocking concerns are
     resolved, request changes for unresolved required fixes, or leave a comment
     when you're asking for clarification without approving.
