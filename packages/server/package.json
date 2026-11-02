@@ -28,6 +28,7 @@
     "test:media": "tsc --build && node --test test/media-upload.test.mjs",
     "test:outbox": "tsc --build && node --test test/outbox.test.mjs",
     "test:moderation-schedule": "tsc --build && node --test test/moderation-schedule.test.mjs",
+    "test:moderation-clock": "tsc --build && node --test test/moderation-clock.test.mjs",
     "test:moderation-jobs": "tsc --build && node --test test/moderation-jobs.test.mjs",
     "test:approval-history": "tsc --build && node --test test/approval-history.test.mjs",
     "test:cloud-tasks": "tsc --build && node --test test/cloud-tasks.test.mjs",
