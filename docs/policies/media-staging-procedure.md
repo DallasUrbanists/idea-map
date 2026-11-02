@@ -14,6 +14,8 @@ The following contents links navigate within this guide:
 - [Resources and ownership](#resources-and-ownership)
 - [Review a staging plan](#review-a-staging-plan)
 - [Verify and clean up a test](#verify-and-clean-up-a-test)
+- [Configure the delivery webhook](#configure-the-delivery-webhook)
+- [Verify and recover delivery](#verify-and-recover-delivery)
 
 ## Resources and ownership
 
@@ -80,3 +82,86 @@ preconditions. They should remove test-only identities and grants created for th
 check, retain any object they cannot safely identify, and record the gap. Deleted
 generations remain subject to the bucket's soft-delete retention; reviewers must
 not delete the buckets, state, unrelated records, or secret versions as cleanup.
+
+## Configure the delivery webhook
+
+The `infra/resend-staging` root owns the separate `idea-map-resend-staging`
+service, its runtime identity, the `idea_map_resend_staging` database on the
+existing staging Cloud SQL instance, and the database URL secret container. Its
+Terraform state uses the `staging/resend-webhook` prefix in the staging state
+bucket. The existing webhook signing-secret container remains managed by the
+media staging root; secret values and versions are managed outside Terraform.
+
+Operators should build a reviewed image pinned by digest and use an authorized
+staging administrator, the Cloud SQL Auth Proxy, and short-lived credentials.
+The service accepts `GET /api/health` and signed `POST /api/webhooks/resend`;
+other dynamic application routes are unavailable. Public static assets remain
+accessible. Its database contains synthetic test data only and its runtime role
+has no permission to read email IDs or message content.
+
+From the repository root, operators can initialize the separate backend:
+
+```sh
+terraform "-chdir=infra/resend-staging" init "-backend-config=bucket=dallasurbanists-idea-map-dev-ssr-tfstate" "-backend-config=prefix=staging/resend-webhook"
+```
+
+Operators should place only non-secret variables in an ignored local
+`infra/resend-staging/staging.tfvars`, then create and inspect each plan:
+
+```sh
+terraform "-chdir=infra/resend-staging" plan "-var-file=staging.tfvars" "-out=review.tfplan"
+terraform "-chdir=infra/resend-staging" show review.tfplan
+```
+
+The Terraform output `webhook_url` identifies the endpoint after the service is
+enabled. State and plans can contain sensitive configuration and need the same
+protection as the media staging state.
+
+1. Initialize the separate Terraform backend, set `web_image` to the reviewed
+    image digest, and review a plan with `enable_service = false`. Confirm that
+    it creates only the isolated database, runtime identity, database secret,
+    and scoped grants before an authorized apply.
+2. Connect to `idea_map_resend_staging` through the Cloud SQL Auth Proxy using
+    the staging administrator credential. Apply the reviewed database migrations
+    with the direct administrative connection and create the dedicated
+    `idea_map_resend_runtime` login using a securely generated password. Use a
+    secure prompt such as `psql`'s `\password`, not a password in a SQL command.
+3. Revoke database `CONNECT` and schema `public` access from `PUBLIC`, then grant
+    the runtime role database `CONNECT`, schema `USAGE`, `INSERT` on
+    `email_delivery_events(event_id, email_id, event_type, occurred_at)`, and
+    `SELECT` on `email_delivery_events(event_id)`. Verify the insert and duplicate
+    check work and that reading `email_id` is denied.
+4. Store the runtime connection URL, including the Cloud SQL socket path and
+    runtime credential, as a Secret Manager version in
+    `idea-map-staging-resend-database-url`. Enter it through an approved secret
+    workflow; do not put credentials in Terraform, command arguments, logs, or
+    source control.
+5. Set `enable_service = true` and `database_secret_version` to that numeric
+    version, then review and apply a plan that creates only the isolated service.
+    With no signing secret configured, its webhook returns `503` and does not
+    accept events.
+6. Register the service's `webhook_url` output in the development Resend account
+    for the required delivery event types. Store the provider-generated signing
+    secret as a new version of `idea-map-staging-resend-webhook-secret` without
+    disclosing it, and pin that numeric version in `webhook_secret_version`.
+7. Review and apply the plan for the scoped secret grant and updated service,
+    then confirm a fresh plan has no unexpected changes. Review inherited access
+    and remove temporary test grants without changing unrelated services.
+
+## Verify and recover delivery
+
+Operators should send only synthetic mail using the restricted staging key and
+check a verified delivery event reaches the database before acknowledgement.
+They should also test invalid signatures, duplicate delivery, retry after a
+temporary database failure, and provider-domain authentication with a controlled
+test mailbox. Resend's team inbound address can receive a synthetic message, but
+its displayed headers do not necessarily provide independent recipient-side SPF,
+DKIM, and DMARC verdicts.
+
+Operators should record test IDs and results without message content or secrets,
+remove only test-owned database events, and follow provider retention rules for
+test messages and webhook attempts. If the webhook or database is unavailable,
+repair the cause and replay only after confirming idempotency. When rotating a
+signing secret, coordinate the provider endpoint and pinned Secret Manager
+version, preserve a rollback path, and test delivery before disabling the prior
+version.

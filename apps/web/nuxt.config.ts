@@ -11,6 +11,7 @@ export default defineNuxtConfig({
     databaseUrl: '',
     // NUXT_RESEND_WEBHOOK_SECRET remains private to the server.
     resendWebhookSecret: '',
+    stagingWebhookOnly: false,
     approvedMediaBucket: '',
     pendingMediaBucket: '',
     mediaPreviewMaxBytes: 0,

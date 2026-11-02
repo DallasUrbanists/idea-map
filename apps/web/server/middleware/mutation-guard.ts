@@ -10,6 +10,11 @@ export default defineEventHandler((event) => {
   // Each exception authenticates and authorizes its own requests.
   const sessionPost = method === 'POST' && event.path.split('?')[0] === '/api/session'
   const webhookPost = method === 'POST' && event.path.split('?')[0] === '/api/webhooks/resend'
+  const healthGet = method === 'GET' && event.path.split('?')[0] === '/api/health'
+  if (useRuntimeConfig(event).stagingWebhookOnly && !webhookPost && !healthGet) {
+    setResponseHeader(event, 'Cache-Control', 'private, no-store')
+    throw createError({ statusCode: 404, statusMessage: 'Not found' })
+  }
   if (((method !== 'GET' && method !== 'HEAD') && !sessionPost && !webhookPost) || hasMethodOverride) {
     setResponseHeader(event, 'Cache-Control', 'private, no-store')
     throw createError({ statusCode: 403, statusMessage: 'Mutations unavailable' })

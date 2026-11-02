@@ -65,6 +65,7 @@ development tools:
 | `packages/streetmix` | Independent generation contracts and injected provider adapters |
 | `infra/terraform` | Foundation infrastructure definitions and validation |
 | `infra/media-staging` | Existing isolated staging media buckets and Resend secret containers |
+| `infra/resend-staging` | Isolated staging delivery webhook service and database |
 | `infra/ssr-staging`, `infra/ssr-staging-db` | Isolated synthetic staging web service and database |
 | `dev` and `scripts` | Local services, development helpers, and test harnesses |
 

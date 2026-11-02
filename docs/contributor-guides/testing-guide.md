@@ -86,6 +86,8 @@ To exercise the built webhook endpoint against a disposable local database, set
 `pnpm build`, and then run `pnpm test:webhook`. The test uses a synthetic webhook
 secret, removes its own event, and checks signature rejection, concurrent retries,
 request limits, and database failure.
+The check also exercises the isolated webhook-only service mode and confirms
+that it denies unrelated application routes.
 
 With the same disposable database, run `pnpm test:pool` to check that concurrent
 published reads, preview reads, and delivery-event writes share the two-client
