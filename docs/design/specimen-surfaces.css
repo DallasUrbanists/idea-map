@@ -1,0 +1,85 @@
+/* Paint tokens are separate from the specimen's transparent page layout. */
+body {
+  --specimen-page-start: var(--color-page);
+  --specimen-page-middle: #f0f2f8;
+  --specimen-page-end: #eaf1f2;
+  --specimen-page-background: linear-gradient(90deg, var(--specimen-page-start) 0%, var(--specimen-page-middle) 50%, var(--specimen-page-end) 100%);
+  --specimen-border-subtle: #d7dee6;
+  --specimen-shadow-flat: none;
+  --specimen-shadow-floating: 0 4px 12px rgb(28 36 46 / 14%);
+  --specimen-shadow-overlay: 0 12px 32px rgb(28 36 46 / 22%);
+  background-color: var(--color-page);
+  background-image: var(--specimen-page-background);
+}
+
+:root[data-theme='dark'] body {
+  --specimen-page-middle: #242628;
+  --specimen-page-end: #26282a;
+  --specimen-border-subtle: #465463;
+  --specimen-shadow-floating: 0 4px 12px rgb(0 0 0 / 32%);
+  --specimen-shadow-overlay: 0 12px 32px rgb(0 0 0 / 48%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) body, :root[data-theme='system'] body {
+    --specimen-page-middle: #242628;
+    --specimen-page-end: #26282a;
+    --specimen-border-subtle: #465463;
+    --specimen-shadow-floating: 0 4px 12px rgb(0 0 0 / 32%);
+    --specimen-shadow-overlay: 0 12px 32px rgb(0 0 0 / 48%);
+  }
+}
+
+/* Background shorthands reset images and establish opaque component surfaces. */
+.card, .theme-picker, .theme-picker legend, .theme-table, .theme-table caption, .radius-demo,
+.elevation-demo, .edge-card, .edge-copy, .border-field {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+.floating-demo, .overlay-demo, .edge-row {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+.edge-media {
+  background: var(--specimen-lilac);
+  color: var(--specimen-asphalt);
+}
+
+.card, .edge-card { border: 1px solid var(--specimen-border-subtle); border-radius: var(--radius-medium); }
+.theme-picker, .swatch { border-color: var(--specimen-border-subtle); border-radius: var(--radius-small); }
+.theme-table th, .theme-table td, section, footer { border-color: var(--specimen-border-subtle); }
+.theme-table caption { margin-bottom: 0; padding-bottom: var(--space-2); }
+.color-chip { border-color: var(--specimen-border-subtle); border-radius: 0; }
+button { border-width: 1px; }
+
+.radius-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-4); margin-bottom: var(--space-6); }
+.radius-demo { display: grid; place-items: center; min-height: 80px; padding: var(--space-3); margin-bottom: var(--space-3); border: 1px solid var(--specimen-border-subtle); }
+.small-radius { border-radius: var(--radius-small); }
+.medium-radius { border-radius: var(--radius-medium); }
+.pill-radius { border-radius: var(--radius-pill); }
+
+.elevation-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-8); padding: var(--space-4) 0 var(--space-8); }
+.elevation-demo { border: 1px solid var(--specimen-border-subtle); padding: var(--space-6); border-radius: var(--radius-small); }
+.elevation-demo p:last-child { margin-bottom: 0; }
+.flat-demo { border-radius: var(--radius-medium); box-shadow: var(--specimen-shadow-flat); }
+.floating-demo { box-shadow: var(--specimen-shadow-floating); }
+.overlay-demo { box-shadow: var(--specimen-shadow-overlay); }
+
+.border-examples { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-6); margin-bottom: var(--space-6); }
+.border-field { display: block; width: 100%; height: auto; min-height: 44px; padding: var(--space-2) var(--space-3); margin: var(--space-2) 0 var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-small); font: inherit; }
+.edge-card { margin-bottom: var(--space-6); }
+.edge-media { padding: var(--space-6); border-radius: calc(var(--radius-medium) - 1px) calc(var(--radius-medium) - 1px) 0 0; }
+.edge-copy, .edge-row { padding: var(--space-6); }
+.edge-copy p:last-child, .edge-media p:last-child { margin-bottom: 0; }
+.edge-row { border-top: 1px solid var(--specimen-border-subtle); border-radius: 0 0 calc(var(--radius-medium) - 1px) calc(var(--radius-medium) - 1px); }
+.page-shades { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--space-4); margin-block: var(--space-4); }
+.page-shades p { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+@media (max-width: 700px) {
+  .elevation-grid, .border-examples { grid-template-columns: 1fr; }
+  .card, .elevation-demo, .edge-copy, .edge-row, .edge-media { padding: var(--space-4); }
+}
+@media (forced-colors: active) {
+  body { background-image: none; }
+  .elevation-demo { box-shadow: none; }
+}
