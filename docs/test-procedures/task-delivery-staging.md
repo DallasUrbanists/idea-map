@@ -1,20 +1,24 @@
 # Validate task delivery in isolated staging
 
-Operators can use this procedure to review task-delivery evidence for #17 and
-#31 with synthetic records. The current worker rejects execution, so the
-publication scenarios remain blocked until the assessment, identity,
-moderation, privacy, and publication gates are implemented and accepted.
-Neither this procedure nor a passing local test authorizes deployment or
-changes to hosted resources.
+Operators can use this procedure to review task-delivery evidence with synthetic
+records in isolated staging. Publication scenarios require accepted assessment,
+identity, moderation, privacy, and publication gates. Neither this procedure nor
+a passing local test authorizes deployment or changes to hosted resources.
+
+The following contents links navigate within this procedure:
+
+- [Prepare the review](#prepare-the-review)
+- [Record the synthetic evidence](#record-the-synthetic-evidence)
+- [Finish the test](#finish-the-test)
 
 ## Prepare the review
 
-Before requesting access or an infrastructure plan, record the following inputs
-in a reviewable staging proposal without including credentials or private data:
+Before requesting access or an infrastructure plan, operators should record the
+following inputs in a reviewable staging proposal without credentials or private data:
 
 | Input | Required boundary |
 | --- | --- |
-| Project, region, and owner | An explicitly authorized v2 test project and region; no production or v1 resources |
+| Project, region, and owner | An explicitly authorized test project and region; no shared or production resources |
 | State | A separately controlled state bucket and prefix, with access and recovery ownership confirmed |
 | Images | Reviewed immutable web and worker image digests and their matching source revisions |
 | Database | A disposable PostGIS database containing only synthetic data, with a separate restricted worker credential and connection budget |
@@ -23,15 +27,15 @@ in a reviewable staging proposal without including credentials or private data:
 
 The [Terraform architecture guide](../architecture/terraform.md) describes the
 foundation root and its state requirements. That root manages more than task
-delivery, including Cloud Run services, buckets, and a queue. Review its full
-plan and existing ownership before using it; do not apply it over shared staging
-resources or assume the staging web root owns the same state. The foundation
-worker currently lacks the required runtime configuration and database secret
-binding. Prepare and review those changes before a live plan. The canonical
-staging URL does not establish that an isolated worker or queue exists.
+delivery, including Cloud Run services, buckets, and a queue. Operators should
+review its full plan and existing ownership before using it; they must not apply it over
+shared staging resources or assume the staging web root owns the same state.
+Operators should verify that the worker has the required runtime configuration
+and database secret binding before a live plan. The canonical staging URL does
+not establish that an isolated worker or queue exists.
 
-Keep `enable_task_delivery` off during initial review. When an operator has
-separate authorization to configure test delivery, review a plan with it enabled
+Operators should keep `enable_task_delivery` off during initial review. When an
+operator has separate authorization to configure test delivery, review a plan with it enabled
 and verify that the scheduler is paused, invocation is restricted to the two
 distinct identities, queue creation and full-view access are scoped, and task
 payloads contain only job identifiers. Do not unpause the scheduler or connect
@@ -42,8 +46,8 @@ for the provider checks required before rearming a delivery.
 
 ## Record the synthetic evidence
 
-Use a controlled clock or documented test hook in the isolated database and
-record the source revision, image digest, test identifiers, observed states,
+Operators should use a controlled clock or documented test hook in the isolated
+database and record the source revision, image digest, test identifiers, observed states,
 and results. Never place raw content, contact data, tokens, or provider
 responses in shared logs or evidence. Record each scenario separately:
 
@@ -58,16 +62,15 @@ responses in shared logs or evidence. Record each scenario separately:
 | Moderator hold or decision races publication | A blocking action committed first prevents publication; approved revision and projection intent commit together or both roll back |
 | Authentication and privacy | Wrong audience, caller, missing or invalid token cannot execute or repair; pending content and private metadata remain inaccessible |
 
-Before the real execution path and accepted policy are available, run the
-existing local synthetic tests in the
+Operators should run the existing local synthetic tests in the
 [testing guide](../contributor-guides/testing-guide.md#package-tests) and mark
-the hosted publication scenarios as unrun. Their injected policy callback is
-not evidence of accepted scoring or real moderator authorization.
+any hosted publication scenarios that were not executed as unrun. Their injected
+policy callback is not evidence of accepted scoring or real moderator authorization.
 
 ## Finish the test
 
-Pause any scheduler enabled for the authorized test and record outstanding
-jobs, failures, and retry state. Follow the reviewed cleanup plan for only the
+Operators should pause any scheduler enabled for the authorized test and record
+outstanding jobs, failures, and retry state. Follow the reviewed cleanup plan for only the
 identified synthetic records and resources; preserve state, backups, and any
 unrelated resources. Verify that no test-owned scheduler or task can continue
 running. Record rollback and cleanup results without publishing private logs.

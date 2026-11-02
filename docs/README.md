@@ -8,7 +8,6 @@ The following contents links navigate within this guide:
 
 - [Contributor guides](#contributor-guides)
 - [Test procedures](#test-procedures)
-- [Test procedures](#test-procedures)
 - [User guides](#user-guides)
 - [Architecture](#architecture)
 - [Design](#design)
@@ -37,11 +36,7 @@ Use these procedures to reproduce focused evaluations and review their evidence:
 | Procedure | Purpose |
 | --- | --- |
 | [Compliance-scoring evaluation](test-procedures/compliance-scoring-evaluation.md) | Reproduce the offline scoring experiment and review its limits |
-
-## Test procedures
-
-The [task-delivery staging procedure](test-procedures/task-delivery-staging.md)
-prepares synthetic evidence and a review of the isolated delivery environment.
+| [Task-delivery staging](test-procedures/task-delivery-staging.md) | Review synthetic evidence in an isolated delivery environment |
 
 ## User guides
 
