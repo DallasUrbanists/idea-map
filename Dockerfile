@@ -1,8 +1,14 @@
 FROM node:24.22.1-bookworm-slim AS build
 WORKDIR /app
-RUN corepack enable && corepack prepare pnpm@11.25.0 --activate
+RUN --mount=type=secret,id=proxy_ca \
+    export NODE_USE_ENV_PROXY=1 \
+    && if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi \
+    && corepack enable && corepack prepare pnpm@11.25.0 --activate
 COPY . .
-RUN pnpm install --frozen-lockfile && pnpm build
+RUN --mount=type=secret,id=proxy_ca \
+    export NODE_USE_ENV_PROXY=1 \
+    && if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi \
+    && pnpm install --frozen-lockfile && pnpm build
 
 FROM node:24.22.1-bookworm-slim AS runtime
 ENV NODE_ENV=production HOST=0.0.0.0

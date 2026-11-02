@@ -11,6 +11,7 @@ for starting and ending a session.
 The following contents links navigate within this guide:
 
 - [Services and isolation](#services-and-isolation)
+- [Web image](#web-image)
 - [Worker image](#worker-image)
 - [Networking and configuration](#networking-and-configuration)
 - [Storage and lifecycle](#storage-and-lifecycle)
@@ -27,6 +28,22 @@ The service helper gives each checkout its own Compose project name based on its
 path. Each checkout has separate containers and volumes. The published ports are
 fixed, so two checkouts cannot run these services at the same time. Published
 ports bind loopback only.
+
+## Web image
+
+Build the web image and run its local-only smoke checks from the repository root:
+
+```sh
+docker build -f Dockerfile -t idea-map-web:local .
+scripts/test-web-image.sh idea-map-web:local
+```
+
+The smoke script removes its own local container after checking a non-root
+runtime, health, private configuration, no-store caching, and disabled
+moderation. For a build behind a proxy with a custom CA, pass the CA with
+`--secret id=proxy_ca,src="$CODEX_PROXY_CERT"` as in the worker example below.
+The CI workflow builds and tests an image locally without pushing or deploying
+it; it does not establish hosted authentication, privacy, or rollout readiness.
 
 ## Worker image
 
