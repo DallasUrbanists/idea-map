@@ -22,6 +22,10 @@ Cloud Run web service. A separate Cloud Run worker handles authenticated
 background tasks and reconciliation. Each environment has separate web and
 worker service accounts, resources, and secrets.
 
+The isolated [SSR staging service](../contributor-guides/ssr-staging.md) uses
+synthetic data, a separate Cloud SQL database, and staging-only shared caching.
+The [Hosting cache guide](hosting-cache.md) describes its cache restrictions.
+
 Cloud Run uses immutable image digests and zero minimum instances. The
 configured starting bounds are two web instances with concurrency 20 and one
 worker instance with concurrency 1 per environment. Before changing those

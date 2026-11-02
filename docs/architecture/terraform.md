@@ -34,6 +34,12 @@ An actual credentialed plan against the approved state and target shows the
 exact creates, updates, replacements, and deletes. A plan must be reviewed
 before any apply. Applying infrastructure requires explicit authorization.
 
+The independent [`infra/ssr-staging`](../../infra/ssr-staging) and
+[`infra/ssr-staging-db`](../../infra/ssr-staging-db) roots manage the synthetic
+staging web service and database separately from this foundation. The
+[staging guide](../contributor-guides/ssr-staging.md) lists resources managed
+outside those roots and explains their operation.
+
 ## State, isolation, and bootstrap
 
 Operators should use separate pre-existing, versioned Google Cloud Storage (GCS)

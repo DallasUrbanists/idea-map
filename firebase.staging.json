@@ -1,0 +1,11 @@
+{
+  "auth": {
+    "providers": { "emailPassword": true }
+  },
+  "hosting": {
+    "target": "ssr-staging",
+    "public": "apps/web/.output/staging-public",
+    "ignore": ["**/*.html", "**/_payload.json"],
+    "rewrites": [{ "source": "**", "run": { "serviceId": "idea-map-ssr-staging", "region": "us-central1" } }]
+  }
+}

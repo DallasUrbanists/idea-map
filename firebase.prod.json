@@ -1,0 +1,7 @@
+{
+  "hosting": {
+    "public": "apps/web/.output/public",
+    "ignore": ["**/*.html", "**/_payload.json"],
+    "rewrites": [{ "source": "**", "run": { "serviceId": "idea-map-web-prod", "region": "us-central1" } }]
+  }
+}

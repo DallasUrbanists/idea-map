@@ -1,0 +1,15 @@
+{
+  "steps": [
+    {
+      "name": "gcr.io/cloud-builders/docker",
+      "entrypoint": "sh",
+      "args": ["-c", "docker create --name staging-assets '${_IMAGE}' >/dev/null && docker cp staging-assets:/app/.output/public /workspace/public && tar -C /workspace -czf /workspace/hosting-assets.tar.gz public"]
+    },
+    {
+      "name": "gcr.io/google.com/cloudsdktool/cloud-sdk:slim",
+      "entrypoint": "gcloud",
+      "args": ["storage", "cp", "/workspace/hosting-assets.tar.gz", "${_DESTINATION}"]
+    }
+  ],
+  "options": { "logging": "GCS_ONLY" }
+}

@@ -1,0 +1,12 @@
+{
+  "projects": {
+    "staging": "dallasurbanists-idea-map-dev"
+  },
+  "targets": {
+    "dallasurbanists-idea-map-dev": {
+      "hosting": {
+        "ssr-staging": ["dallasurbanists-idea-map-dev"]
+      }
+    }
+  }
+}
