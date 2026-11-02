@@ -107,6 +107,8 @@ key invalidates outstanding proofs and requires a recovery process. Verification
 records reference the idea; a future authorized deletion must invalidate and
 remove applicable proofs under the same idea lock and legal-hold checks without
 missing the policy's deletion deadline.
+The contact timestamp is historical evidence for that address, not a current
+guest session, account ownership proof, or trusted-user history.
 
 A composite foreign key prevents an approved-revision pointer from referencing a
 revision belonging to another idea. A server transaction must still verify the
