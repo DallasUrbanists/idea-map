@@ -1,8 +1,9 @@
 # Firebase architecture
 
-When you work on sign-in or live updates, you need to know what Firebase
-handles and what stays in the app's database. Here you'll find how accounts,
-sessions, emulators, and live updates fit together. The
+Firebase is a platform that provides services for building and running apps,
+including user authentication and databases that support live updates. When
+you work on sign-in or live updates, this guide helps you understand what
+Firebase handles and what stays in Idea Map's database. The
 [API policy](../policies/api-policy.md#sessions) covers session security, and
 the [testing guide](../contributor-guides/testing-guide.md#authentication-testing)
 has the authentication checks.

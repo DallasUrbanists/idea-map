@@ -1,9 +1,10 @@
 # PostgreSQL, PostGIS, and Drizzle architecture
 
-Ideas, revisions, and ownership records live in PostgreSQL, with PostGIS handling
-spatial data and Drizzle describing the schema. If you're changing how data is
-stored, this guide explains the constraints and migration steps that protect
-those records.
+PostgreSQL is a database for storing and querying structured data. PostGIS adds
+support for geographic data, and Drizzle is a TypeScript tool for defining and
+working with database schemas. Idea Map uses them to store ideas, revisions, and
+ownership records. If you're changing how data is stored, this guide explains the
+constraints and migration steps that protect those records.
 
 The following contents links navigate within this guide:
 

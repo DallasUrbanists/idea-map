@@ -1,9 +1,11 @@
 # Terraform architecture
 
-Infrastructure changes can affect services, stored data, and access. This guide
-helps you understand Idea Map's Terraform resources, review a plan, and handle
-state and recovery. Operators should obtain explicit authorization for live
-operations; changing documentation does not authorize provisioning.
+Terraform is a tool for defining infrastructure, such as cloud services and
+storage, in configuration files and reviewing proposed changes before applying
+them. Infrastructure changes can affect services, stored data, and access. This
+guide helps you understand Idea Map's Terraform resources, review a plan, and
+handle state and recovery. Operators should obtain explicit authorization for
+live operations; changing documentation does not authorize provisioning.
 
 The [Google Cloud guide](google-cloud.md) defines hosted service
 responsibilities. Terraform definitions live in

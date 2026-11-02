@@ -1,8 +1,10 @@
 # Docker architecture
 
-Docker runs the database and sign-in emulators on your computer and can also
-run the app itself. This guide helps you understand how those services connect
-and what happens to their data when you stop them. The
+Docker runs software in isolated environments called containers, making it
+easier to run the same services on different computers. Idea Map uses Docker
+for the database and sign-in emulators and can also run the app itself. This
+guide helps you understand how those services connect and what happens to their
+data when you stop them. The
 [development guide](../contributor-guides/development-guide.md) has the steps
 for starting and ending a session.
 

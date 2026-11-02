@@ -1,8 +1,11 @@
 # Hosting routes and public HTML caching
 
-This guide explains the Firebase Hosting configuration and cache policy for
-contributors and operators reviewing the web app. The separate staging deployment
-and its limits are described in [the staging guide](../contributor-guides/ssr-staging.md).
+Firebase Hosting is a service for delivering web content and routing requests to
+an application. A cache stores copies of responses so they can be reused for
+later requests. This guide helps contributors and operators understand Idea Map's
+Hosting configuration and public HTML cache policy. The separate staging
+deployment and its limits are described in
+[the staging guide](../contributor-guides/ssr-staging.md).
 
 The following contents links navigate within this guide:
 

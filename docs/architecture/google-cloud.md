@@ -1,10 +1,11 @@
 # Google Cloud architecture
 
-Idea Map's web app, background jobs, and stored media rely on several Google
-Cloud services working together. This guide helps you follow those connections
-and understand which identities can access each resource. You can find resource
-management details in the [Terraform guide](terraform.md) and account handling
-in the [Firebase guide](firebase.md).
+Google Cloud provides computing, storage, and other services that applications
+can use over the internet. Idea Map's web app, background jobs, and stored media
+rely on several of these services working together. This guide helps you follow
+those connections and understand which identities can access each resource. You
+can find resource management details in the [Terraform guide](terraform.md) and
+account handling in the [Firebase guide](firebase.md).
 
 The following contents links navigate within this guide:
 

@@ -1,9 +1,12 @@
 # pnpm architecture
 
-When you add a dependency or run a project command, pnpm connects the packages
-across Idea Map's workspace. This guide explains how dependencies, the lockfile,
-and shared scripts work together so your changes stay consistent across
-checkouts.
+pnpm is a package manager that installs JavaScript dependencies and runs project
+scripts. Like npm, pnpm manages packages and scripts, but it uses a
+[shared store](https://pnpm.io/motivation) to reuse dependency files across
+projects. When you add a dependency or run a command, pnpm also connects the
+packages across Idea Map's workspace. This guide explains how dependencies, the
+lockfile, and shared scripts work together so your changes stay consistent
+across checkouts.
 
 The following contents links navigate within this guide:
 

@@ -1,8 +1,10 @@
 # Vue and Nuxt architecture
 
-When you change a page or add an endpoint, it helps to know what runs in the
-browser and what stays on the server. This guide explains how Vue and Nuxt
-organize Idea Map's pages, components, rendering, and configuration. The
+Vue is a JavaScript framework for building interfaces from reusable components.
+Nuxt builds on Vue to organize web applications and provide features such as
+server-side rendering and server routes. When you change a page or add an
+endpoint, this guide helps you understand what runs in the browser and what
+stays on the server. The
 [development guide](../contributor-guides/development-guide.md) has session
 commands, and the [API policy](../policies/api-policy.md) sets request rules.
 

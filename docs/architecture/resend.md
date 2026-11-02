@@ -1,8 +1,9 @@
 # Resend architecture
 
-Service emails help people keep up with activity in Idea Map. This guide
-explains how Resend connects to the worker, how credentials stay private, and
-how delivery handles retries. The
+Resend is an email service that applications can use to send messages. Idea Map
+uses it for service emails that help people keep up with activity. This guide
+explains how Resend connects to the worker, how credentials stay private, and how
+delivery handles retries. The
 [Privacy Policy](../policies/privacy-policy.md) explains how recipient
 information is handled.
 

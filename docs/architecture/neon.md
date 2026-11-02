@@ -1,9 +1,14 @@
 # Neon architecture
 
-Neon hosts Idea Map's PostgreSQL database. If you're changing a connection or
-checking recovery, this guide explains how environments, pooling, and backups
-fit together. The [database guide](postgresql-postgis-drizzle.md) covers schema
-and migration rules, and the
+Neon is a managed cloud service for PostgreSQL databases, which store and
+retrieve structured application data. Idea Map chooses Neon over Google Cloud
+SQL for hosted development and production because its
+[scale-to-zero feature](https://neon.com/blog/why-you-want-a-database-that-scales-to-zero)
+can suspend database compute when it is idle and resume it when needed. If
+you're changing a connection or checking recovery, this guide explains how
+environments, pooling, and backups fit together. The
+[database guide](postgresql-postgis-drizzle.md) covers schema and migration rules,
+and the
 [architecture overview](architecture-overview.md#environments-and-recovery)
 sets the isolation and recovery requirements.
 
