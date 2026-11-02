@@ -226,11 +226,13 @@ To check local fixture repeatability, privacy, and cleanup, migrate a separate
 empty local `idea_map_test_*` database and set `TEST_DATABASE_URL` to its
 connection string. Run `pnpm exec tsc --build`, then `pnpm test:fixtures`. The
 check inserts synthetic records, verifies that the public reader excludes the
-private idea, and checks that cleanup refuses changes and unrelated references.
+private idea, and checks that seed and cleanup refuse incomplete or changed
+fixtures. Cleanup also refuses unrelated references and cascading foreign keys.
 It removes the records it creates. Use a disposable database so an interrupted
 test can be discarded safely. The synthetic fixtures CI job runs the same check
-against its own disposable PostGIS service. It also runs the existing offline
-Streetmix, email, Cloud Tasks, worker, outbox, and moderation checks using
+against its own disposable PostGIS service. It also runs the root tests, offline
+provider demonstration, and existing Streetmix, email, Cloud Tasks, worker,
+outbox, and moderation checks using
 separate databases for the job tests.
 
 ## UI changes

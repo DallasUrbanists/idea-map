@@ -36,7 +36,8 @@ jobs:
           node-version: 24.22.1
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec tsc --build
+      - run: pnpm test
+      - run: node scripts/provider-fixtures-demo.mjs --mode=offline
       - run: pnpm --filter @idea-map/server db:migrate
       - run: pnpm test:fixtures
       - run: pnpm --filter @idea-map/streetmix test

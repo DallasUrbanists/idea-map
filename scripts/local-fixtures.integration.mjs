@@ -15,11 +15,19 @@ const sentinel = '22000000-0000-4000-8000-000000000099'
 const reference = '22000000-0000-4000-8000-000000000098'
 const run = action => spawnSync(process.execPath, ['scripts/local-fixtures.mjs', action], { env: { ...process.env, DATABASE_URL: databaseUrl }, encoding: 'utf8' })
 
-test('fixtures are repeatable, private, and cleanup refuses edits and unrelated references', async () => {
+test('fixtures are repeatable, private, and refuse incomplete or changed data and unrelated references', async () => {
   const db = new Client({ connectionString: databaseUrl })
   await db.connect()
   let owned = false
   let cascadeTableCreated = false
+  let missingRevision
+  const restoreRevision = async () => {
+    if (!missingRevision) return
+    const row = missingRevision
+    await db.query('INSERT INTO idea_revisions (id, idea_id, version, content, review_state, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
+      [row.id, row.idea_id, row.version, row.content, row.review_state, row.created_at])
+    missingRevision = undefined
+  }
   try {
     const existing = await db.query('SELECT (SELECT count(*) FROM contacts) + (SELECT count(*) FROM ideas) + (SELECT count(*) FROM audit_events) AS count')
     assert.equal(Number(existing.rows[0].count), 0, 'Use an empty disposable database')
@@ -32,9 +40,18 @@ test('fixtures are repeatable, private, and cleanup refuses edits and unrelated 
     assert.deepEqual(await readPublishedIdea(databaseUrl, ids[0]), { title: 'A fictional crossing', description: 'A synthetic public idea.' })
     assert.equal(await readPublishedIdea(databaseUrl, ids[1]), null)
     await db.query("UPDATE ideas SET publication_state = 'withdrawn' WHERE id = $1", [ids[0]])
+    assert.notEqual(run('seed').status, 0)
     assert.notEqual(run('clean').status, 0)
     assert.equal((await db.query('SELECT count(*) FROM ideas')).rows[0].count, '2')
     await db.query("UPDATE ideas SET publication_state = 'approved' WHERE id = $1", [ids[0]])
+    const privateRevision = (await db.query('SELECT * FROM idea_revisions WHERE idea_id = $1', [ids[1]])).rows[0]
+    assert.ok(privateRevision)
+    await db.query('DELETE FROM idea_revisions WHERE id = $1', [privateRevision.id])
+    missingRevision = privateRevision
+    assert.notEqual(run('seed').status, 0)
+    assert.notEqual(run('clean').status, 0)
+    assert.equal((await db.query('SELECT count(*) FROM ideas')).rows[0].count, '2')
+    await restoreRevision()
     await db.query("INSERT INTO audit_events (id, idea_id, event_type) VALUES ($1, $2, 'unrelated')", [reference, ids[0]])
     assert.notEqual(run('clean').status, 0)
     assert.equal((await db.query('SELECT count(*) FROM idea_revisions')).rows[0].count, '2')
@@ -54,6 +71,7 @@ test('fixtures are repeatable, private, and cleanup refuses edits and unrelated 
     try {
       if (cascadeTableCreated) await db.query('DROP TABLE fixture_cascade_check')
       if (owned) {
+        await restoreRevision()
         await db.query('DELETE FROM audit_events WHERE id = $1', [reference])
         await db.query("UPDATE ideas SET publication_state = 'approved' WHERE id = $1", [ids[0]])
         cleanup = run('clean')
