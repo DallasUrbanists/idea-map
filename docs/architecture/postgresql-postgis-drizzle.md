@@ -392,9 +392,11 @@ The database function and endpoint do not grant live access. Content larger than
 implemented. A separate private queue lists at most 50 current pending revision
 identifiers per page in creation order, without content or contact data; it does
 not yet prioritize risk flags. Queue results are snapshots and the revision
-read and actions recheck current state. Private media, a reviewer interface,
-notifications, load limits, privacy controls, and rollout review remain open.
-Responses and errors use `private, no-store`.
+read and actions recheck current state. The reviewer screen can inspect content,
+place or release holds, and request or resolve changes; it deliberately cannot
+approve or reject while media review is unavailable. Private media, full
+decision and escalation controls, notifications, load limits, privacy controls,
+and rollout review remain open. Responses and errors use `private, no-store`.
 
 The separately default-disabled action endpoint accepts manual approval,
 rejection, request-changes, resolve-changes, hold, hold-release, escalation, and

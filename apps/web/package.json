@@ -29,6 +29,7 @@
     "build:storybook": "storybook build",
     "build": "nuxt build",
     "typecheck": "nuxt typecheck",
-    "preview": "nuxt preview"
+    "preview": "nuxt preview",
+    "test:moderation-ui": "playwright test --config tests/moderation/playwright.config.mjs"
   }
 }
