@@ -41,9 +41,9 @@ foundation root and its state requirements. That root manages more than task
 delivery, including Cloud Run services, buckets, and a queue. Operators should
 review its full plan and existing ownership before using it; they must not apply it over
 shared staging resources or assume the staging web root owns the same state.
-Operators should verify that the worker has the required runtime configuration
-and database secret binding before a live plan. The canonical staging URL does
-not establish that an isolated worker or queue exists.
+Operators should review the opt-in worker runtime configuration, exact service
+URI, and pinned existing database secret before a live plan. The canonical
+staging URL does not establish that an isolated worker or queue exists.
 
 Operators should keep `enable_task_delivery` off during initial review. When an
 operator has separate authorization to configure test delivery, review a plan with it enabled

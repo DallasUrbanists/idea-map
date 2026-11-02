@@ -44,6 +44,30 @@ resource "google_cloud_run_v2_service" "runtime" {
           }
         }
       }
+      dynamic "env" {
+        for_each = each.key == "worker" && var.enable_worker_runtime && var.enable_task_delivery ? {
+          WORKER_ORIGIN        = var.worker_origin
+          TASK_INVOKER_EMAIL   = google_service_account.task_invoker[0].email
+          REPAIR_INVOKER_EMAIL = google_service_account.repair_invoker[0].email
+          CLOUD_TASKS_QUEUE    = "projects/${var.project_id}/locations/${var.region}/queues/${google_cloud_tasks_queue.jobs.name}"
+        } : {}
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+      dynamic "env" {
+        for_each = each.key == "worker" && var.enable_worker_runtime ? [1] : []
+        content {
+          name = "WORKER_DATABASE_URL"
+          value_source {
+            secret_key_ref {
+              secret  = var.worker_database_secret_id
+              version = var.worker_database_secret_version
+            }
+          }
+        }
+      }
     }
   }
   lifecycle {
@@ -51,8 +75,16 @@ resource "google_cloud_run_v2_service" "runtime" {
       condition     = var.resend_webhook_secret_version == "" || var.enable_resend_secrets
       error_message = "Enable the Resend secrets before selecting a webhook secret version."
     }
+    precondition {
+      condition     = !var.enable_worker_runtime || (var.enable_task_delivery && var.worker_origin != "" && var.worker_database_secret_id != "" && var.worker_database_secret_version != "")
+      error_message = "Worker runtime requires task delivery, the exact worker origin, and a pinned existing database secret."
+    }
+    postcondition {
+      condition     = each.key != "worker" || !var.enable_worker_runtime || self.uri == var.worker_origin
+      error_message = "The configured worker origin must match the Cloud Run service URI."
+    }
   }
-  depends_on = [google_secret_manager_secret_iam_member.resend]
+  depends_on = [google_secret_manager_secret_iam_member.resend, google_secret_manager_secret_iam_member.worker_database]
 }
 
 resource "google_storage_bucket" "media" {
