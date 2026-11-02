@@ -48,6 +48,7 @@ jobs:
         run: |
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_outbox
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderation
+          docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_clock
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_history
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_worker
       - name: Outbox transactions
@@ -58,6 +59,10 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_moderation
         run: pnpm --filter @idea-map/server test:moderation-jobs
+      - name: Moderation with controlled database time
+        env:
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_clock
+        run: pnpm --filter @idea-map/server test:moderation-clock
       - name: Approval history
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_history

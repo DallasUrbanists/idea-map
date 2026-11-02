@@ -108,6 +108,15 @@ pnpm --filter @idea-map/server test:moderation-schedule
 To check the assessment and publication
 transactions, use a separate empty disposable PostGIS database with the
 `idea_map_test_` prefix and run `pnpm --filter @idea-map/server test:moderation-jobs`.
+For controlled receipt and deadline checks, set `TEST_DATABASE_URL` to another
+empty local disposable database with the same prefix and run:
+
+```sh
+pnpm --filter @idea-map/server test:moderation-clock
+```
+
+The clock test creates a test-only schema and must not run against a shared
+database.
 For the worker integration check, migrate a different disposable database,
 set `TEST_DATABASE_URL`, and run `pnpm --filter @idea-map/worker test:integration`.
 The worker integration test also checks recovery with fake queue responses,
