@@ -81,6 +81,14 @@ pnpm --filter @idea-map/server test:resend
 These checks use a synthetic signing key and provider fakes; they do not verify
 live storage permissions, delivery, DNS, or webhook endpoint deployment.
 
+For the durable outbox, use a separate empty disposable PostGIS database whose
+name starts with `idea_map_test_`, set `TEST_DATABASE_URL`, and run
+`pnpm --filter @idea-map/server test:outbox`. This check applies migrations and
+creates synthetic fixtures. It exercises transaction rollback, duplicate and
+ambiguous delivery, lease recovery, bounded retries, and concurrent execution
+with a fake dispatcher. It does not validate Cloud Tasks or the moderation
+handler.
+
 To exercise the built webhook endpoint against a disposable local database, set
 `TEST_DATABASE_URL` to a migrated `idea_map_test_` database on `127.0.0.1`, run
 `pnpm build`, and then run `pnpm test:webhook`. The test uses a synthetic webhook
