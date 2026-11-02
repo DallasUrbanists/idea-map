@@ -50,6 +50,7 @@ jobs:
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderation
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_clock
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_history
+          docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderator
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_worker
       - name: Outbox transactions
         env:
@@ -67,6 +68,10 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_history
         run: pnpm --filter @idea-map/server test:approval-history
+      - name: Moderator authorization
+        env:
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_moderator
+        run: pnpm --filter @idea-map/server test:moderator-authorization
       - name: Migrate worker test database
         env:
           DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_worker

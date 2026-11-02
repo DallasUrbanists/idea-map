@@ -17,6 +17,7 @@
     "test:preview": "node --test scripts/media-preview.integration.mjs",
     "test:preview:provider": "node --test scripts/media-preview.provider.integration.mjs",
     "test:web:published": "node --test scripts/nuxt-published-smoke.mjs",
+    "test:moderator-auth": "node --test scripts/moderator-auth.integration.mjs",
     "test:auth": "node --test scripts/session-emulator.integration.mjs scripts/auth-browser.integration.mjs",
     "dev": "tsc --build && pnpm --filter @idea-map/web dev --dotenv ../../.env --host 127.0.0.1",
     "dev:storybook": "pnpm --filter @idea-map/web storybook --no-open",

@@ -17,6 +17,21 @@ export const identities = pgTable('identities', {
   provider: text('provider').notNull(),
   subject: text('subject').notNull(),
 }, table => [uniqueIndex('identities_provider_subject_key').on(table.provider, table.subject), index('identities_user_idx').on(table.userId)])
+// Role assignment and revocation are restricted operator actions, not user input.
+export const moderatorAssignments = pgTable('moderator_assignments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  grantedBy: uuid('granted_by').notNull().references(() => users.id),
+  grantedAt: createdAt(),
+  grantReason: text('grant_reason').notNull(),
+  revokedBy: uuid('revoked_by').references(() => users.id),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  revokeReason: text('revoke_reason'),
+}, table => [
+  uniqueIndex('moderator_assignments_active_user_key').on(table.userId).where(sql`${table.revokedAt} IS NULL`),
+  check('moderator_assignments_grant_reason', sql`length(trim(${table.grantReason})) > 0 AND octet_length(${table.grantReason}) <= 1000`),
+  check('moderator_assignments_revoke_fields', sql`(${table.revokedAt} IS NULL AND ${table.revokedBy} IS NULL AND ${table.revokeReason} IS NULL) OR (${table.revokedAt} IS NOT NULL AND ${table.revokedBy} IS NOT NULL AND ${table.revokeReason} IS NOT NULL AND length(trim(${table.revokeReason})) > 0 AND octet_length(${table.revokeReason}) <= 1000)`),
+])
 export const contacts = pgTable('contacts', {
   id: uuid('id').primaryKey().defaultRandom(),
   normalizedEmail: text('normalized_email').notNull(),

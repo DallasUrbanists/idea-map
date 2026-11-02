@@ -102,6 +102,33 @@ production, implement verified ownership and authorized moderator controls,
 privacy-safe deletion and the policy's correction-audit retention and legal-hold
 rules. All ownership and approval writers must follow the locking protocol.
 
+Moderator authority is stored in `moderator_assignments` for an internal user.
+Each assignment records the grant actor and reason and, on revocation, the
+revoking actor, time, and reason. A partial unique index permits one active
+assignment per user; a database trigger prevents deletion, reinstatement, and
+changes other than revocation. These records have user foreign keys, so their
+privacy-safe deletion and legal-hold lifecycle must be resolved before live
+assignments are enabled.
+
+The server resolves a verified Firebase subject through the project-specific
+`firebase:PROJECT_ID` identity namespace. The restricted
+`lock_active_moderator(text, text)` function locks the identity and active
+assignment until the authorized transaction ends, so a concurrent revocation
+cannot commit halfway through an action. The function uses a fixed search path
+and has no `PUBLIC` execute grant. After separate authorization, an operator must
+grant execute only to the intended runtime role; that role must not be able to
+write assignments, modify the function, or create objects in the trusted schema.
+
+Role provisioning, verified identity creation, legal-hold handling, and
+privacy-safe removal are not provided by this boundary. Do not grant live roles
+or enable automatic publication until those processes and their permissions have
+been reviewed and separately authorized.
+
+The role migration adds tables and functions without changing existing identity
+or approval records and does not grant runtime access. Older application versions
+can ignore the new objects during rollback; operators must preserve assignment
+records and review deletion and recovery before removing database objects.
+
 ## Outbox recovery
 
 The server records a job and its outbox entry in the same transaction as the

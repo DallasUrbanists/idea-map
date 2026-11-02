@@ -63,6 +63,11 @@ independently. Verification must fail closed for absent, invalid, expired, or
 unavailable credentials. Private responses must use `private, no-store` and must
 not expose sensitive error or log details.
 
+The moderator status endpoint verifies the session and current Firebase account,
+then resolves the active database assignment without accepting a client-supplied
+role or user ID. It returns only the caller's authorization status. This read
+boundary does not enable moderator mutations or automatic publication.
+
 You should test allowed and denied identities, cross-owner access, privilege
 boundaries, forged headers, failure paths, and actual side effects with isolated
 data. A test that only confirms default denial does not show whether
