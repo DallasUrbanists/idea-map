@@ -430,3 +430,22 @@ or silently release them to make rollback succeed.
 A separately permissioned, unscheduled retention primitive removes released hold
 metadata only after 90 days and only when no legal hold applies. Active holds
 remain until explicitly released. The functions grant no live permissions.
+
+### Moderator removal
+
+The server-only moderator removal transaction verifies the current database
+assignment and approved revision, then marks the idea withdrawn, marks its
+previews unpublished, records the actor, reason, and classification, and writes
+one projection job and outbox intent. A removal classified as a policy violation
+also excludes its approval from future trust calculations and records the
+correction in the same transaction. A legal hold does not prevent removing
+public access; the transaction does not delete held content. A pending edit
+cannot publish after withdrawal. Stale and duplicate actions do not create new
+removal records.
+
+The projection intent is not evidence of cache invalidation. The production
+worker and complete public cache purge remain unimplemented; do not enable this
+primitive for live removal until those delivery, privacy, audit, and recovery
+paths are complete and reviewed. A separate, unscheduled retention primitive
+removes removal metadata only after 90 days and only when no legal hold applies.
+The functions grant no live permissions and expose no moderator interface.

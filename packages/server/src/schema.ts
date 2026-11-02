@@ -153,6 +153,21 @@ export const moderationEvents = pgTable('moderation_events', {
 }, table => [index('moderation_events_revision_idx').on(table.revisionId),
   foreignKey({ columns: [table.assessmentId, table.revisionId], foreignColumns: [revisionAssessments.id, revisionAssessments.revisionId] }),
 ])
+// Removal metadata is private and separate from durable trust state.
+export const moderatorRemovals = pgTable('moderator_removals', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ideaId: uuid('idea_id').notNull().references(() => ideas.id),
+  revisionId: uuid('revision_id').notNull(),
+  actorId: uuid('actor_id').notNull().references(() => users.id),
+  classification: text('classification').notNull(),
+  reason: text('reason').notNull(),
+  projectionJobId: uuid('projection_job_id').notNull().references(() => jobs.id),
+  createdAt: createdAt(),
+}, table => [
+  foreignKey({ columns: [table.ideaId, table.revisionId], foreignColumns: [ideaRevisions.ideaId, ideaRevisions.id] }),
+  check('moderator_removals_classification', sql`${table.classification} IN ('violation','other')`),
+  check('moderator_removals_reason', sql`length(trim(${table.reason})) > 0 AND octet_length(${table.reason}) <= 1000`),
+])
 // Assessment evidence and review holds are private server-side state.
 export const reviewGates = pgTable('review_gates', {
   revisionId: uuid('revision_id').primaryKey().references(() => ideaRevisions.id),

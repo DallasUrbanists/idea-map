@@ -168,6 +168,11 @@ For the server-only moderator hold primitive and publication races, run
 set to a fresh disposable PostGIS database. The test uses synthetic moderator
 identities; it does not enable moderator controls or grant live permissions.
 
+For moderator removal, trust correction, private previews, and publication
+races, set `TEST_DATABASE_URL` to a fresh disposable PostGIS database and run
+`pnpm --filter @idea-map/server test:moderator-removals`. The test uses a fake
+storage provider and does not verify hosted cache invalidation or deletion.
+
 For a combined synthetic moderation and recovery scenario under a controlled
 database clock, set `TEST_DATABASE_URL` to a fresh local disposable PostGIS
 database and run `pnpm --filter @idea-map/server test:moderation-integrated`.
