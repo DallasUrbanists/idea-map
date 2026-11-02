@@ -42,6 +42,7 @@ jobs:
       - name: Provider-fake and authentication checks
         run: |
           pnpm --filter @idea-map/server test:cloud-tasks
+          pnpm --filter @idea-map/server test:moderation-schedule
           pnpm --filter @idea-map/worker test
       - name: Create disposable test databases
         run: |

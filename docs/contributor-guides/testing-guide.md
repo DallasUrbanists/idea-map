@@ -97,7 +97,15 @@ Tasks or the moderation handler.
 
 Run `pnpm --filter @idea-map/server test:cloud-tasks` and
 `pnpm --filter @idea-map/worker test` for provider-fake task creation and
-worker authentication checks. To check the assessment and publication
+worker authentication checks. Run the following command to check the standard
+review-window calculation; this check does not validate a scoring method or
+authorize publication:
+
+```sh
+pnpm --filter @idea-map/server test:moderation-schedule
+```
+
+To check the assessment and publication
 transactions, use a separate empty disposable PostGIS database with the
 `idea_map_test_` prefix and run `pnpm --filter @idea-map/server test:moderation-jobs`.
 For the worker integration check, migrate a different disposable database,
