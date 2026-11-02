@@ -318,8 +318,20 @@ experience changes.
 
 Before sharing your change, you should run the relevant checks from the
 [testing guide](testing-guide.md) and prepare the description using
-[CONTRIBUTING.md](../../CONTRIBUTING.md). The
-[pull-request review guide](pull-request-review-guide.md) helps you check the
+[CONTRIBUTING.md](../../CONTRIBUTING.md). Describe the change and its purpose,
+link relevant issues, and report the checks actually run, their results, and
+remaining validation gaps.
+
+Authors must open a pull request ready for review when it is intended to be
+reviewed and merged. An unfinished parent issue or later deployment work does not
+by itself prevent a focused pull request from being ready for review.
+
+Authors must use draft status only when it is imperative that the pull request
+not be merged. Whenever a pull request is a draft, the author must add a comment
+with numbered, precise steps for making it ready for review, keep those steps
+current, and mark the pull request ready when the blockers are resolved.
+
+The [pull-request review guide](pull-request-review-guide.md) helps you check the
 diff, behavior, documentation, and validation evidence before asking for review.
 
 When you review someone else's change, you should follow that same guide to

@@ -115,8 +115,8 @@ reviewers the information they need.
 Prepare the description using the
 [review-description standards](docs/contributor-guides/documentation-style-guide.md#review-descriptions-and-release-notes).
 
-A draft pull request is welcome while work is in progress. Ask for help when
-you are stuck.
+Follow the [pull-request readiness rules](docs/contributor-guides/development-guide.md#prepare-and-review-a-pull-request)
+when choosing review or draft status. Ask for help when you are stuck.
 
 When reviewing a pull request, you should follow the
 [pull-request review guide](docs/contributor-guides/pull-request-review-guide.md)
