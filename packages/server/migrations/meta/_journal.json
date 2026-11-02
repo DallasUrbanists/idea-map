@@ -183,6 +183,20 @@
       "when": 1793671878721,
       "tag": "0025_escalation_assessment_evidence",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1793671879721,
+      "tag": "0026_moderator_removals",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1793671880721,
+      "tag": "0027_moderator_removal_control",
+      "breakpoints": true
     }
   ]
 }
