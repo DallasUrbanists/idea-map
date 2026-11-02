@@ -71,6 +71,17 @@ test('stale review clears private content and requires reopening', async ({ page
   expect(actions[0].body.requestId).toBe(requestId)
 })
 
+test('an unavailable owner lookup clears the private review', async ({ page }) => {
+  await mockReview(page)
+  await page.route('**/api/moderation/moderators', route => route.fulfill({ status: 503, json: { statusCode: 503 } }))
+  await page.goto('/moderation')
+  await page.getByRole('button', { name: `Review revision ${revision}` }).click()
+  await expect(page.locator('pre')).toBeVisible()
+  await page.getByLabel('Action').selectOption('escalate')
+  await expect(page.locator('main').getByRole('status')).toContainText('Review is unavailable')
+  await expect(page.locator('pre')).toHaveCount(0)
+})
+
 test('denied access and a narrow viewport remain usable without exposing content', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 600 })
   await page.route('**/api/moderation/queue*', route => route.fulfill({ status: 403, json: { statusCode: 403 } }))

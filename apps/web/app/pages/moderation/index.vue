@@ -64,12 +64,13 @@ async function changeAction() {
   try {
     const response = await fetch('/api/moderation/moderators', { cache: 'no-store' })
     if (!response.ok) {
-      if (response.status === 401 || response.status === 403) { review.value = null; entries.value = []; next.value = null }
+      review.value = null; reason.value = ''
+      if (response.status === 401 || response.status === 403) { entries.value = []; next.value = null }
       message.value = failure(response.status)
       return
     }
     moderators.value = (await response.json() as { moderators: Array<{ userId: string, isSelf: boolean }> }).moderators
-  } catch { message.value = failure(0) }
+  } catch { review.value = null; reason.value = ''; message.value = failure(0) }
   finally { busy.value = false }
 }
 async function submitAction() {
