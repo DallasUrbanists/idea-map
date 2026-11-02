@@ -11,6 +11,7 @@ for starting and ending a session.
 The following contents links navigate within this guide:
 
 - [Services and isolation](#services-and-isolation)
+- [Worker image](#worker-image)
 - [Networking and configuration](#networking-and-configuration)
 - [Storage and lifecycle](#storage-and-lifecycle)
 
@@ -26,6 +27,22 @@ The service helper gives each checkout its own Compose project name based on its
 path. Each checkout has separate containers and volumes. The published ports are
 fixed, so two checkouts cannot run these services at the same time. Published
 ports bind loopback only.
+
+## Worker image
+
+The worker image is built from `Dockerfile.worker`. Its build compiles the
+worker and server packages and prepares a production dependency bundle. The
+runtime runs as a non-root user and starts the authenticated worker process.
+Build it from the repository root with:
+
+```sh
+docker build -f Dockerfile.worker -t idea-map-worker:local .
+```
+
+The image does not configure identities, secrets, queues, or a scheduler. The
+[Google Cloud guide](google-cloud.md#tasks-and-reconciliation) describes the
+required environment and the gates on using the worker. A local image build is
+not deployment or evidence of hosted authentication and task delivery.
 
 ## Networking and configuration
 

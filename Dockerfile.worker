@@ -1,0 +1,16 @@
+FROM node:24.22.1-trixie-slim AS build
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@11.25.0 --activate
+COPY . .
+RUN pnpm install --frozen-lockfile --filter @idea-map/worker... --filter idea-map \
+    && pnpm exec tsc --build apps/worker \
+    && pnpm --filter @idea-map/worker deploy --prod --legacy /worker \
+    && test -f /worker/dist/index.js \
+    && test -f /worker/node_modules/@idea-map/server/dist/index.js
+
+FROM node:24.22.1-trixie-slim AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=build --chown=node:node /worker ./
+USER node
+CMD ["node", "dist/index.js"]
