@@ -16,10 +16,10 @@ test('fixture is deterministic and cleanup preserves unrelated or conflicting re
     const other = (await client.query("INSERT INTO contacts(normalized_email) VALUES ('unrelated@example.invalid') RETURNING id")).rows[0].id
     assert.equal(await seedLocalJobFixture(client), 'seeded')
     const snapshot = () => client.query(`SELECT row_to_json(c) AS contact, row_to_json(i) AS idea, row_to_json(r) AS revision,
-      row_to_json(a) AS assessment, row_to_json(g) AS gate, row_to_json(j) AS job, row_to_json(o) AS outbox, row_to_json(e) AS marker
+      row_to_json(a) AS assessment, row_to_json(g) AS gate, row_to_json(j) AS job, row_to_json(o) AS outbox
       FROM contacts c JOIN ideas i ON i.author_contact_id=c.id JOIN idea_revisions r ON r.idea_id=i.id
       JOIN revision_assessments a ON a.revision_id=r.id JOIN review_gates g ON g.revision_id=r.id
-      JOIN jobs j ON j.revision_id=r.id JOIN outbox o ON o.job_id=j.id JOIN audit_events e ON e.idea_id=i.id
+      JOIN jobs j ON j.revision_id=r.id JOIN outbox o ON o.job_id=j.id
       WHERE c.id=$1`, [fixtureContact])
     const before = (await snapshot()).rows
     assert.equal(before.length, 1)

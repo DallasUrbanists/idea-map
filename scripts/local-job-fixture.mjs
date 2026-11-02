@@ -6,9 +6,8 @@ const { Client } = require('pg')
 const ids = {
   contact: 'a16b6e1b-95d5-42bd-b970-f6626538e001', idea: 'a16b6e1b-95d5-42bd-b970-f6626538e002',
   revision: 'a16b6e1b-95d5-42bd-b970-f6626538e003', job: 'a16b6e1b-95d5-42bd-b970-f6626538e004',
-  outbox: 'a16b6e1b-95d5-42bd-b970-f6626538e005', marker: 'a16b6e1b-95d5-42bd-b970-f6626538e006',
+  outbox: 'a16b6e1b-95d5-42bd-b970-f6626538e005',
 }
-const marker = 'synthetic_local_job_fixture_v1'
 const assessment = 'synthetic-local-job-fixture-v1'
 const content = { title: 'Synthetic crossing idea', description: 'A local-only fixture.' }
 
@@ -34,9 +33,9 @@ async function transaction(client, action) {
 }
 
 async function hasMarker(client) {
-  const result = await client.query('SELECT idea_id, event_type FROM audit_events WHERE id=$1 FOR UPDATE', [ids.marker])
+  const result = await client.query('SELECT revision_id, kind, idempotency_key FROM jobs WHERE id=$1 FOR UPDATE', [ids.job])
   if (!result.rowCount) return false
-  if (result.rows[0].idea_id !== ids.idea || result.rows[0].event_type !== marker) throw new Error('Fixture marker conflicts with existing data')
+  if (result.rows[0].revision_id !== ids.revision || result.rows[0].kind !== 'synthetic-fixture' || result.rows[0].idempotency_key !== assessment) throw new Error('Fixture marker conflicts with existing data')
   return true
 }
 
@@ -66,7 +65,6 @@ export async function seedLocalJobFixture(client) {
     await client.query(`INSERT INTO jobs(id,revision_id,kind,idempotency_key,assessment_id,assessment_received_at,scheduled_at,state,created_at)
       VALUES ($1,$2,'synthetic-fixture',$3,$3,'2026-01-01T00:00:00Z','2026-01-02T00:00:00Z','stale','2026-01-01T00:00:00Z')`, [ids.job, ids.revision, assessment])
     await client.query("INSERT INTO outbox(id,job_id,published_at,created_at) VALUES ($1,$2,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')", [ids.outbox, ids.job])
-    await client.query("INSERT INTO audit_events(id,idea_id,event_type,created_at) VALUES ($1,$2,$3,'2026-01-01T00:00:00Z')", [ids.marker, ids.idea, marker])
     return 'seeded'
   })
 }
@@ -79,7 +77,7 @@ export async function cleanLocalJobFixture(client) {
     for (const [sql, value] of [
       ['DELETE FROM outbox WHERE id=$1', ids.outbox], ['DELETE FROM jobs WHERE id=$1', ids.job],
       ['DELETE FROM revision_assessments WHERE id=$1', assessment], ['DELETE FROM review_gates WHERE revision_id=$1', ids.revision],
-      ['DELETE FROM audit_events WHERE id=$1', ids.marker], ['DELETE FROM idea_revisions WHERE id=$1', ids.revision],
+      ['DELETE FROM idea_revisions WHERE id=$1', ids.revision],
       ['DELETE FROM ideas WHERE id=$1', ids.idea], ['DELETE FROM contacts WHERE id=$1', ids.contact],
     ]) {
       const removed = await client.query(sql, [value])
