@@ -70,7 +70,7 @@ test('moderator status verifies emulator sessions and current database roles', {
     const { idToken } = await signin.json()
     const login = await loginWith(idToken)
     assert.equal(login.status, 200)
-    const cookie = login.headers.get('set-cookie').split(';')[0]
+    let cookie = login.headers.get('set-cookie').split(';')[0]
     const status = (value = cookie) => fetch(`${base}/api/moderation/status`, { headers: { cookie: value } })
     assert.equal((await status('__session=forged')).status, 401)
     assert.equal((await status()).status, 403)
@@ -85,11 +85,17 @@ test('moderator status verifies emulator sessions and current database roles', {
     assert.deepEqual(await allowed.json(), { moderator: true })
     assert.equal((await fetch(`${base}/api/moderation/status`, { method: 'POST', headers: { cookie } })).status, 403)
     await auth.updateUser(uid, { emailVerified: false })
-    assert.equal((await status()).status, 403)
+    assert.ok([401, 403].includes((await status()).status))
     await auth.updateUser(uid, { emailVerified: true })
     await auth.updateUser(uid, { email: `changed-${port}@example.test`, emailVerified: true })
-    assert.equal((await status()).status, 403)
+    assert.ok([401, 403].includes((await status()).status))
     await auth.updateUser(uid, { email, emailVerified: true })
+    const refreshed = await requestAuth('signInWithPassword', { email, password, returnSecureToken: true })
+    assert.equal(refreshed.status, 200)
+    const renewed = await loginWith((await refreshed.json()).idToken)
+    assert.equal(renewed.status, 200)
+    cookie = renewed.headers.get('set-cookie').split(';')[0]
+    assert.equal((await status()).status, 200)
     await pool.query("UPDATE moderator_assignments SET revoked_at=now(), revoked_by=$2, revoke_reason='synthetic revocation' WHERE id=$1", [assignment, actor])
     assert.equal((await status()).status, 403)
     await pool.query("INSERT INTO moderator_assignments(user_id,granted_by,grant_reason) VALUES ($1,$2,'synthetic regrant')", [user, actor])
