@@ -337,3 +337,26 @@ export const registeredDraftMedia = pgTable('registered_draft_media', {
   check('registered_draft_media_revision', sql`${table.revision} > 0`),
   check('registered_draft_media_evidence', sql`(${table.generation} IS NULL AND ${table.digest} IS NULL) OR (${table.generation} IS NOT NULL AND ${table.digest} IS NOT NULL AND ${table.generation} ~ '^[1-9][0-9]*$' AND ${table.digest} ~ '^[a-f0-9]{64}$')`),
 ])
+
+// Private submission evidence and the original idempotent result travel together.
+export const registeredSubmissions = pgTable('registered_submissions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  draftId: uuid('draft_id').notNull().references(() => registeredDrafts.id),
+  draftRevision: integer('draft_revision').notNull(),
+  provider: text('provider').notNull(),
+  subject: text('subject').notNull(),
+  submissionKey: uuid('submission_key').notNull(),
+  requestDigest: text('request_digest').notNull(),
+  ideaId: uuid('idea_id').notNull().references(() => ideas.id),
+  revisionId: uuid('revision_id').notNull(),
+  termsVersion: text('terms_version').notNull(),
+  termsText: text('terms_text').notNull(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }).notNull().defaultNow(),
+}, table => [
+  uniqueIndex('registered_submissions_key').on(table.provider, table.subject, table.submissionKey),
+  uniqueIndex('registered_submissions_draft_key').on(table.draftId, table.draftRevision),
+  uniqueIndex('registered_submissions_revision_key').on(table.revisionId),
+  foreignKey({ columns: [table.ideaId, table.revisionId], foreignColumns: [ideaRevisions.ideaId, ideaRevisions.id] }),
+  check('registered_submissions_revision_positive', sql`${table.draftRevision} > 0`),
+  check('registered_submissions_digest', sql`${table.requestDigest} ~ '^[a-f0-9]{64}$'`),
+])
