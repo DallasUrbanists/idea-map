@@ -15,6 +15,8 @@ The following contents links navigate within this guide:
 - [Outbox recovery](#outbox-recovery)
 - [Consent and retention](#consent-and-retention)
     - [Moderator holds](#moderator-holds)
+    - [Moderator rejection](#moderator-rejection)
+    - [Moderator requests for changes](#moderator-requests-for-changes)
 
 ## Schema and migration boundary
 
@@ -380,3 +382,40 @@ The current append-only hold and authority records also prevent deletion of
 referenced ideas and users. Their retention and privacy-safe deletion lifecycle
 must be decided and implemented before live use. Do not grant live access or
 schedule retention based on these tests alone.
+
+### Moderator rejection
+
+A server-verified moderator can reject the current pending revision against the
+assessment visible at review time, or against the absence of an assessment.
+The decision transaction locks and rechecks the idea, revision, assessment, and
+active database assignment. It records the actor, time, reason, revision, and
+assessment identity atomically with the rejection. A duplicate or stale action
+does not create another event. If an edit is rejected, the prior approved
+revision remains public; a rejection committed first makes a timed job stale.
+This primitive does not grant permissions, expose controls, or enable automated
+publication.
+
+The additive migration leaves older decision events without assessment evidence
+and creates a non-concurrent composite index before its foreign key. Review its
+write-locking and rollback before applying it to a live database. Decision
+metadata and assessment records need a privacy-safe deletion and legal-hold
+lifecycle before live use; the new foreign key preserves that dependency rather
+than silently deleting the evidence.
+
+### Moderator requests for changes
+
+A server-verified moderator can request changes against the current revision and
+assessment, or against the absence of an assessment. The request blocks timed
+publication for the idea, including later edits, until a moderator explicitly
+resolves it against the current review snapshot. The request and its resolution
+record the relevant revision, assessment, actor, time, and reason. Resolving it
+never clears a separate moderator hold, rejection, or other review block.
+
+The database functions have fixed search paths and no `PUBLIC` execute grant. A
+separate, unscheduled retention primitive removes resolved request metadata only
+after 90 days and only when no legal hold applies. Active requests remain to
+preserve the block. Neither primitive grants live permissions or provides a
+moderator or author interface. Before live use, complete privacy-safe deletion,
+legal-hold lifecycle, role administration, notification, recovery, and rollout
+review. These records refer to revisions and assessments, so deletion must honor
+those dependencies rather than silently discard evidence.

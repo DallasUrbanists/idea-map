@@ -1,0 +1,3 @@
+ALTER TABLE "moderation_events" ADD COLUMN "assessment_id" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "revision_assessments_id_revision_key" ON "revision_assessments" USING btree ("id","revision_id");--> statement-breakpoint
+ALTER TABLE "moderation_events" ADD CONSTRAINT "moderation_events_assessment_id_revision_id_revision_assessments_id_revision_id_fk" FOREIGN KEY ("assessment_id","revision_id") REFERENCES "public"."revision_assessments"("id","revision_id") ON DELETE no action ON UPDATE no action;
