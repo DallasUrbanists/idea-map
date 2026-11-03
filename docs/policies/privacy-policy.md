@@ -72,6 +72,15 @@ does not by itself restore public access; after release, deletion resumes under
 the applicable policy. A moderator's review hold is a separate action and does
 not authorize retention beyond the normal limits.
 
+For each released legal hold, the Executive Director or an explicitly delegated
+person must set and document a case-specific delete-by date for its minimal
+authorization and release records, the non-sensitive basis for that date, and
+any legal review needed to determine it. There is no default retention period
+for these records. Delete them by the documented date unless another applicable
+hold or legal requirement prevents deletion. Review and document any change to
+the date or reason for continued retention, and delete the records when that
+obligation ends. Limit access to authorized people while records are retained.
+
 Idea Map keeps metadata about moderation decisions for 90 days. Trust-history
 records are maintained separately so metadata expiration does not alter approval
 counts; corrections to moderation decisions update the history used for later
