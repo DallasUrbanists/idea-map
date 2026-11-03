@@ -40,6 +40,7 @@ You can use these records to investigate different parts of the migration:
 | --- | --- |
 | [API dependencies](api-dependencies.md) | Source-observed frontend requests, providers, media boundaries, and backend unknowns |
 | [Parity matrix](parity-matrix.md) | Historical routes, capabilities, documentation crosswalks, and migration issue mappings |
+| [Presentation inventory](presentation-inventory.md) | Pinned TV, remote, and audience behavior, pairing, commands, and opt-in transport |
 | [Rights inventory](rights-inventory.md) | Source provenance, permission evidence, asset exclusions, and reuse investigations |
 
 ## Interpret the evidence
