@@ -208,8 +208,10 @@ measure the oldest waiting task or outbox age. Check data freshness, schedule
 the separate age signals, and test thresholds and notification delivery in an
 authorized isolated environment before relying on the alert.
 
-The same foundation can optionally alert when an existing uploads, public, or
-backup bucket exceeds its reviewed byte threshold. Set
+The same foundation can optionally alert when a foundation-owned uploads,
+public, or backup bucket exceeds its reviewed byte threshold. These alerts
+require `manage_media_buckets = true`; a development rehearsal that omits its
+foundation buckets cannot configure them. Set
 `enable_storage_capacity_alerts`, provide positive whole-byte values for all
 three keys in `storage_capacity_threshold_bytes`, and reuse the reviewed
 `monitoring_notification_channels`. The option starts disabled. The policy sums

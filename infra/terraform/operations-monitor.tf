@@ -160,6 +160,7 @@ resource "google_cloud_run_v2_job" "operations_monitor" {
     precondition {
       condition = var.operations_monitor_image != "" && var.operations_monitor_schedule != "" && length(var.operations_thresholds) == 4 && (
         var.operations_database_secret_id != "" && var.operations_database_secret_version != "" &&
+        var.operations_database_secret_id != var.web_database_secret_id &&
         var.operations_database_secret_id != var.worker_database_secret_id &&
         var.operations_database_secret_id != var.backup_database_secret_id
       )

@@ -4,11 +4,11 @@ variable "enable_storage_capacity_alerts" {
   default     = false
   validation {
     condition = !var.enable_storage_capacity_alerts || (
-      length(var.monitoring_notification_channels) > 0 &&
+      var.manage_media_buckets && length(var.monitoring_notification_channels) > 0 &&
       toset(keys(var.storage_capacity_threshold_bytes)) == toset(keys(var.bucket_names)) &&
       alltrue([for name in values(var.bucket_names) : can(regex("^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$", name))])
     )
-    error_message = "Storage alerts require existing channels, valid bucket names, and a threshold for each bucket."
+    error_message = "Storage alerts require foundation-owned buckets, existing channels, valid names, and a threshold for each bucket."
   }
 }
 

@@ -72,7 +72,7 @@ resource "google_project_iam_custom_role" "backup_writer" {
 }
 
 resource "google_storage_bucket_iam_member" "backup_writer" {
-  count  = var.enable_backup_job ? 1 : 0
+  count  = var.enable_backup_job && var.manage_media_buckets ? 1 : 0
   bucket = var.bucket_names.backups
   role   = google_project_iam_custom_role.backup_writer[0].id
   member = "serviceAccount:${google_service_account.backup_writer[0].email}"
@@ -135,11 +135,12 @@ resource "google_cloud_run_v2_job" "backup" {
   }
   lifecycle {
     precondition {
-      condition = var.backup_job_image != "" && var.backup_project_number != "" && var.backup_schedule != "" && (
+      condition = var.manage_media_buckets && var.backup_job_image != "" && var.backup_project_number != "" && var.backup_schedule != "" && (
         var.backup_database_secret_id != "" && var.backup_database_secret_version != "" &&
-        var.backup_database_secret_id != var.worker_database_secret_id
+        var.backup_database_secret_id != var.worker_database_secret_id &&
+        var.backup_database_secret_id != var.web_database_secret_id
       )
-      error_message = "Backup setup requires reviewed image, project number, schedule, and a distinct pinned database secret."
+      error_message = "Backup setup requires foundation-owned buckets, reviewed image, project number, schedule, and a distinct pinned database secret."
     }
   }
   depends_on = [google_storage_bucket_iam_member.backup_writer, google_secret_manager_secret_iam_member.backup_database]

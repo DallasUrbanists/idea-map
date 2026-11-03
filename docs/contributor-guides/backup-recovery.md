@@ -152,6 +152,11 @@ does not create a second bucket, database, or secret. Review existing resources
 and complete the release and infrastructure prerequisites before a separately
 authorized plan or apply.
 
+The job requires `manage_media_buckets = true` in the owning foundation. A
+development release rehearsal that omits its foundation buckets cannot enable
+this job or grant access to a bucket owned by another Terraform state. Coordinate
+backup ownership separately before preparing such an environment.
+
 Prepare an immutable backup image and a dedicated direct database URL secret.
 The image's `pg_dump` major version must support the actual source server;
 verify the source version separately for each environment. The URL must use

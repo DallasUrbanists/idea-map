@@ -156,6 +156,17 @@ run "storage_capacity_alerts_reject_invalid_threshold" {
   expect_failures = [var.storage_capacity_threshold_bytes]
 }
 
+run "storage_alerts_reject_unmanaged_buckets" {
+  command = plan
+  variables {
+    manage_media_buckets             = false
+    enable_storage_capacity_alerts   = true
+    monitoring_notification_channels = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
+    storage_capacity_threshold_bytes = { uploads = 1000, public = 2000, backups = 3000 }
+  }
+  expect_failures = [var.enable_storage_capacity_alerts]
+}
+
 run "queue_delay_alert_is_opt_in" {
   command = plan
   assert {
@@ -307,6 +318,21 @@ run "operations_monitor_rejects_shared_worker_secret" {
   expect_failures = [google_cloud_run_v2_job.operations_monitor]
 }
 
+run "operations_monitor_rejects_shared_web_secret" {
+  command = plan
+  variables {
+    enable_operations_monitor          = true
+    operations_monitor_image           = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/worker@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    operations_database_secret_id      = "shared-secret"
+    operations_database_secret_version = "4"
+    operations_monitor_schedule        = "*/5 * * * *"
+    operations_thresholds              = { outbox_seconds = 300, overdue_seconds = 600, queue_seconds = 900, email_events = 2 }
+    web_database_secret_id             = "shared-secret"
+    web_database_secret_version        = "1"
+  }
+  expect_failures = [google_cloud_run_v2_job.operations_monitor]
+}
+
 run "backup_job_is_opt_in" {
   command = plan
   assert {
@@ -437,6 +463,35 @@ run "backup_job_rejects_shared_worker_secret" {
     backup_database_secret_version = "7"
     backup_schedule                = "0 */12 * * *"
     worker_database_secret_id      = "shared-secret"
+  }
+  expect_failures = [google_cloud_run_v2_job.backup]
+}
+
+run "backup_job_rejects_shared_web_secret" {
+  command = plan
+  variables {
+    enable_backup_job              = true
+    backup_job_image               = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/backup@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    backup_project_number          = "123456789"
+    backup_database_secret_id      = "shared-secret"
+    backup_database_secret_version = "7"
+    backup_schedule                = "0 */12 * * *"
+    web_database_secret_id         = "shared-secret"
+    web_database_secret_version    = "1"
+  }
+  expect_failures = [google_cloud_run_v2_job.backup]
+}
+
+run "backup_job_rejects_unmanaged_buckets" {
+  command = plan
+  variables {
+    manage_media_buckets           = false
+    enable_backup_job              = true
+    backup_job_image               = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/backup@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    backup_project_number          = "123456789"
+    backup_database_secret_id      = "backup-only"
+    backup_database_secret_version = "7"
+    backup_schedule                = "0 */12 * * *"
   }
   expect_failures = [google_cloud_run_v2_job.backup]
 }

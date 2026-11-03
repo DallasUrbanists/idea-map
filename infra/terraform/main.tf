@@ -38,6 +38,18 @@ resource "google_cloud_run_v2_service" "runtime" {
         cpu_idle = true
       }
       dynamic "env" {
+        for_each = each.key == "web" && var.web_database_secret_id != "" && var.web_database_secret_version != "" ? [1] : []
+        content {
+          name = "NUXT_DATABASE_URL"
+          value_source {
+            secret_key_ref {
+              secret  = var.web_database_secret_id
+              version = var.web_database_secret_version
+            }
+          }
+        }
+      }
+      dynamic "env" {
         for_each = each.key == "web" && var.enable_resend_secrets && var.resend_webhook_secret_version != "" ? [1] : []
         content {
           name = "NUXT_RESEND_WEBHOOK_SECRET"
@@ -85,6 +97,22 @@ resource "google_cloud_run_v2_service" "runtime" {
       error_message = "Enable the Resend secrets before selecting a webhook secret version."
     }
     precondition {
+      condition     = each.key != "web" || ((var.web_database_secret_id == "") == (var.web_database_secret_version == ""))
+      error_message = "Supply both the existing web database secret ID and a pinned numeric version, or neither."
+    }
+    precondition {
+      condition     = each.key != "web" || !var.enable_worker_runtime || var.web_database_secret_id == "" || var.web_database_secret_id != var.worker_database_secret_id
+      error_message = "Use separate web and worker database secrets."
+    }
+    precondition {
+      condition     = var.manage_media_buckets || var.environment == "dev"
+      error_message = "Only a development foundation may omit its media and backup buckets."
+    }
+    precondition {
+      condition     = var.manage_media_buckets || !var.enable_media_access
+      error_message = "Media access requires buckets managed by this foundation."
+    }
+    precondition {
       condition     = !var.enable_worker_runtime || (var.enable_task_delivery && var.worker_origin != "" && var.worker_database_secret_id != "" && var.worker_database_secret_version != "")
       error_message = "Worker runtime requires task delivery, the exact worker origin, and a pinned existing database secret."
     }
@@ -97,11 +125,11 @@ resource "google_cloud_run_v2_service" "runtime" {
       error_message = "The configured worker origin must match the Cloud Run service URI."
     }
   }
-  depends_on = [google_secret_manager_secret_iam_member.resend, google_secret_manager_secret_iam_member.worker_database]
+  depends_on = [google_secret_manager_secret_iam_member.resend, google_secret_manager_secret_iam_member.web_database, google_secret_manager_secret_iam_member.worker_database]
 }
 
 resource "google_storage_bucket" "media" {
-  for_each                    = local.buckets
+  for_each                    = var.manage_media_buckets ? local.buckets : {}
   name                        = each.value
   location                    = var.region
   uniform_bucket_level_access = true
