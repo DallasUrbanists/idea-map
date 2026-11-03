@@ -9,6 +9,7 @@ The following contents links navigate within this procedure:
 
 - [When to use this guide](#when-to-use-this-guide)
 - [Prepare the review](#prepare-the-review)
+- [Prepare a synthetic worker database](#prepare-a-synthetic-worker-database)
 - [Review the scoped delivery configuration](#review-the-scoped-delivery-configuration)
 - [Record the synthetic evidence](#record-the-synthetic-evidence)
 - [Finish the test](#finish-the-test)
@@ -64,6 +65,60 @@ real assessment data before the rollout gates are accepted. See the
 [Google Cloud task guide](../architecture/google-cloud.md#tasks-and-reconciliation)
 for runtime settings and the [recovery procedure](../architecture/postgresql-postgis-drizzle.md#outbox-recovery)
 for the provider checks required before rearming a delivery.
+
+## Prepare a synthetic worker database
+
+Operators can prepare a separate disposable Neon database named
+`idea_map_test_worker` for an authorized staging worker. It must contain only
+synthetic records and must not replace the existing `idea_map_test_cloudrun`
+web-test database or the long-lived development database. Review the Neon
+project, branch, separate migration identity, connection budget and cleanup
+scope before creating or changing any hosted resources.
+
+After obtaining explicit authorization, an operator should migrate the empty
+test database over its direct migration connection using the
+[database guide](../architecture/postgresql-postgis-drizzle.md#schema-and-migration-boundary).
+Apply [`worker-staging-grants.sql`](../../packages/server/test/worker-staging-grants.sql)
+to that database to create the initially disabled `idea_map_worker_test` role.
+The script fails if the role already exists because Postgres roles are shared
+across databases on a branch. It grants only the columns needed by the current
+outbox reconciliation path; the current worker does not execute moderation or
+projection jobs. Review effective `PUBLIC` privileges and role membership,
+including access to other databases, before enabling the role.
+
+Set a separate password through an approved secure channel, then apply
+[`worker-staging-enable-login.sql`](../../packages/server/test/worker-staging-enable-login.sql).
+Keep the pooled TLS worker URL in a worker-only Secret Manager secret with a
+pinned numeric version; keep the direct migration credential separate. Do not
+place passwords or connection strings in source, command arguments, state,
+shared logs, or test output. Verify the role's allowed reconciliation and
+denied private-data access in the isolated environment before using it.
+
+For a web service using the same synthetic database, apply
+[`staging-web-grants.sql`](../../packages/server/test/staging-web-grants.sql)
+to create a separate, initially disabled `idea_map_staging_web_test` role. It
+grants the columns used by the published-idea query, not the worker's job or
+outbox access. Set its own password securely, then apply
+[`staging-web-enable-login.sql`](../../packages/server/test/staging-web-enable-login.sql).
+Store its pooled URL in a distinct web-only secret. As with the existing web
+test role, these column grants allow direct reads of synthetic revision content
+beyond published rows; the application query applies the publication filter.
+They do not configure web submission, media, or moderator access.
+
+To test the grants locally, use a disposable local PostGIS instance and a
+migrated `idea_map_test_worker` database, set `TEST_DATABASE_URL` to its
+loopback URL, and run from the repository root:
+
+```sh
+pnpm --filter @idea-map/server test:worker-staging-grants
+pnpm --filter @idea-map/server test:staging-web-grants
+```
+
+The tests use synthetic jobs and ideas and create branch-wide roles. Some checks
+roll back their transaction; the authentication checks commit roles and fixtures
+and remove them after testing. The scripts refuse to alter an existing role. A
+local pass does not prove Neon permissions, connection pooling, or hosted
+delivery.
 
 ## Review the scoped delivery configuration
 

@@ -43,6 +43,8 @@
     "test:moderator-authorization": "tsc --build && node --test test/moderator-authorization.test.mjs",
     "test:approval-history": "tsc --build && node --test test/approval-history.test.mjs",
     "test:cloud-tasks": "tsc --build && node --test test/cloud-tasks.test.mjs",
+    "test:worker-staging-grants": "tsc --build && node --test test/worker-staging-grants.test.mjs",
+    "test:staging-web-grants": "tsc --build && node --test test/staging-web-grants.test.mjs",
     "test:database": "node --test test/database.test.mjs"
   }
 }
