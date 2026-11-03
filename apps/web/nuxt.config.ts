@@ -3,7 +3,11 @@ export default defineNuxtConfig({
   ssr: true,
   css: ['~~/src/styles/tokens.css'],
   // The Node server runtime supports ES2020, including BigInt literals.
-  nitro: { esbuild: { options: { target: 'es2020' } } },
+  nitro: {
+    esbuild: { options: { target: 'es2020' } },
+    // Bundle shared local modules so dev output does not externalize their paths.
+    externals: { inline: [/[/\\]shared[/\\]auth-provider\.mjs$/] },
+  },
   runtimeConfig: {
     // NUXT_API_SECRET is private and is available only on the server.
     apiSecret: '',
