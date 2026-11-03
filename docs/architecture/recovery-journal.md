@@ -161,6 +161,14 @@ until the complete ordering, access boundaries, and failure cases are implemente
 and tested. If the pending transaction's outcome cannot be established, an
 independent fail-closed fence must remain in place until authorized reconciliation.
 
+The suggestion page renders an idea fetched from the idea API. Guarding only the
+inner API response is insufficient: the outer HTML response can continue after
+that fetch finishes. The gate must cover the outer delivery as well as API and
+media responses. Account for nested requests, connection limits, client
+disconnects, and timeouts when choosing the coordination mechanism. The synthetic
+staging cache can continue serving an earlier response, so it is not suitable
+evidence for the immediate removal boundary.
+
 The gate and pending state need a guarded transaction and must cover every
 public read, projection, and media delivery path. A restored older database may
 not contain the later gate or pending decision, so recovery must begin behind an
