@@ -48,7 +48,10 @@ named-role grant and `PUBLIC` revocation in the restore. The fake
 stores only synthetic data and does not test Cloud Storage encryption or
 permissions, all database grants, or Neon role setup. The synthetic target
 also revokes `PUBLIC` database connections and verifies that its test role
-cannot connect; that does not establish a hosted network or IAM fence.
+cannot connect. It checks that the restored pending-removal function does not
+grant `PUBLIC` execution and that the initially closed gate is present; it does
+not show that an older archive contains a later gate closure. These checks do not
+establish a hosted network or IAM fence.
 
 The JSON result reports backup and recovery elapsed seconds, the interval between
 the saved and later synthetic records, and verification results. Recovery starts before the empty

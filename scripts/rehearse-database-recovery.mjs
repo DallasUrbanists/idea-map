@@ -185,9 +185,12 @@ try {
   const sourcePublicExecute = await sql(source, functionPrivilege)
   const restoredPublicExecute = await sql(target, functionPrivilege)
   const restoredNamedExecute = await sql(target, namedPrivilege)
+  const pendingPrivilege = "SELECT has_function_privilege('public','public.prepare_pending_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text)','EXECUTE')"
+  const restoredPendingPublicExecute = await sql(target, pendingPrivilege)
+  const restoredGateOpen = await sql(target, 'SELECT is_open FROM public.public_access_gate WHERE singleton=true')
   const publicConnect = await sql(source, `SELECT has_database_privilege('public','${target}','CONNECT')`)
   const namedConnect = await sql(source, `SELECT has_database_privilege('${reader}','${target}','CONNECT')`)
-  if (restored !== '1' || excluded !== '0' || postgis !== '1' || ideas !== '1' || Number(migrations) < 1 || sourceVisible !== '0' || restoredVisible !== '1' || reconciledVisible !== '0' || sourceHolds !== '1' || restoredHolds !== '0' || sourceLaterRevision !== '1' || restoredLaterRevision !== '0' || sourcePublicExecute !== 'f' || restoredPublicExecute !== 'f' || sourceNamedExecute !== 't' || restoredNamedExecute !== 't' || publicConnect !== 'f' || namedConnect !== 'f') throw new Error('Restored synthetic database failed verification')
+  if (restored !== '1' || excluded !== '0' || postgis !== '1' || ideas !== '1' || Number(migrations) < 1 || sourceVisible !== '0' || restoredVisible !== '1' || reconciledVisible !== '0' || sourceHolds !== '1' || restoredHolds !== '0' || sourceLaterRevision !== '1' || restoredLaterRevision !== '0' || sourcePublicExecute !== 'f' || restoredPublicExecute !== 'f' || restoredPendingPublicExecute !== 'f' || restoredGateOpen !== 'f' || sourceNamedExecute !== 't' || restoredNamedExecute !== 't' || publicConnect !== 'f' || namedConnect !== 'f') throw new Error('Restored synthetic database failed verification')
   const lossMs = Number(latest) - Number(captured)
   if (!Number.isFinite(lossMs) || lossMs < 0) throw new Error('Synthetic data-loss interval could not be measured')
   console.log(JSON.stringify({ backupSeconds: (backupFinished - dumpStarted) / 1000,
