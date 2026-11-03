@@ -125,6 +125,7 @@ test('storage client sends create-only archives, completion metadata, and journa
     const recordName = `idea-map-v2/dev/recovery-journal/${recordId}.json`
     assert.deepEqual(payloads.get(recordName), record)
     assert.equal(objects.get(recordName).metadata, undefined)
+    objects.get(recordName).generation = '90071992547409931234'
     assert.deepEqual(Buffer.from(await readRecoveryJournalRecord(storage, target, recordId, objects.get(recordName).generation)), record)
     const checksum = objects.get(recordName).crc32c
     objects.get(recordName).crc32c = checksum === 'AAAAAA==' ? 'AQAAAA==' : 'AAAAAA=='
