@@ -461,7 +461,7 @@ You can run the automated server and browser checks during the same session:
     pnpm test:auth
     ```
 
-4. Confirm both tests pass.
+4. Confirm all three tests pass.
 5. Run the other applicable checks in the
     [everyday checks section](#everyday-checks).
 
@@ -470,10 +470,11 @@ attempt to delete their accounts even if an assertion fails, and stop their
 servers when finished. Cleanup uses captured account tokens against the local Auth
 emulator; it does not clear other accounts. If a response cannot be captured or
 cleanup fails, a test account may remain until the emulator is stopped, and the
-test reports the failure. The server check uses a synthetic Google credential;
-the browser check separately exercises the Google popup. Neither validates a real
+test reports the failure. The cleanup integration check verifies that an unrelated
+emulator account remains available. The server check uses a synthetic Google
+credential; the browser check separately exercises the Google popup. Neither validates a real
 Google provider. The Auth emulator CI job installs the pinned Playwright
-browser and runs both checks against disposable local services. Playwright's
+browser and runs all three checks against disposable local services. Playwright's
 clock advances the renewal and retry timers. The tests set up demo credentials
 automatically. You do not need shell variable assignments, and the tests do not read credentials from your
 `.env`.

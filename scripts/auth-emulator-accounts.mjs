@@ -11,12 +11,13 @@ export function trackAuthTestAccounts() {
     get size() { return tokens.size },
     async cleanup() {
       let failures = 0
-      for (const idToken of tokens.values()) {
+      for (const [account, idToken] of tokens) {
         try {
           const response = await fetch(deleteUrl, {
             method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ idToken }),
           })
-          if (!response.ok) failures++
+          if (response.ok) tokens.delete(account)
+          else failures++
         } catch { failures++ }
       }
       if (failures) throw new Error(`Failed to delete ${failures} Auth emulator test account(s)`)
