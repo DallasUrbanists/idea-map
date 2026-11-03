@@ -2,8 +2,9 @@ import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { test } from 'node:test'
 import pg from 'pg'
-import { executeModerationJob, recordAndDispatchAssessment, reconcileOutbox } from '@idea-map/server'
+import { recordAndDispatchAssessment, reconcileOutbox } from '@idea-map/server'
 import { createWorkerHandler } from '../dist/worker.js'
+import { createModerationExecutor } from '../dist/executor.js'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !new URL(url).pathname.startsWith('/idea_map_test_')) throw new Error('TEST_DATABASE_URL must name a migrated disposable database beginning idea_map_test_')
@@ -16,7 +17,7 @@ test('authenticated repair and duplicate task delivery use the durable database 
   const handler = createWorkerHandler({ origin, taskInvoker: 'task@example.invalid', repairInvoker: 'repair@example.invalid',
     async verify(token, audience) { if (audience !== origin) throw new Error('audience'); return { email: `${token}@example.invalid`, verified: true } },
     async repair() { return reconcileOutbox(pool, dispatcher, 20) },
-    async execute(id) { return executeModerationJob(pool, id, async () => 'allow') },
+    execute: createModerationExecutor(pool, async () => 'allow'),
   })
   const server = createServer(handler)
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))

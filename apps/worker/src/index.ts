@@ -3,6 +3,7 @@ import { OAuth2Client } from 'google-auth-library'
 import pg from 'pg'
 import { createCloudTasksDispatcher, createGoogleTaskTransport, reconcileOutbox, selectProvider, type JobDispatcher } from '@idea-map/server'
 import { createWorkerHandler, type WorkerDependencies } from './worker.js'
+import { createModerationExecutor } from './executor.js'
 
 function required(name: string): string {
   const value = process.env[name]
@@ -51,7 +52,7 @@ const server = createServer(createWorkerHandler({ origin, taskInvoker, repairInv
     return result
   },
   // Automatic approval remains unavailable until the assessment and moderation gates are accepted.
-  async execute() { return 'unavailable' },
+  execute: createModerationExecutor(pool),
 }))
 const port = Number(process.env.PORT ?? '8080')
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid PORT')
