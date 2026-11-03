@@ -240,11 +240,11 @@ and stores the pending decision in the same database transaction through a
 restricted database function. It does this without waiting for active readers,
 so the committed closure survives termination while they drain. A later removal
 transaction must acquire the exclusive advisory lock and drain those readers
-before changing the idea. That drain and mutation are not yet implemented. A
-reader can still deliver data between the closure and its next check, so this
-ordering alone does not establish immediate removal. It keeps
-the moderator's free-text reason in the private database and uses a non-sensitive
-reason in the journal intent. An older backup and the intent alone cannot recover
+before changing the idea. A reader can still deliver data between the closure
+and its next check, so this ordering alone does not establish immediate removal.
+The pending transaction keeps the moderator's free-text reason in the private
+database and uses a non-sensitive reason in the journal intent. An older backup
+and the intent alone cannot recover
 the original free-text reason if the current database is lost; that metadata needs
 separate authorized reconciliation. After a known commit, a successful call
 returns the original record ID and canonical intent bytes for the journal writer.
@@ -253,6 +253,23 @@ timestamp. An unwired coordinator can write those bytes to the journal and repor
 an uncertain outcome without reopening the gate. It does not remove content or
 confirm a database mutation. Keep the returned bytes private and do not infer
 success from a failed or uncertain call.
+
+An unwired application step accepts the saved intent and uses a separately
+authorized journal reader and database coordinator. It verifies the current
+moderator before reading the journal, compares the exact canonical intent and
+live object generation, and rechecks the identity before committing. A restricted
+database function verifies the saved intent and actor, waits for the exclusive
+read-drain lock, and calls the existing removal transaction. It stores the
+verified generation and application time atomically with that mutation. A retry
+with the same generation returns the saved time without repeating the removal;
+a changed generation, stale revision, failed read, or uncertain transaction keeps
+the gate closed for review. PostgreSQL cannot verify Cloud Storage itself: only
+the separately trusted coordinator may receive execute permission for this
+function, and effective inherited grants must be checked. The normal preparation
+role must not be able to apply removals directly. This step does not write a
+confirmation, establish journal coverage, resolve other pending decisions, or
+open the gate. It is not wired to a live endpoint or granted to a runtime role.
+
 Granting a web identity general gate updates would also let it reopen the gate;
 verify narrowly scoped grants and inherited permissions before integrating the
 transaction. Direct or older removal entry points must not be able to bypass the

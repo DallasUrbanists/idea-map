@@ -253,8 +253,11 @@ a closed or missing gate, a limited reader, and a lost connection, plus
 authorization, retry, and rollback of a pending removal.
 It also uses fake journal writer and reader interfaces to check that a completed
 write, an ambiguous write, a rejected retry, and a matching read leave the gate
-closed. It does not exercise public responses, completed removals, Cloud Storage
-permissions, or the hosted Neon pooler.
+closed. Separate synthetic preparation and coordinator roles test a verified
+pending removal, reader drain, rollback, stale decisions, and idempotent retry.
+The gate stays closed; confirmation and reopening are not implemented. These
+tests do not exercise public responses, Cloud Storage permissions, or the hosted
+Neon pooler.
 For the controlled-time delivery check, migrate another empty local disposable
 database, set `TEST_DATABASE_URL`, and run
 `pnpm --filter @idea-map/worker test:delivery`. This combines the adopted review

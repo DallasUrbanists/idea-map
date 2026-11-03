@@ -1,7 +1,7 @@
 import { decodeRecoveryRecord, encodeRecoveryIntent } from './recovery-journal-record.js'
 import { withVerifiedModerator, type ModeratorAccess, type RegisteredSessionVerifier } from './moderator-authorization.js'
 import { pendingRemovalDatabasePool } from './runtime-database.js'
-import { writeRecoveryJournalRecord } from './recovery-journal-storage.js'
+import { compareCurrentRecoveryJournalRecord, writeRecoveryJournalRecord } from './recovery-journal-storage.js'
 import type { Storage } from '@google-cloud/storage'
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
@@ -76,5 +76,52 @@ export async function prepareAndJournalRemoval(databaseUrl: string, projectId: s
     return { state: 'authorized', value: 'journaled' }
   } catch {
     return { state: 'authorized', value: 'journal_uncertain' }
+  }
+}
+
+/**
+ * Unwired coordinator: verify the exact saved intent through a separately
+ * authorized journal reader, then apply the existing removal while the gate is
+ * closed and all public leases have drained. It never reopens access, writes a
+ * confirmation, proves coverage, or grants the required database privilege.
+ */
+export async function applyJournaledRemoval(coordinatorDatabaseUrl: string, projectId: string, cookie: string,
+  verifier: RegisteredSessionVerifier, target: { environment: 'dev' | 'prod', bucket: string },
+  reader: Storage, input: { operationId: string, recordId: string, payload: Uint8Array }): Promise<ModeratorAccess<'stale' | 'journal_uncertain' | {
+    state: 'applied', recordId: string, generation: string, appliedAt: string,
+  }>> {
+  if (typeof coordinatorDatabaseUrl !== 'string' || !coordinatorDatabaseUrl || !input ||
+      typeof input.operationId !== 'string' || !uuid4.test(input.operationId) ||
+      typeof input.recordId !== 'string' || !uuid4.test(input.recordId) || !(input.payload instanceof Uint8Array) ||
+      input.payload.byteLength < 1 || input.payload.byteLength > 16_384) throw new Error('Invalid pending removal')
+  const payload = Buffer.from(input.payload)
+  let record
+  try { record = decodeRecoveryRecord(payload, target?.environment) } catch { throw new Error('Invalid pending removal') }
+  if (record.recordType !== 'intent' || record.operationId !== input.operationId || record.decision.kind !== 'removal') {
+    throw new Error('Invalid pending removal')
+  }
+  try {
+    return await withVerifiedModerator(coordinatorDatabaseUrl, projectId, cookie, verifier, async (client, actor, subject) => {
+      if (record.actorId !== actor) throw new Error('Pending removal is ambiguous')
+      let generation: string
+      try {
+        const match = await compareCurrentRecoveryJournalRecord(reader, target, input.recordId, payload)
+        generation = match.generation
+      } catch {
+        return 'journal_uncertain' as const
+      }
+      await client.query("SET LOCAL lock_timeout = '5s'")
+      await client.query("SET LOCAL statement_timeout = '10s'")
+      const result = await client.query<{ outcome: string, applied_at: Date | null, verified_generation: string | null }>(
+        'SELECT * FROM public.apply_pending_removal($1,$2,$3,$4,$5,$6)',
+        [`firebase:${projectId}`, subject, input.operationId, input.recordId, generation, payload.toString('utf8')])
+      const row = result.rows[0]
+      if (row?.outcome === 'stale' && row.applied_at === null && row.verified_generation === null) return 'stale' as const
+      if (row?.outcome !== 'applied' || !(row.applied_at instanceof Date) || !Number.isFinite(row.applied_at.getTime()) ||
+          row.verified_generation !== generation) throw new Error('Pending removal is ambiguous')
+      return { state: 'applied' as const, recordId: input.recordId, generation, appliedAt: row.applied_at.toISOString() }
+    }, pendingRemovalDatabasePool(coordinatorDatabaseUrl))
+  } catch {
+    throw new Error('Pending removal unavailable')
   }
 }

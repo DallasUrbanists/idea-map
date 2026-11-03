@@ -80,11 +80,14 @@ export const publicAccessPendingDecisions = pgTable('public_access_pending_decis
   approvedRevisionId: uuid('approved_revision_id'),
   removalReason: text('removal_reason'),
   intent: text('intent').notNull(),
+  journalGeneration: text('journal_generation'),
+  appliedAt: timestamp('applied_at', { withTimezone: true }),
   createdAt: createdAt(),
 }, table => [
   uniqueIndex('public_access_pending_record_key').on(table.recordId),
   foreignKey({ columns: [table.ideaId, table.approvedRevisionId], foreignColumns: [ideaRevisions.ideaId, ideaRevisions.id] }),
   check('public_access_pending_intent_size', sql`octet_length(${table.intent}) between 1 and 16384`),
+  check('public_access_pending_applied_fields', sql`(${table.journalGeneration} IS NULL AND ${table.appliedAt} IS NULL) OR (${table.journalGeneration} IS NOT NULL AND ${table.journalGeneration} ~ '^[1-9][0-9]*$' AND ${table.appliedAt} IS NOT NULL)`),
   check('public_access_pending_removal_fields', sql`(${table.approvedRevisionId} IS NULL AND ${table.removalReason} IS NULL) OR (${table.approvedRevisionId} IS NOT NULL AND ${table.removalReason} IS NOT NULL AND length(trim(${table.removalReason})) > 0 AND octet_length(${table.removalReason}) <= 1000)`),
 ])
 // One record covers one idea and one documented case; different cases may overlap.
