@@ -64,3 +64,31 @@ test('denied access and a narrow viewport remain usable without exposing content
   await expect(page.locator('pre')).toHaveCount(0)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
+
+for (const [action, separator] of [['place-hold', '\n'], ['request-changes', '\t'], ['release-hold', '\u0000'], ['resolve-changes', '\u007f']]) {
+  test(`${action} preserves invalid reasons and selection until corrected`, async ({ page }) => {
+    const actions = await mockReview(page)
+    await page.goto('/moderation')
+    await page.getByRole('button', { name: `Review revision ${revision}` }).click()
+    await page.getByLabel('Action').selectOption(action)
+    if (action === 'release-hold') await page.getByLabel('Hold to release').selectOption(holdId)
+    if (action === 'resolve-changes') await page.getByLabel('Change request to resolve').selectOption(requestId)
+    const invalid = `Synthetic${separator}reason`
+    await page.getByLabel('Reason').fill(invalid)
+    await page.getByRole('button', { name: 'Record action' }).click()
+    await expect(page.locator('main').getByRole('status')).toContainText('Remove line breaks, tabs, and other control characters')
+    await expect(page.getByLabel('Reason')).toHaveValue(invalid)
+    await expect(page.getByLabel('Action')).toHaveValue(action)
+    await expect(page.locator('pre')).toContainText('<img src=x')
+    expect(actions).toHaveLength(0)
+    if (action === 'release-hold') await expect(page.getByLabel('Hold to release')).toHaveValue(holdId)
+    if (action === 'resolve-changes') await expect(page.getByLabel('Change request to resolve')).toHaveValue(requestId)
+    await page.getByLabel('Reason').fill('  Synthetic corrected reason  ')
+    await page.getByRole('button', { name: 'Record action' }).focus()
+    await page.keyboard.press('Enter')
+    await expect(page.locator('main').getByRole('status')).toContainText('Action recorded')
+    expect(actions).toHaveLength(1)
+    expect(actions[0].body.reason).toBe('Synthetic corrected reason')
+    expect(actions[0].body.action).toBe(action)
+  })
+}

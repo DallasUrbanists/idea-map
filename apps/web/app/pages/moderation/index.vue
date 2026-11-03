@@ -57,6 +57,7 @@ async function submitAction() {
   const current = review.value
   const trimmed = reason.value.trim()
   if (!trimmed || new TextEncoder().encode(trimmed).byteLength > 1000) { message.value = 'Enter a reason of at most 1,000 bytes.'; return }
+  if (/[\x00-\x1f\x7f]/u.test(trimmed)) { message.value = 'Enter the reason on one line. Remove line breaks, tabs, and other control characters before recording the action.'; return }
   if (action.value === 'release-hold' && !current.activeHolds.some(hold => hold.id === target.value)) { message.value = 'Select an active hold.'; return }
   if (action.value === 'resolve-changes' && !current.activeChangeRequests.some(request => request.id === target.value)) { message.value = 'Select an active change request.'; return }
   const body: Record<string, string | null> = { action: action.value, revisionId: current.revisionId, assessmentId: current.assessmentId, reason: trimmed }
