@@ -11,21 +11,27 @@ function requireMatch(value, pattern, label) {
   return value
 }
 
-function ready(resource) {
-  return resource?.status?.conditions?.some(condition => condition.type === 'Ready' && condition.status === 'True') &&
-    String(resource.metadata?.generation) === String(resource.status?.observedGeneration) &&
-    resource.metadata?.generation != null
+function reconciledStatus(resource) {
+  const conditions = resource?.status?.conditions
+  if (!Array.isArray(conditions) || resource?.metadata?.generation == null ||
+      resource.status?.observedGeneration == null ||
+      String(resource.metadata.generation) !== String(resource.status.observedGeneration)) return null
+  const readiness = conditions.filter(condition => condition?.type === 'Ready')
+  if (readiness.length !== 1 || !['True', 'False'].includes(readiness[0].status)) return null
+  return readiness[0].status
 }
 
 function currentRevision(service, serviceName, project, serviceKind) {
-  if (!ready(service)) throw new Error('Service has not reconciled successfully')
+  const status = reconciledStatus(service)
+  if (status === null) throw new Error('Service reconciliation has not completed')
   const serviceAnnotations = service.metadata?.annotations ?? {}
   const templateAnnotations = service.spec?.template?.metadata?.annotations ?? {}
   if ((serviceAnnotations['run.googleapis.com/minScale'] ?? '0') !== '0' ||
       (templateAnnotations['autoscaling.knative.dev/minScale'] ?? '0') !== '0' ||
       templateAnnotations['run.googleapis.com/cpu-throttling'] === 'false' ||
       service.spec?.template?.spec?.serviceAccountName !== `${serviceName}@${project}.iam.gserviceaccount.com` ||
-      (serviceKind === 'worker' && serviceAnnotations['run.googleapis.com/ingress'] !== 'internal')) {
+      (serviceKind === 'worker' && (serviceAnnotations['run.googleapis.com/ingress'] !== 'internal' ||
+        (status === 'False' && serviceAnnotations['run.googleapis.com/ingress-status'] !== 'internal')))) {
     throw new Error('Service scaling, identity, billing, or worker ingress is not the reviewed configuration')
   }
   const traffic = (service.status?.traffic ?? []).filter(target => (target.percent ?? 0) > 0)
@@ -36,13 +42,16 @@ function currentRevision(service, serviceName, project, serviceKind) {
   return requireMatch(traffic[0].revisionName, revisionPattern, 'current revision')
 }
 
-function checkedRevision(revision, serviceName, name, image, project) {
-  const annotations = revision.metadata?.annotations ?? {}
-  if (revision.metadata?.name !== name || revision.metadata?.labels?.['serving.knative.dev/service'] !== serviceName ||
-      !ready(revision) || revision.spec?.containers?.length !== 1 ||
+function checkedRevision(revision, serviceName, name, image, project, allowFailed = false) {
+  const annotations = revision?.metadata?.annotations ?? {}
+  const status = reconciledStatus(revision)
+  if (revision?.metadata?.name !== name || revision.metadata?.labels?.['serving.knative.dev/service'] !== serviceName ||
+      (status !== 'True' && !(allowFailed && status === 'False')) ||
+      revision.spec?.containers?.length !== 1 ||
       revision.spec?.serviceAccountName !== `${serviceName}@${project}.iam.gserviceaccount.com` ||
       (annotations['autoscaling.knative.dev/minScale'] ?? '0') !== '0' ||
       annotations['run.googleapis.com/cpu-throttling'] === 'false' ||
+      typeof image !== 'string' || !/@sha256:[0-9a-f]{64}$/.test(image) ||
       revision.spec.containers[0].image !== image ||
       revision.status?.imageDigest?.split('@').pop() !== image.split('@').pop()) {
     throw new Error('Revision identity, image, or health metadata does not match')
@@ -67,7 +76,13 @@ export function release(config, run) {
   const common = [`--project=${config.project}`, `--region=${config.region}`, '--quiet']
   const service = () => run(['run', 'services', 'describe', serviceName, ...common, '--format=json'], true)
   const revision = name => run(['run', 'revisions', 'describe', name, ...common, '--format=json'], true)
-  const current = () => currentRevision(service(), serviceName, config.project, config.service)
+  const current = () => {
+    const name = currentRevision(service(), serviceName, config.project, config.service)
+    const serving = revision(name)
+    // A terminally unhealthy serving revision can still be replaced or rolled back.
+    checkedRevision(serving, serviceName, name, serving?.spec?.containers?.[0]?.image, config.project, true)
+    return name
+  }
   const before = current()
   if (before !== config.expectedRevision) throw new Error('Current revision changed since review')
   let target

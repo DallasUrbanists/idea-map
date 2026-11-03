@@ -161,6 +161,17 @@ The workflow verifies recorded revision metadata before routing and the traffic
 assignment afterward; operators must also check real application behavior.
 Traffic moves are not instantaneous, and two-service releases are not atomic.
 
+If a candidate fails to start, the service can report `Ready=False` while an
+earlier revision still receives traffic. After reconciliation completes, the
+workflow permits recovery only after checking the observed traffic and serving
+revision's identity, configuration, and image digest; a promotion or rollback
+target must independently report `Ready=True`. For a worker, the observed
+ingress must also be internal because a failed change can leave the active
+ingress different from the requested setting. The serving revision can be
+unhealthy, so operators should inspect its condition and application behavior
+before choosing a recovery action. An unknown, missing, or unreconciled status
+blocks the operation.
+
 If a command times out, a receipt upload fails, or the result is uncertain,
 operators should inspect both the service's live traffic and revision status
 before retrying. Never assume a failed run left traffic unchanged. Reconcile
