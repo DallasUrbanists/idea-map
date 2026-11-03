@@ -8,7 +8,7 @@
     "@idea-map/server": "workspace:*",
     "firebase": "^13.1.0",
     "firebase-admin": "^14.5.0",
-    "h3": "1.15.11",
+    "h3": "2.0.8",
     "nuxt": "4.6.3",
     "reka-ui": "2.11.0",
     "vue": "3.5.44",
