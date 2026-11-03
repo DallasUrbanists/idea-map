@@ -232,6 +232,13 @@
       "when": 1793673079192,
       "tag": "0032_change_request_operations",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793673553350,
+      "tag": "0033_hold_placement_operations",
+      "breakpoints": true
     }
   ]
 }

@@ -15,15 +15,16 @@ function validate(input: HoldRequest) {
 
 /** Server-only primitive; the database function requires separately reviewed grants. */
 export async function placeModeratorHold(databaseUrl: string, projectId: string, cookie: string, verifier: RegisteredSessionVerifier,
-  input: HoldRequest): Promise<ModeratorAccess<'placed' | 'stale' | 'already-held'>> {
+  input: HoldRequest & { operationKey: string }): Promise<ModeratorAccess<'placed' | 'stale' | 'already-held' | 'idempotency-conflict'>> {
   validate(input)
+  if (typeof input.operationKey !== 'string' || !/^[A-Za-z0-9_-]{1,128}$(?![\s\S])/.test(input.operationKey)) throw new Error('Invalid operation key')
   return withVerifiedModerator(databaseUrl, projectId, cookie, verifier, async (client, _actor, subject) => {
     await client.query("SET LOCAL lock_timeout = '5s'")
     await client.query("SET LOCAL statement_timeout = '10s'")
-    const result = await client.query<{ decision: string }>('SELECT public.apply_moderator_hold($1,$2,$3,$4,$5,$6,$7) AS decision',
-      [`firebase:${projectId}`, subject, 'place', input.revisionId, input.assessmentId, null, input.reason])
+    const result = await client.query<{ decision: string }>('SELECT public.place_moderator_hold_once($1,$2,$3,$4,$5,$6) AS decision',
+      [`firebase:${projectId}`, subject, input.revisionId, input.assessmentId, input.reason, input.operationKey])
     const decision = result.rows[0]?.decision
-    if (decision !== 'placed' && decision !== 'stale' && decision !== 'already-held') throw new Error('Moderator authorization changed')
+    if (decision !== 'placed' && decision !== 'stale' && decision !== 'already-held' && decision !== 'idempotency-conflict') throw new Error('Moderator authorization changed')
     return decision
   })
 }

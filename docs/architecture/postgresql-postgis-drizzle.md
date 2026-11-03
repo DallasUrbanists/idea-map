@@ -450,17 +450,18 @@ review. These records refer to revisions and assessments, so deletion must honor
 those dependencies rather than silently discard evidence.
 
 The default-disabled action endpoint requires an `operationKey` for
-`request-changes`: 1–128 ASCII letters, digits, underscores, or hyphens. Generate
-one key per moderator decision and reuse it for retries. Receipts are scoped to
-the internal moderator and request-changes operation. A canonical payload hash
-and outcome commit with the block; the same key and payload replay the outcome,
-even after resolution or request-metadata pruning. Another payload with that key
+`request-changes` and `place-hold`: 1–128 ASCII letters, digits, underscores, or
+hyphens. Generate one key per moderator decision and reuse it for retries.
+Receipts are scoped to the internal moderator and action type. A canonical
+payload hash and outcome commit with the block; the same key and payload replay the outcome,
+even after resolution, release, or metadata pruning. Another payload with that key
 returns `409`. Every replay still checks the current session and assignment.
 
-Migration `0032_change_request_operations` adds private durable receipts and the
-separately permissioned `request_moderator_changes_once` function. Apply it before
-running the updated server. Keep actions disabled during mixed-version rollout
-or rollback: older servers lack the key requirement. Preserve receipts on
+Migrations `0032_change_request_operations` and `0033_hold_placement_operations`
+add private durable receipts and the separately permissioned
+`request_moderator_changes_once` and `place_moderator_hold_once` functions. Apply
+them before running the updated server. Keep actions disabled during
+mixed-version rollout or rollback: older servers lack the key requirement. Preserve receipts on
 rollback; deleting them makes old retries unsafe. Receipts retain only actor,
 key, hash, and outcome, with no automatic expiry. Privacy-safe receipt deletion
 remains part of the required review before enabling live controls.

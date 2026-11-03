@@ -77,7 +77,7 @@ test('verified ownership, delayed delivery, independent review blocks, and publi
     for (const job of sent) assert.ok(saved.jobIds.includes(job.id))
 
     const review = { revisionId: revision, assessmentId: input.id, reason: 'Synthetic review' }
-    assert.equal((await placeModeratorHold(...modArgs, review)).value, 'placed')
+    assert.equal((await placeModeratorHold(...modArgs, { ...review, operationKey: 'integrated-hold' })).value, 'placed')
     assert.equal((await requestModeratorChanges(...modArgs, { ...review, operationKey: 'integrated-changes' })).value, 'requested')
     assert.equal((await escalateModerationRevision(...modArgs, { ...review, ownerId: moderator })).value, 'escalated')
     const holds = (await pool.query('SELECT id,kind FROM moderator_holds WHERE revision_id=$1', [revision])).rows

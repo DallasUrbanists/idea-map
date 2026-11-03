@@ -55,7 +55,7 @@ test('owned escalation holds survive edits, respect independent blocks, and reta
     const disabled = { ...verify, async getUser() { return { uid: session.uid, email: session.email, emailVerified: true, disabled: ++calls > 1 } } }
     assert.deepEqual(await escalateModerationRevision(url, 'demo-idea-map', 'synthetic-cookie', disabled, item.input), { state: 'unauthenticated' })
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM moderator_holds WHERE revision_id=$1', [item.revision])).rows[0].n, 0)
-    assert.deepEqual(await placeModeratorHold(...args, item.input), { state: 'authorized', value: 'placed' })
+    assert.deepEqual(await placeModeratorHold(...args, { ...item.input, operationKey: 'escalation-hold' }), { state: 'authorized', value: 'placed' })
     assert.deepEqual(await escalateModerationRevision(...args, item.input), { state: 'authorized', value: 'escalated' })
     assert.deepEqual(await escalateModerationRevision(...args, item.input), { state: 'authorized', value: 'already-escalated' })
     const holds = (await pool.query('SELECT id,kind,owner_id,placed_by FROM moderator_holds WHERE revision_id=$1 ORDER BY kind', [item.revision])).rows

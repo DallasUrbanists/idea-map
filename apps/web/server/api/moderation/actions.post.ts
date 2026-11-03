@@ -11,14 +11,14 @@ function parseAction(body: unknown): Action | null {
   const value = body as Record<string, unknown>
   if (typeof value.action !== 'string' || !['approve', 'reject', 'request-changes', 'resolve-changes', 'place-hold', 'release-hold'].includes(value.action)) return null
   const fields = ['action', 'revisionId', 'assessmentId', 'reason']
-  if (value.action === 'request-changes') fields.push('operationKey')
+  if (['request-changes', 'place-hold'].includes(value.action)) fields.push('operationKey')
   if (value.action === 'resolve-changes') fields.push('requestId')
   if (value.action === 'release-hold') fields.push('holdId')
   if (Object.keys(value).length !== fields.length || !fields.every(field => Object.hasOwn(value, field)) ||
       typeof value.revisionId !== 'string' || !uuid.test(value.revisionId) ||
       (value.assessmentId !== null && (typeof value.assessmentId !== 'string' || !value.assessmentId || Buffer.byteLength(value.assessmentId) > 200)) ||
       typeof value.reason !== 'string' || !value.reason.trim() || Buffer.byteLength(value.reason) > 1000 || /[\x00-\x1f\x7f]/u.test(value.reason) ||
-      (value.action === 'request-changes' && (typeof value.operationKey !== 'string' || !/^[A-Za-z0-9_-]{1,128}$(?![\s\S])/.test(value.operationKey))) ||
+      (['request-changes', 'place-hold'].includes(value.action) && (typeof value.operationKey !== 'string' || !/^[A-Za-z0-9_-]{1,128}$(?![\s\S])/.test(value.operationKey))) ||
       (value.action === 'resolve-changes' && (typeof value.requestId !== 'string' || !uuid.test(value.requestId))) ||
       (value.action === 'release-hold' && (typeof value.holdId !== 'string' || !uuid.test(value.holdId)))) return null
   return value as Action
@@ -57,7 +57,7 @@ export default defineEventHandler(async event => {
     else if (input.action === 'reject') result = await rejectModerationRevision(...args, decision)
     else if (input.action === 'request-changes') result = await requestModeratorChanges(...args, { ...decision, operationKey: input.operationKey! })
     else if (input.action === 'resolve-changes') result = await resolveModeratorChanges(...args, { ...decision, requestId: input.requestId! })
-    else if (input.action === 'place-hold') result = await placeModeratorHold(...args, decision)
+    else if (input.action === 'place-hold') result = await placeModeratorHold(...args, { ...decision, operationKey: input.operationKey! })
     else result = await releaseModeratorHold(...args, { ...decision, holdId: input.holdId! })
   } catch { throw createError({ statusCode: 503, statusMessage: 'Moderation unavailable' }) }
   if (result.state !== 'authorized') {

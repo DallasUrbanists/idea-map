@@ -326,3 +326,12 @@ export const moderatorChangeOperations = pgTable('moderator_change_operations', 
   outcome: text('outcome'),
 }, table => [primaryKey({ columns: [table.actorId, table.operationKey] }),
   check('moderator_change_operations_operation_key_check', sql`${table.operationKey} ~ '^[A-Za-z0-9_-]{1,128}$'`)])
+
+// Durable hold-placement receipts survive released-hold pruning.
+export const moderatorHoldOperations = pgTable('moderator_hold_operations', {
+  actorId: uuid('actor_id').notNull().references(() => users.id),
+  operationKey: text('operation_key').notNull(),
+  fingerprint: text('fingerprint').notNull(),
+  outcome: text('outcome'),
+}, table => [primaryKey({ columns: [table.actorId, table.operationKey] }),
+  check('moderator_hold_operations_operation_key_check', sql`${table.operationKey} ~ '^[A-Za-z0-9_-]{1,128}$'`)])

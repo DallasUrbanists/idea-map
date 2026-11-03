@@ -30,12 +30,14 @@ test('hold control can use only scoped function grants', async () => {
       await limited.query(`SET ROLE "${role}"`)
       await assert.rejects(limited.query("SELECT public.apply_moderator_hold('firebase:demo-idea-map','hold-scoped','place',$1,NULL,NULL,'synthetic')", [revisionId]), { code: '42501' })
       await assert.rejects(limited.query('SELECT * FROM moderator_holds'), { code: '42501' })
+      await assert.rejects(limited.query('SELECT * FROM moderator_hold_operations'), { code: '42501' })
+      await assert.rejects(limited.query("SELECT public.place_moderator_hold_once('firebase:demo-idea-map','hold-scoped',$1,NULL,'synthetic','key')", [revisionId]), { code: '42501' })
     } finally { await limited.query('RESET ROLE'); limited.release() }
-    await pool.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text), public.apply_moderator_hold(text,text,text,uuid,text,uuid,text) TO "${role}"`)
+    await pool.query(`GRANT EXECUTE ON FUNCTION public.place_moderator_hold_once(text,text,uuid,text,text,text), public.lock_active_moderator(text,text), public.apply_moderator_hold(text,text,text,uuid,text,uuid,text) TO "${role}"`)
     const restricted = new URL(url)
     restricted.searchParams.set('options', `-c role=${role}`)
     const args = [restricted.toString(), 'demo-idea-map', 'cookie', verifier]
-    const input = { revisionId, assessmentId: null, reason: 'synthetic hold' }
+    const input = { operationKey: 'scoped-hold', revisionId, assessmentId: null, reason: 'synthetic hold' }
     assert.deepEqual(await placeModeratorHold(...args, input), { state: 'authorized', value: 'placed' })
     const holdId = (await pool.query('SELECT id FROM moderator_holds WHERE revision_id=$1', [revisionId])).rows[0].id
     assert.deepEqual(await releaseModeratorHold(...args, { ...input, holdId }), { state: 'authorized', value: 'released' })
@@ -63,7 +65,7 @@ test('authorized holds serialize with publication and do not release unrelated b
       const revision = (await pool.query("INSERT INTO idea_revisions(idea_id,version,content) VALUES ($1,1,'{}') RETURNING id", [idea])).rows[0].id
       await recordAcceptedAssessment(pool, { id, revisionId: revision, fingerprint: 'a'.repeat(64), waitMilliseconds: 0, shortcutRequested: false })
       const job = (await pool.query('SELECT id FROM jobs WHERE assessment_id=$1', [id])).rows[0].id
-      return { idea, revision, job, request: { revisionId: revision, assessmentId: id, reason: 'Synthetic review' } }
+      return { idea, revision, job, request: { operationKey: id, revisionId: revision, assessmentId: id, reason: 'Synthetic review' } }
     }
     const held = await create('hold-first')
     assert.deepEqual(await placeModeratorHold(url, 'demo-idea-map', 'synthetic-cookie', unprivileged, held.request), { state: 'forbidden' })
@@ -87,9 +89,10 @@ test('authorized holds serialize with publication and do not release unrelated b
     } }
     await assert.rejects(placeModeratorHold(url, 'demo-idea-map', 'synthetic-cookie', providerTimeoutBeforeCommit, held.request), /Identity recheck timed out/)
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM moderator_holds WHERE revision_id=$1', [held.revision])).rows[0].n, 0)
-    assert.deepEqual(await placeModeratorHold(...args, { ...held.request, assessmentId: 'stale' }), { state: 'authorized', value: 'stale' })
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM moderator_hold_operations WHERE operation_key=$1', [held.request.operationKey])).rows[0].n, 0)
+    assert.deepEqual(await placeModeratorHold(...args, { ...held.request, operationKey: 'stale-key', assessmentId: 'stale' }), { state: 'authorized', value: 'stale' })
     assert.deepEqual(await placeModeratorHold(...args, held.request), { state: 'authorized', value: 'placed' })
-    assert.deepEqual(await placeModeratorHold(...args, held.request), { state: 'authorized', value: 'already-held' })
+    assert.deepEqual(await placeModeratorHold(...args, held.request), { state: 'authorized', value: 'placed' })
     const hold = (await pool.query('SELECT * FROM moderator_holds WHERE revision_id=$1', [held.revision])).rows[0]
     assert.equal(hold.placed_by, moderator)
     assert.equal(hold.reason, 'Synthetic review')
@@ -103,8 +106,35 @@ test('authorized holds serialize with publication and do not release unrelated b
     await assert.rejects(executeModerationJob(pool, held.job, async () => 'allow'), /on hold/)
     await pool.query('UPDATE review_gates SET blocked=false WHERE revision_id=$1', [held.revision])
     assert.equal(await executeModerationJob(pool, held.job, async () => 'allow'), 'completed')
-    assert.deepEqual(await placeModeratorHold(...args, held.request), { state: 'authorized', value: 'stale' })
+    assert.deepEqual(await placeModeratorHold(...args, { ...held.request, operationKey: 'after-publication' }), { state: 'authorized', value: 'stale' })
     await assert.rejects(placeModeratorHold(...args, { ...held.request, reason: '  ' }), /Invalid/)
+
+    // Concurrent retries return one durable outcome; release cannot turn an old
+    // decision into a new hold, even if the request metadata has been removed.
+    const retry = await create('retry-hold')
+    const outcomes = await Promise.all(Array.from({ length: 4 }, () => placeModeratorHold(...args, retry.request)))
+    assert.ok(outcomes.every(result => result.value === 'placed'))
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM moderator_holds WHERE revision_id=$1', [retry.revision])).rows[0].n, 1)
+    const retryHoldId = (await pool.query('SELECT id FROM moderator_holds WHERE revision_id=$1', [retry.revision])).rows[0].id
+    // A separate decision is recorded as already-held, not retried as placement.
+    const blockedDecision = { ...retry.request, operationKey: 'blocked-hold-decision' }
+    assert.equal((await placeModeratorHold(...args, blockedDecision)).value, 'already-held')
+    await releaseModeratorHold(...args, { ...retry.request, holdId: retryHoldId })
+    assert.equal((await placeModeratorHold(...args, retry.request)).value, 'placed')
+    assert.equal((await placeModeratorHold(...args, blockedDecision)).value, 'already-held')
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM moderator_holds WHERE revision_id=$1 AND released_at IS NULL', [retry.revision])).rows[0].n, 0)
+    assert.equal((await placeModeratorHold(...args, { ...retry.request, reason: 'Changed reason' })).value, 'idempotency-conflict')
+    assert.equal((await placeModeratorHold(...args, { ...retry.request, assessmentId: 'changed-assessment' })).value, 'idempotency-conflict')
+    assert.equal((await placeModeratorHold(...args, { ...retry.request, revisionId: retry.revision.toUpperCase(), reason: `  ${retry.request.reason}  ` })).value, 'placed')
+    await pool.query('DELETE FROM moderator_holds WHERE id=$1', [retryHoldId])
+    assert.equal((await placeModeratorHold(...args, retry.request)).value, 'placed')
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM moderator_holds WHERE revision_id=$1', [retry.revision])).rows[0].n, 0)
+    assert.equal((await placeModeratorHold(...args, { ...retry.request, operationKey: 'new-hold-decision' })).value, 'placed')
+    // Keys are scoped to the authenticated actor, not globally reserved.
+    await pool.query("INSERT INTO identities(user_id,provider,subject) VALUES ($1,'firebase:demo-idea-map','other')", [administrator])
+    await pool.query("INSERT INTO moderator_assignments(user_id,granted_by,grant_reason) VALUES ($1,$1,'synthetic grant')", [administrator])
+    const otherTarget = await create('other-actor-target')
+    assert.equal((await placeModeratorHold(url, 'demo-idea-map', 'synthetic-cookie', unprivileged, { ...otherTarget.request, operationKey: retry.request.operationKey })).value, 'placed')
 
     const edited = await create('edited')
     await pool.query("INSERT INTO idea_revisions(idea_id,version,content) VALUES ($1,2,'{}')", [edited.idea])

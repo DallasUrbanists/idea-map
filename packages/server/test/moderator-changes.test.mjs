@@ -55,7 +55,7 @@ test('change requests survive edits and remain separate from holds and legal ret
     const current = { revisionId: edited, assessmentId: 'changes-after-edit', reason: 'Synthetic review completed' }
     const elsewhere = await create('other-idea')
     assert.deepEqual(await resolveModeratorChanges(...args, { ...elsewhere.input, requestId: request.id }), { state: 'authorized', value: 'not-requested' })
-    assert.deepEqual(await placeModeratorHold(...args, current), { state: 'authorized', value: 'placed' })
+    assert.deepEqual(await placeModeratorHold(...args, { ...current, operationKey: 'changes-hold' }), { state: 'authorized', value: 'placed' })
     const hold = (await pool.query('SELECT id FROM moderator_holds WHERE revision_id=$1', [edited])).rows[0].id
     assert.deepEqual(await resolveModeratorChanges(...args, { ...current, requestId: request.id }), { state: 'authorized', value: 'resolved' })
     assert.deepEqual(await resolveModeratorChanges(...args, { ...current, requestId: request.id }), { state: 'authorized', value: 'not-requested' })

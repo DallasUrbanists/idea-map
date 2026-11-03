@@ -36,7 +36,7 @@ test('manual approval requires current moderator and revision, respects blocks, 
     await pool.query('INSERT INTO review_gates(revision_id,blocked) VALUES ($1,true)', [first.revision])
     assert.deepEqual(await approveModerationRevision(...args, input), { state: 'authorized', value: 'blocked' })
     await pool.query('UPDATE review_gates SET blocked=false WHERE revision_id=$1', [first.revision])
-    await placeModeratorHold(...args, { ...input, reason: 'synthetic hold' })
+    await placeModeratorHold(...args, { ...input, operationKey: 'manual-hold', reason: 'synthetic hold' })
     const hold = (await pool.query('SELECT id FROM moderator_holds WHERE revision_id=$1', [first.revision])).rows[0].id
     assert.deepEqual(await approveModerationRevision(...args, input), { state: 'authorized', value: 'blocked' })
     await releaseModeratorHold(...args, { ...input, holdId: hold, reason: 'synthetic release' })
@@ -80,7 +80,7 @@ test('manual approval requires current moderator and revision, respects blocks, 
       await pool.query('DROP FUNCTION public.synthetic_reject_approval_event()')
     }
     const heldEdit = await makeIdea()
-    await placeModeratorHold(...args, { ...input, revisionId: heldEdit.revision, reason: 'synthetic earlier hold' })
+    await placeModeratorHold(...args, { ...input, operationKey: 'manual-earlier-hold', revisionId: heldEdit.revision, reason: 'synthetic earlier hold' })
     const heldNewRevision = (await pool.query("INSERT INTO idea_revisions(idea_id,version,content) VALUES ($1,2,'{}') RETURNING id", [heldEdit.idea])).rows[0].id
     assert.deepEqual(await approveModerationRevision(...args, { ...input, revisionId: heldNewRevision }), { state: 'authorized', value: 'blocked' })
     const raced = await makeIdea()
