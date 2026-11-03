@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { Readable, Writable } from 'node:stream'
 import { after, test } from 'node:test'
-import { readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
+import { compareCurrentRecoveryJournalRecord, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
 import { encodeRecoveryConfirmation } from '../dist/recovery-journal-record.js'
 
 const target = { environment: 'dev', bucket: 'synthetic-private-backups' }
@@ -120,4 +120,38 @@ test('journal reader fails closed on invalid references, records, provider error
     error.message === 'Journal record could not be verified' && !error.message.includes('sensitive'))
   const hanging = { bucket: () => ({ file: () => ({ interceptors: [], createReadStream: () => new Readable({ read() {} }) }) }) }
   await assert.rejects(readRecoveryJournalRecord(hanging, target, id, '1', 20), /could not be verified/)
+})
+
+test('ambiguous write readback requires the same current generation and exact saved bytes', async () => {
+  const body = encodeRecoveryConfirmation(id, 'dev', '2026-11-03T12:00:00.000Z')
+  const generation = '90071992547409931234'
+  const path = `idea-map-v2/dev/recovery-journal/${id}.json`
+  const base = { bucket: target.bucket, name: path, generation, metageneration: '1',
+    size: String(body.length), contentType: 'application/json', crc32c: 'AAAAAA==' }
+  function storageFor({ metadata = [base, base], stored = body, hang = false } = {}) {
+    let calls = 0
+    return { bucket: () => ({ file: () => ({ interceptors: [],
+      getMetadata: () => hang ? new Promise(() => {}) : Promise.resolve([metadata[calls++]]),
+      createReadStream: () => {
+        const stream = Readable.from([stored])
+        process.nextTick(() => stream.emit('response', { toJSON: () => ({ headers: {
+          'x-goog-stored-content-encoding': 'identity', 'x-goog-hash': 'crc32c=AAAAAA==',
+        } }) }))
+        return stream
+      },
+    }) }) }
+  }
+  assert.deepEqual(await compareCurrentRecoveryJournalRecord(storageFor(), target, id, body),
+    { generation, coverageVerified: false })
+  const other = encodeRecoveryConfirmation(id, 'dev', '2026-11-03T12:00:01.000Z')
+  for (const storage of [
+    storageFor({ stored: other }),
+    storageFor({ metadata: [base, { ...base, generation: '2' }] }),
+    storageFor({ metadata: [base, { ...base, metageneration: '2' }] }),
+    storageFor({ metadata: [{ ...base, bucket: 'wrong-bucket' }] }),
+    storageFor({ metadata: [{ ...base, crc32c: undefined }] }),
+    storageFor({ metadata: [{ ...base, timeDeleted: '2026-11-03T12:00:00.000Z' }] }),
+    storageFor({ hang: true }),
+  ]) await assert.rejects(compareCurrentRecoveryJournalRecord(storage, target, id, body, 20),
+    error => error.message === 'Journal record could not be verified')
 })

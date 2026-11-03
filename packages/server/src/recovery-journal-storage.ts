@@ -90,3 +90,46 @@ export async function readRecoveryJournalRecord(storage: Storage, target: Target
     if (timer) clearTimeout(timer)
   }
 }
+
+/**
+ * Compare a live generation with saved intent bytes; this never establishes
+ * coverage or reopens access. The metadata deadline bounds this call, but does
+ * not cancel the SDK request, which may finish after the caller receives an error.
+ */
+export async function compareCurrentRecoveryJournalRecord(storage: Storage, target: Target, recordId: string,
+  expected: Uint8Array, timeoutMs = 5000): Promise<{ generation: string, coverageVerified: false }> {
+  if (!validTarget(target) || typeof recordId !== 'string' || !recordIdPattern.test(recordId) ||
+      !(expected instanceof Uint8Array) || expected.byteLength < 1 || expected.byteLength > 16_384 ||
+      !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 5000) throw new Error('Invalid journal record reference')
+  const bytes = Buffer.from(expected)
+  try {
+    decodeRecoveryRecord(bytes, target.environment)
+    const path = `idea-map-v2/${target.environment}/recovery-journal/${recordId}.json`
+    const file = storage.bucket(target.bucket).file(path)
+    const metadata = async () => {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try {
+        const [value] = await Promise.race([
+          file.getMetadata(),
+          new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Metadata read timed out')), timeoutMs) }),
+        ])
+        if (value.bucket !== target.bucket || value.name !== path || typeof value.generation !== 'string' ||
+            !/^[1-9][0-9]*$/.test(value.generation) || typeof value.metageneration !== 'string' ||
+            !/^[1-9][0-9]*$/.test(value.metageneration) || value.timeDeleted || value.size !== String(bytes.length) ||
+            value.contentType !== 'application/json' || (value.contentEncoding && value.contentEncoding !== 'identity') ||
+            typeof value.crc32c !== 'string' || !/^[A-Za-z0-9+/]{6}==$/.test(value.crc32c)) throw new Error('Invalid metadata')
+        return { generation: value.generation, metageneration: value.metageneration, crc32c: value.crc32c }
+      } finally { if (timer) clearTimeout(timer) }
+    }
+    const first = await metadata()
+    const observed = await readRecoveryJournalRecord(storage, target, recordId, first.generation, timeoutMs)
+    if (!Buffer.from(observed).equals(bytes)) throw new Error('Journal record differs')
+    const last = await metadata()
+    if (last.generation !== first.generation || last.metageneration !== first.metageneration ||
+        last.crc32c !== first.crc32c) throw new Error('Journal generation changed')
+    return { generation: first.generation, coverageVerified: false }
+  } catch {
+    // A comparison cannot prove authorization, completeness, or future availability.
+    throw new Error('Journal record could not be verified')
+  }
+}

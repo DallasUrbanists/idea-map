@@ -110,6 +110,14 @@ and generation. A checksum detects accidental corruption, not an unauthorized
 replacement, and a successful read does not verify who wrote the record, discover
 other records, or prove inventory coverage.
 
+An unwired readback helper compares a known record's current generation and
+canonical bytes with the saved intent, then checks that the generation and its
+metadata have not changed during the read. It can help an authorized reader
+investigate an ambiguous create-only write, but does not authorize the decision,
+prove future availability or journal coverage, or reopen access. Its metadata
+deadline stops waiting for a response; it does not cancel the underlying storage
+client request. Review reader permissions and request limits before integration.
+
 The checkpoint needs a coordinated boundary, not merely a timestamp. Suspend
 all covered mutations, drain in-flight transactions and journal writes, verify
 the current decision state and writer restrictions, and record the checkpoint

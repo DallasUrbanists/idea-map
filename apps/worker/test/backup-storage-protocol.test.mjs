@@ -6,7 +6,7 @@ import { Readable } from 'node:stream'
 import { test } from 'node:test'
 import { exportEncryptedBackup } from '../ops/export-encrypted-backup.mjs'
 import { inspectBackupRetention } from '../ops/inspect-backup-retention.mjs'
-import { readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../../../packages/server/dist/recovery-journal-storage.js'
+import { compareCurrentRecoveryJournalRecord, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../../../packages/server/dist/recovery-journal-storage.js'
 import { encodeRecoveryConfirmation } from '../../../packages/server/dist/recovery-journal-record.js'
 
 const require = createRequire(import.meta.url)
@@ -64,6 +64,13 @@ test('storage client sends create-only archives, completion metadata, and journa
         response.end(data)
         return
       }
+      if (request.method === 'GET' && url.pathname.startsWith(`/storage/v1/b/${target.bucket}/o/`)) {
+        const name = decodeURIComponent(url.pathname.slice(`/storage/v1/b/${target.bucket}/o/`.length))
+        const object = objects.get(name)
+        if (!object) throw new Error('Missing synthetic object')
+        response.end(JSON.stringify(object))
+        return
+      }
       if (request.method !== 'POST' || url.pathname !== `/upload/storage/v1/b/${target.bucket}/o` ||
           url.searchParams.get('ifGenerationMatch') !== '0') throw new Error('Unexpected storage operation')
       const boundary = /boundary=([^;]+)/i.exec(request.headers['content-type'] ?? '')?.[1]?.replace(/^"|"$/g, '')
@@ -86,7 +93,8 @@ test('storage client sends create-only archives, completion metadata, and journa
         return
       }
       const object = { name, bucket: target.bucket, generation: String(objects.size + 100), metageneration: '1',
-        timeCreated: created, size: String(data.length), crc32c: crc32c(data), metadata: sentMetadata.metadata }
+        timeCreated: created, size: String(data.length), crc32c: crc32c(data),
+        contentType: sentMetadata.contentType, metadata: sentMetadata.metadata }
       objects.set(name, object)
       payloads.set(name, data)
       response.end(JSON.stringify(object))
@@ -127,6 +135,10 @@ test('storage client sends create-only archives, completion metadata, and journa
     assert.equal(objects.get(recordName).metadata, undefined)
     objects.get(recordName).generation = '90071992547409931234'
     assert.deepEqual(Buffer.from(await readRecoveryJournalRecord(storage, target, recordId, objects.get(recordName).generation)), record)
+    assert.deepEqual(await compareCurrentRecoveryJournalRecord(storage, target, recordId, record),
+      { generation: '90071992547409931234', coverageVerified: false })
+    await assert.rejects(compareCurrentRecoveryJournalRecord(storage, target, recordId,
+      encodeRecoveryConfirmation(recordId, 'dev', '2026-11-02T10:01:01.000Z')), /could not be verified/)
     const checksum = objects.get(recordName).crc32c
     objects.get(recordName).crc32c = checksum === 'AAAAAA==' ? 'AQAAAA==' : 'AAAAAA=='
     await assert.rejects(readRecoveryJournalRecord(storage, target, recordId, objects.get(recordName).generation), /could not be verified/)
