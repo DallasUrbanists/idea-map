@@ -68,6 +68,9 @@ test('production server renders, responds safely, and keeps private config priva
     const queue = await fetch(base + '/api/moderation/queue');
     assert.equal(queue.status, 404);
     assert.match(queue.headers.get('cache-control'), /no-store/);
+    const moderators = await fetch(base + '/api/moderation/moderators');
+    assert.equal(moderators.status, 404);
+    assert.match(moderators.headers.get('cache-control'), /no-store/);
     const action = await fetch(base + '/api/moderation/actions', { method: 'POST' });
     assert.equal(action.status, 403);
     assert.match(action.headers.get('cache-control'), /no-store/);

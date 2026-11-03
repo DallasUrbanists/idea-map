@@ -1,0 +1,1 @@
+CREATE INDEX "guest_email_verifications_contact_idx" ON "guest_email_verifications" USING btree ("contact_id");

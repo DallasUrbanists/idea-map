@@ -3,8 +3,9 @@
 Use this procedure for the synthetic moderator path prepared for issue #17. It
 runs a real local browser, web server, Firebase Auth emulator, and disposable
 PostGIS database. It does not enable live review or test automatic publication.
-The screen can place and release holds and request and resolve changes; it does
-not offer approval or rejection while private media review is unavailable.
+The screen can place and release holds, request and resolve changes, and assign
+and transfer escalations. It does not offer approval or rejection while private
+media review is unavailable.
 
 The following contents links navigate within this guide:
 
@@ -22,6 +23,7 @@ You can use these situations to decide whether this local test covers your chang
 | When this happens... | Use this guide to... |
 | --- | --- |
 | You change moderator holds or change requests. | Verify that a browser can record and resolve those actions through local authentication and database services while the idea stays private. |
+| You change escalation assignment or transfer. | Verify that a selected moderator can own an escalation and that a handoff preserves the active hold. |
 | You change moderator access checks. | Verify that revoking a moderator role clears displayed review content. |
 | You need reproducible reviewer-screen evidence. | Run the synthetic integration test with a fresh disposable database and clean up its services. |
 
@@ -53,8 +55,8 @@ continuing to the next step.
 
 The test creates a synthetic emulator user and a scoped database role, then
 removes those test identities. It starts and stops its own web server and
-browser. A passing test exercises hold and change-request actions and role
-revocation; it does not validate cloud permissions, media access, caching,
+browser. A passing test exercises hold and change-request actions, escalation
+handoff, and role revocation; it does not validate cloud permissions, media access, caching,
 scoring, or production readiness.
 
 ### Bash

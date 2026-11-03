@@ -85,6 +85,31 @@ concurrent, so operators must review write-locking, backups, and rollback before
 applying it. Earlier application versions can ignore the additive columns;
 operators should preserve newly recorded evidence during rollback.
 
+The server-only guest verification primitive issues a signed, random,
+single-use proof for an unowned idea and its current contact address. The
+database stores a secret digest and keyed address fingerprint, not the bearer
+token or an additional email copy. A server-configured lifetime must be between
+one minute and 24 hours; there is no default. Redemption uses database time,
+locks the idea, contact, and proof, rejects changed addresses, ownership or
+withdrawal, and invalidates other outstanding proofs for that idea. Changing a
+contact address clears its verification timestamp and invalidates outstanding
+proofs for that contact, even if the address is later changed back. Expired
+verifier records can be pruned only under the idea lock when no legal hold applies.
+
+This primitive does not send mail, create a guest session, enforce a
+registered-email gate, or authorize ownership or publication. Its authorization
+callback is a trusted server boundary, not a browser claim. Before live use,
+implement and review guest/draft authorization, account lookup and anti-enumeration,
+rate limits, private delivery and fragment-based link handling, key storage and
+rotation, retention scheduling, deletion, and recovery. No route, live grant,
+provider use, or scheduler is enabled by these functions. Rotating the signing
+key invalidates outstanding proofs and requires a recovery process. Verification
+records reference the idea; a future authorized deletion must invalidate and
+remove applicable proofs under the same idea lock and legal-hold checks without
+missing the policy's deletion deadline.
+The contact timestamp is historical evidence for that address, not a current
+guest session, account ownership proof, or trusted-user history.
+
 A composite foreign key prevents an approved-revision pointer from referencing a
 revision belonging to another idea. A server transaction must still verify the
 revision is approved before setting the pointer and must retain the prior
@@ -393,9 +418,10 @@ implemented. A separate private queue lists at most 50 current pending revision
 identifiers per page in creation order, without content or contact data; it does
 not yet prioritize risk flags. Queue results are snapshots and the revision
 read and actions recheck current state. The reviewer screen can inspect content,
-place or release holds, and request or resolve changes; it deliberately cannot
+place or release holds, request or resolve changes, and assign or transfer an
+escalation; it deliberately cannot
 approve or reject while media review is unavailable. Private media, full
-decision and escalation controls, notifications, load limits, privacy controls,
+decision controls, notifications, load limits, privacy controls,
 and rollout review remain open. Responses and errors use `private, no-store`.
 
 The separately default-disabled action endpoint accepts manual approval,
@@ -467,8 +493,14 @@ escalation remains a hold across later edits and when the owner's assignment is
 revoked; it must be explicitly released. It does not clear or replace an
 ordinary hold. The private review response includes the current owner's internal
 user ID; it does not prove the owner can still sign in.
-Notifications and a usable interface remain open. Do not enable live
-escalations until those processes and privacy controls are reviewed.
+Notifications and human-readable moderator identification remain open. Do not
+enable live escalations until those processes and privacy controls are reviewed.
+
+The private owner selector lists only active database moderator IDs and marks
+the current user; it does not disclose contact records. More than 100 active
+assignments fail closed pending a paginated selection procedure. Assignment and
+transfer recheck the chosen role in the decision transaction. An active role
+alone does not show that the selected person can sign in or receive notice.
 
 The migration preserves existing holds as ordinary holds and replaces their
 partial uniqueness index. Older code that expects the prior index cannot place

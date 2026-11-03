@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import pg from 'pg'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
-import { listModeratorQueue } from '../dist/moderator-review.js'
+import { listModeratorOwners, listModeratorQueue } from '../dist/moderator-review.js'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !new URL(url).pathname.startsWith('/idea_map_test_')) throw new Error('TEST_DATABASE_URL must name a disposable database beginning idea_map_test_')
@@ -25,6 +25,13 @@ test('private queue pages only current pending metadata with exact cursor precis
     const verifier = uid => ({ async verifySessionCookie() { return { uid, email: `${uid}@example.invalid`, email_verified: true, firebase: { sign_in_provider: 'password' } } }, async getUser() { return { uid, email: `${uid}@example.invalid`, emailVerified: true, disabled: false } } })
     const args = [url, 'demo-idea-map', 'cookie', verifier('moderator')]
     assert.deepEqual(await listModeratorQueue(url, 'demo-idea-map', 'cookie', verifier('other'), null), { state: 'forbidden' })
+    assert.deepEqual(await listModeratorOwners(url, 'demo-idea-map', 'cookie', verifier('other')), { state: 'forbidden' })
+    assert.deepEqual(await listModeratorOwners(...args), { state: 'authorized', value: [{ userId: user, isSelf: true }] })
+    await pool.query("INSERT INTO moderator_assignments(user_id,granted_by,grant_reason) VALUES ($1,$2,'synthetic delegate')", [other, user])
+    const owners = await listModeratorOwners(...args)
+    assert.equal(owners.value.find(item => item.userId === user).isSelf, true)
+    assert.equal(owners.value.find(item => item.userId === other).isSelf, false)
+    assert.equal(JSON.stringify(owners).includes('private-queue@example.invalid'), false)
     const first = await listModeratorQueue(...args, null)
     assert.equal(first.state, 'authorized')
     assert.equal(first.value.entries.length, 50)
@@ -55,10 +62,14 @@ test('private queue pages only current pending metadata with exact cursor precis
       await assert.rejects(limited.query("SELECT * FROM public.list_moderator_queue('firebase:demo-idea-map','moderator',NULL,NULL)"), { code: '42501' })
       await assert.rejects(limited.query('SELECT * FROM idea_revisions'), { code: '42501' })
     } finally { await limited.query('RESET ROLE'); limited.release() }
-    await pool.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text), public.list_moderator_queue(text,text,timestamptz,uuid) TO "${role}"`)
+    await pool.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text), public.list_moderator_queue(text,text,timestamptz,uuid), public.list_moderator_owners(text,text) TO "${role}"`)
     const restricted = new URL(url)
     restricted.searchParams.set('options', `-c role=${role}`)
     assert.equal((await listModeratorQueue(restricted.toString(), 'demo-idea-map', 'cookie', verifier('moderator'), null)).state, 'authorized')
+    assert.equal((await listModeratorOwners(restricted.toString(), 'demo-idea-map', 'cookie', verifier('moderator'))).value.length, 2)
+    const extraUsers = (await pool.query('INSERT INTO users SELECT gen_random_uuid(),now() FROM generate_series(1,100) RETURNING id')).rows.map(row => row.id)
+    await pool.query("INSERT INTO moderator_assignments(user_id,granted_by,grant_reason) SELECT unnest($1::uuid[]),$2,'synthetic overflow'", [extraUsers, user])
+    await assert.rejects(listModeratorOwners(...args), /selection exceeds the supported count/)
     await pool.query("UPDATE moderator_assignments SET revoked_at=clock_timestamp(),revoked_by=$1,revoke_reason='synthetic' WHERE id=$2", [user, assignment])
     assert.deepEqual(await listModeratorQueue(...args, null), { state: 'forbidden' })
   } finally {
