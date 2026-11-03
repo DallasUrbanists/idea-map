@@ -31,7 +31,7 @@ these boundaries and the Google Cloud hosting design.
 
 The [development guide](docs/contributor-guides/development-guide.md) is the
 canonical quickstart for a checkout with synthetic data and no production
-credentials. Follow its [one-time setup](docs/contributor-guides/development-guide.md#one-time-setup-for-each-checkout)
+credentials. You can follow its [one-time setup](docs/contributor-guides/development-guide.md#one-time-setup-for-each-checkout)
 for tools, dependencies, and local settings, then its
 [session-start procedure](docs/contributor-guides/development-guide.md#start-of-each-work-session)
 for services, readiness checks, migrations, Nuxt, and optional Storybook.
@@ -65,14 +65,14 @@ These locations separate application code, reusable packages, and project tools:
 
 ## Contribute and plan
 
-Start with [CONTRIBUTING.md](CONTRIBUTING.md) to choose work, check ownership,
+You can start with [CONTRIBUTING.md](CONTRIBUTING.md) to choose work, check ownership,
 validate a change, and open a pull request. The
 [testing guide](docs/contributor-guides/testing-guide.md) explains focused checks;
 the [documentation style guide](docs/contributor-guides/documentation-style-guide.md)
 provides the checklist for documentation-only changes. You can ask maintainers
 for help through a relevant issue without including credentials or private data.
 
-Use the [repository Projects](https://github.com/DallasUrbanists/idea-map/projects)
+You can use the [repository Projects](https://github.com/DallasUrbanists/idea-map/projects)
 to follow work, the [Developer Experience project](https://github.com/orgs/DallasUrbanists/projects/5)
 for contributor tooling, and the [wiki](https://github.com/DallasUrbanists/idea-map/wiki)
 for product and planning context. The [roadmap](https://github.com/DallasUrbanists/idea-map/wiki/Roadmap-and-Milestones)
