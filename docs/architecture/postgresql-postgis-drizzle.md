@@ -383,7 +383,10 @@ tests alone.
 The default-disabled private review endpoint reads one current pending revision
 after checking the registered identity and active moderator assignment. It
 returns submitted revision content, the current assessment identity and timing,
-and counts of active review blocks; it excludes contact and ownership records.
+and active review blocks with their identifiers and reasons; it excludes contact
+and ownership records. Escalations include their current owner and sequence for
+safe handoffs. More than 100 active holds fail closed pending a bounded review
+procedure rather than silently hiding blocks.
 The database function and endpoint do not grant live access. Content larger than
 256 KiB is unavailable through this endpoint until a bounded review process is
 implemented. It does not expose private media, review controls, a queue, or

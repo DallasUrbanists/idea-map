@@ -12,6 +12,8 @@ export interface ModeratorRevision {
   blocked: boolean
   activeHoldCount: number
   activeChangeRequestCount: number
+  activeHolds: Array<{ id: string, kind: 'hold' | 'escalation', reason: string, placedAt: string, ownerId: string | null, sequence: number }>
+  activeChangeRequests: Array<{ id: string, reason: string, requestedAt: string }>
 }
 
 /** Private review data; caller must verify its configured Firebase project. */
