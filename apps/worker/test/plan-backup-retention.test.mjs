@@ -18,6 +18,7 @@ test('retention preserves recent daily dates, weekly periods, grace, and holds',
   input.objects.push(object('daily', 41, { retention: { mode: 'Locked', retainUntilTime: '2027-01-01T00:00:00Z' } }))
   const result = planBackupRetention(input)
   assert.equal(result.retentionSatisfied, true)
+  assert.equal(result.privacyDeadlineVerified, false)
   assert.deepEqual(result.consecutive, { daily: true, weekly: true })
   const removed = new Set(result.candidates.map(row => row.name))
   assert.ok(!removed.has(object('daily', 14).name))

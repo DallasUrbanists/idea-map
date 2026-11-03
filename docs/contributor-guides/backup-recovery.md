@@ -253,7 +253,9 @@ generation remains, including soft-deleted generations, is an error. Fewer than 
 dates or eight weeks, or a gap in those recent periods, sets `retentionSatisfied`
 to false, proposes no deletions, and causes the command to exit nonzero. The
 output still reports the distinct period counts and freshness during initial
-backup accumulation. `latestDailyAgeSeconds` and `latestWeeklyAgeSeconds`
+backup accumulation. `privacyDeadlineVerified` is always false: the inventory
+does not establish that copies of removed content expired by their deadline.
+`latestDailyAgeSeconds` and `latestWeeklyAgeSeconds`
 measure the ages of the latest confirmed exports from their conservative start
 times. Consecutive counts alone do not establish freshness, and this diagnostic
 does not schedule checks or send alerts. If the latest daily export started

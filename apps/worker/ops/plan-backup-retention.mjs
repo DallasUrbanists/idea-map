@@ -53,5 +53,6 @@ export function planBackupRetention({ environment, complete, objects, now = new 
   const oldOrHeld = entries.filter(entry => now.getTime() - entry.created >= 76 * DAY || entry.eventBasedHold || entry.temporaryHold ||
     (entry.retentionExpirationTime && Date.parse(entry.retentionExpirationTime) > now.getTime()) ||
     (entry.retention && Date.parse(entry.retention.retainUntilTime) > now.getTime())).length
-  return { retentionSatisfied, groupCounts, consecutive, candidates, oldOrHeld }
+  // Counts and ages do not establish when removed material left every backup.
+  return { retentionSatisfied, privacyDeadlineVerified: false, groupCounts, consecutive, candidates, oldOrHeld }
 }
