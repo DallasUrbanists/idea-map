@@ -188,6 +188,39 @@ database with the `idea_map_test_` prefix, set `TEST_DATABASE_URL`, and run
 identities and injected moderator authorization; it does not verify the real
 identity provider or moderator permissions.
 
+For database-backed moderator authorization, set `TEST_DATABASE_URL` to a fresh
+disposable PostGIS database and run:
+
+```sh
+pnpm --filter @idea-map/server test:moderator-authorization
+```
+
+The test verifies revocation locking, assignment history restrictions, and a
+synthetic least-privilege database role. To exercise the built status endpoint
+with Firebase, start the local emulators, migrate a separate local disposable
+database, build the app, and run `pnpm test:moderator-auth` with that database in
+`TEST_DATABASE_URL`. These checks do not grant live roles or validate hosted
+permissions.
+
+For verified ownership, use a fresh disposable PostGIS database and run the
+following command with `TEST_DATABASE_URL` set to that database:
+
+```sh
+pnpm --filter @idea-map/server test:verified-ownership
+```
+
+To test the protected claim endpoint, start the local emulators, migrate a
+separate local disposable database, build the app, and set `TEST_DATABASE_URL`
+to that database. Then run:
+
+```sh
+pnpm test:ownership-claim
+```
+
+The test enables the endpoint only for its synthetic server and uses a restricted
+test database role. It does not authorize live claims or validate hosted
+permissions.
+
 To exercise the built webhook endpoint against a disposable local database, set
 `TEST_DATABASE_URL` to a migrated `idea_map_test_` database on `127.0.0.1`, run
 `pnpm build`, and then run `pnpm test:webhook`. The test uses a synthetic webhook

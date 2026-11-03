@@ -25,6 +25,7 @@ test('bootstrap, forward migrations, ownership constraints and PostGIS', async (
     await cp(join(migrations, '0000_initial.sql'), join(initial, '0000_initial.sql'))
     const journalPath = join(initial, 'meta', '_journal.json')
     const journal = JSON.parse(await readFile(journalPath, 'utf8'))
+    const expectedMigrations = journal.entries.length
     journal.entries = journal.entries.slice(0, 1)
     await writeFile(journalPath, JSON.stringify(journal))
     await client.connect()
@@ -39,7 +40,7 @@ test('bootstrap, forward migrations, ownership constraints and PostGIS', async (
     await client.query('INSERT INTO approved_revisions(idea_id,revision_id) VALUES ($1,$2)', [legacyIdea, legacyRevision])
     await migrate(db, { migrationsFolder: migrations })
     await migrate(db, { migrationsFolder: migrations })
-    assert.equal((await client.query('SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations')).rows[0].count, 8)
+    assert.equal((await client.query('SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations')).rows[0].count, expectedMigrations)
     assert.deepEqual((await client.query('SELECT revision_id, verified_for_trust FROM approval_records WHERE idea_id = $1', [legacyIdea])).rows[0], { revision_id: legacyRevision, verified_for_trust: false })
     const deliveryPool = new pg.Pool({ connectionString: url, max: 2 })
     try {

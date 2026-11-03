@@ -15,12 +15,15 @@ test('approval history counts distinct verified records and serializes correctio
     const owner = (await pool.query('INSERT INTO users DEFAULT VALUES RETURNING id')).rows[0].id
     const other = (await pool.query('INSERT INTO users DEFAULT VALUES RETURNING id')).rows[0].id
     const moderator = (await pool.query('INSERT INTO users DEFAULT VALUES RETURNING id')).rows[0].id
+    const ownerIdentity = (await pool.query("INSERT INTO identities(user_id,provider,subject) VALUES ($1,'firebase:demo-idea-map','owner') RETURNING id", [owner])).rows[0].id
+    const otherIdentity = (await pool.query("INSERT INTO identities(user_id,provider,subject) VALUES ($1,'firebase:demo-idea-map','other') RETURNING id", [other])).rows[0].id
     const contact = (await pool.query("INSERT INTO contacts(normalized_email) VALUES ('trust@example.invalid') RETURNING id")).rows[0].id
     const idea = async (ownerId, approved) => {
       const client = await pool.connect()
       try {
         await client.query('BEGIN')
         const id = (await client.query('INSERT INTO ideas (author_contact_id,owner_id,publication_state) VALUES ($1,$2,$3) RETURNING id', [contact, ownerId, approved ? 'approved' : 'private'])).rows[0].id
+        if (ownerId) await client.query('INSERT INTO ownership_claims(idea_id,user_id,contact_id,verified_identity_id,verified_at) VALUES ($1,$2,$3,$4,now())', [id, ownerId, contact, ownerId === owner ? ownerIdentity : otherIdentity])
         const revision = (await client.query('INSERT INTO idea_revisions (idea_id,version,content,review_state) VALUES ($1,1,$2,$3) RETURNING id', [id, {}, approved ? 'approved' : 'waiting'])).rows[0].id
         if (approved) {
           await client.query('INSERT INTO approved_revisions (idea_id,revision_id) VALUES ($1,$2)', [id, revision])
@@ -31,16 +34,26 @@ test('approval history counts distinct verified records and serializes correctio
       } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
     }
     const current = await idea(owner, false)
-    const evaluate = async (score, identity = { userId: owner, emailVerified: true }) => {
+    const evaluate = async (score, identity = { userId: owner, identityId: ownerIdentity, verifiedEmail: 'trust@example.invalid', emailVerified: true }) => {
       const client = await pool.connect()
       try { await client.query('BEGIN'); const result = await evaluateTrustedShortcut(client, current.id, identity, score); await client.query('COMMIT'); return result }
       catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
     }
     assert.deepEqual(await evaluate(95), { eligible: false, priorApprovals: 0, threshold: 95 })
-    assert.deepEqual(await evaluate(99, { userId: owner, emailVerified: false }), { eligible: false, priorApprovals: null, threshold: null })
-    assert.deepEqual(await evaluate(99, { userId: other, emailVerified: true }), { eligible: false, priorApprovals: null, threshold: null })
+    assert.deepEqual(await evaluate(99, { userId: owner, identityId: ownerIdentity, verifiedEmail: 'trust@example.invalid', emailVerified: false }), { eligible: false, priorApprovals: null, threshold: null })
+    assert.deepEqual(await evaluate(99, { userId: other, identityId: otherIdentity, verifiedEmail: 'trust@example.invalid', emailVerified: true }), { eligible: false, priorApprovals: null, threshold: null })
+    const alternateIdentity = (await pool.query("INSERT INTO identities(user_id,provider,subject) VALUES ($1,'firebase:demo-idea-map','owner-alternate') RETURNING id", [owner])).rows[0].id
+    assert.deepEqual(await evaluate(99, { userId: owner, identityId: alternateIdentity, verifiedEmail: 'trust@example.invalid', emailVerified: true }), { eligible: false, priorApprovals: null, threshold: null })
+    assert.deepEqual(await evaluate(99, { userId: owner, identityId: ownerIdentity, verifiedEmail: 'different@example.invalid', emailVerified: true }), { eligible: false, priorApprovals: null, threshold: null })
+    assert.deepEqual(await evaluate(99, { userId: owner, identityId: 'invalid', verifiedEmail: 'trust@example.invalid', emailVerified: true }), { eligible: false, priorApprovals: null, threshold: null })
+    await pool.query('UPDATE ownership_claims SET verified_identity_id=NULL, verified_at=NULL WHERE idea_id=$1', [current.id])
+    assert.deepEqual(await evaluate(99), { eligible: false, priorApprovals: null, threshold: null })
+    await pool.query('UPDATE ownership_claims SET verified_identity_id=$2, verified_at=now() WHERE idea_id=$1', [current.id, ownerIdentity])
     const priors = []
     for (let n = 0; n < 5; n++) priors.push(await idea(owner, true))
+    await pool.query('UPDATE ownership_claims SET verified_identity_id=NULL, verified_at=NULL WHERE idea_id=$1', [priors[0].id])
+    assert.deepEqual(await evaluate(99), { eligible: false, priorApprovals: null, threshold: null })
+    await pool.query('UPDATE ownership_claims SET verified_identity_id=$2, verified_at=now() WHERE idea_id=$1', [priors[0].id, ownerIdentity])
     await idea(other, true)
     assert.deepEqual(await evaluate(92.5), { eligible: false, priorApprovals: 5, threshold: 92.5 })
     assert.equal((await evaluate(92.6)).eligible, true)
@@ -75,7 +88,7 @@ test('approval history counts distinct verified records and serializes correctio
     const reader = await pool.connect()
     try {
       await reader.query('BEGIN')
-      await evaluateTrustedShortcut(reader, current.id, { userId: owner, emailVerified: true }, 95)
+      await evaluateTrustedShortcut(reader, current.id, { userId: owner, identityId: ownerIdentity, verifiedEmail: 'trust@example.invalid', emailVerified: true }, 95)
       let authorized
       const started = new Promise(resolve => { authorized = resolve })
       const pending = correctApprovalEligibility(pool, { ...correction, excluded: true }, async () => { authorized(); return true })
@@ -92,10 +105,11 @@ test('approval history counts distinct verified records and serializes correctio
       await claim.query('BEGIN')
       await claim.query('SELECT id FROM ideas WHERE id = $1 FOR UPDATE', [unclaimed.id])
       await lockApprovalHistoryOwners(claim, [other])
+      await claim.query('INSERT INTO ownership_claims(idea_id,user_id,contact_id,verified_identity_id,verified_at) VALUES ($1,$2,$3,$4,now())', [unclaimed.id, other, contact, otherIdentity])
       await claim.query('UPDATE ideas SET owner_id = $2 WHERE id = $1 AND owner_id IS NULL', [unclaimed.id, other])
       await claim.query('COMMIT')
       await claim.query('BEGIN')
-      assert.equal((await evaluateTrustedShortcut(claim, otherCurrent.id, { userId: other, emailVerified: true }, 95)).priorApprovals, 2)
+      assert.equal((await evaluateTrustedShortcut(claim, otherCurrent.id, { userId: other, identityId: otherIdentity, verifiedEmail: 'trust@example.invalid', emailVerified: true }, 95)).priorApprovals, 2)
       await claim.query('COMMIT')
     } finally { claim.release() }
   } finally { await pool.end() }

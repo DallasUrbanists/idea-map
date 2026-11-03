@@ -63,6 +63,18 @@ independently. Verification must fail closed for absent, invalid, expired, or
 unavailable credentials. Private responses must use `private, no-store` and must
 not expose sensitive error or log details.
 
+The moderator status endpoint verifies the session and current Firebase account,
+then resolves the active database assignment without accepting a client-supplied
+role or user ID. It returns only the caller's authorization status. This read
+boundary does not enable moderator mutations or automatic publication.
+
+The ownership claim endpoint is disabled by default. When explicitly enabled,
+it requires an exact-origin, non-simple JSON request and a current verified
+registered session; the server derives the subject and email from Firebase,
+not the request body. A processed claim returns the same empty response for a
+missing, nonmatching, or already owned idea. Role provisioning, guest flow,
+abuse controls, and privacy-safe deletion must be reviewed before live use.
+
 You should test allowed and denied identities, cross-owner access, privilege
 boundaries, forged headers, failure paths, and actual side effects with isolated
 data. A test that only confirms default denial does not show whether
