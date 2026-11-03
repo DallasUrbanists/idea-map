@@ -267,6 +267,13 @@
       "when": 1793661148357,
       "tag": "0037_guest_verification_contact_index",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1793661480299,
+      "tag": "0038_atomic_metadata_retention",
+      "breakpoints": true
     }
   ]
 }

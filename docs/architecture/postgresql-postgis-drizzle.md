@@ -388,6 +388,15 @@ writer must take the same idea lock and recheck all applicable holds before its
 own changes. An unrecorded hold request must be handled by the operator process
 before retention runs.
 
+An unscheduled, separately permissioned aggregate primitive applies the existing
+decision, resolved change-request, released hold and escalation-transfer,
+removal-metadata, and expired guest-proof rules in one transaction. It returns
+only counts and rolls back the entire operation if any component fails. It does
+not delete content, accounts, legal-hold or authority records, trust history,
+uploads, or backups. It has no live grant or scheduler; the current hold model
+covers one idea and cannot establish that no other hold or legal requirement
+applies. Complete that scope and the deletion and restore process before use.
+
 These primitives do not provide a legal-hold review interface, delegation
 administration, complete hold scope, deletion, backup expiry, or restore safety.
 The current append-only hold and authority records also prevent deletion of
