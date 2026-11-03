@@ -38,6 +38,12 @@ You should review the affected behavior against those requirements and consider
 intentional policy changes together with their implementation. Keep requests
 focused on this change, and identify unrelated improvements as follow-up work.
 
+Check the pull request description and commit messages for issue-closing
+references. Closing syntax is appropriate only when the intended issue's
+acceptance criteria are complete; if the issue must remain open, ask the author
+to remove that syntax even in negated wording and use a relationship such as
+`Related to #N; issue remains open` instead.
+
 ## Read the diff in context
 
 You should review the complete change, including the surrounding code:
