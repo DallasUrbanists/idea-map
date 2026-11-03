@@ -1,6 +1,7 @@
 ---
 "@idea-map/worker": minor
+"@idea-map/server": patch
 ---
 
 Add private database exports, read-only retention and operations monitoring,
-and synthetic restore validation for operators.
+synthetic restore validation, and an internal journal storage boundary.

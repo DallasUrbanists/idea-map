@@ -47,6 +47,7 @@ jobs:
           docker run --rm --entrypoint sh idea-map-backup-ci -c 'test "$(id -u)" -ne 0 && test -r /etc/ssl/certs/ca-certificates.crt && pg_dump --version'
       - name: Provider-fake and authentication checks
         run: |
+          pnpm --filter @idea-map/server test:recovery-journal
           pnpm --filter @idea-map/server test:cloud-tasks
           pnpm --filter @idea-map/server test:moderation-schedule
           pnpm --filter @idea-map/worker test

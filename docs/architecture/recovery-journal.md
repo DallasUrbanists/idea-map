@@ -3,8 +3,8 @@
 Recovery operators need an independent record of removals and legal-hold
 decisions made after a database backup. This design uses the foundation's private
 backup bucket when it is provisioned and keeps PostgreSQL as the application's
-authority. The journal
-is not implemented; a restored service must remain isolated until its decisions
+authority. Only an unwired storage transport is implemented; a restored service
+must remain isolated until its decisions
 can be reconciled and the [recovery procedure](../contributor-guides/backup-recovery.md)
 is satisfied.
 
@@ -22,8 +22,8 @@ An older database archive can contain content that was later withdrawn, or lack
 a later legal hold. The journal preserves evidence of those decisions outside
 PostgreSQL so recovery can fail closed. A foundation definition is not proof
 that a backup bucket exists in a particular environment. The journal does not
-replace database backups,
-authorize a removal or hold, invalidate public caches, or by itself preserve
+replace database backups, authorize a removal or hold, invalidate public caches,
+or by itself preserve
 all held material. Sharing the existing bucket also means it is not independent
 of a loss or compromise of that bucket.
 
@@ -34,10 +34,20 @@ be able to create, update, or delete journal records; the journal writer must
 not be able to change backup archives or completion records. Review inherited
 grants and deny policies as well as the explicitly scoped grants.
 
+The server package contains a create-only storage transport for a prevalidated
+private JSON record. It bounds record size and write time, uses an opaque
+caller-supplied record ID and a create-only precondition, and treats provider
+errors and timeouts as uncertain. It does not validate decision authority or
+record schema, read existing records, guard mutation paths, capture held
+material, establish coverage, or reconcile a restore. It is not connected to
+live removal or hold operations and is not sufficient to enable them.
+
 ## Record and access
 
 Use versioned, create-only records with a unique operation ID and an opaque
-object name. A record identifies its environment, operation, affected idea,
+object name. An intent and its confirmation use distinct record IDs and contain
+the same operation ID in their bodies. A retry reuses the original record ID and
+bytes. A record identifies its environment, operation, affected idea,
 decision type, and time. Hold records also preserve the authorized person,
 scope, non-sensitive case reference and reason, and authorization or delegation
 reference; release evidence includes any required legal review. These fields

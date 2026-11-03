@@ -6,6 +6,7 @@ import { Readable } from 'node:stream'
 import { test } from 'node:test'
 import { exportEncryptedBackup } from '../ops/export-encrypted-backup.mjs'
 import { inspectBackupRetention } from '../ops/inspect-backup-retention.mjs'
+import { writeRecoveryJournalRecord } from '../../../packages/server/dist/recovery-journal-storage.js'
 
 const require = createRequire(import.meta.url)
 const { Storage } = require('@google-cloud/storage')
@@ -24,7 +25,7 @@ function crc32c(data) {
   return result.toString('base64')
 }
 
-test('storage client sends create-only archives and completion metadata', async () => {
+test('storage client sends create-only archives, completion metadata, and journal records', async () => {
   const isolatedEnv = ['STORAGE_EMULATOR_HOST', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy']
   const previousEnv = new Map(isolatedEnv.map(key => [key, process.env[key]]))
   for (const key of isolatedEnv) delete process.env[key]
@@ -64,7 +65,12 @@ test('storage client sends create-only archives and completion metadata', async 
       const sentMetadata = JSON.parse(section(parts[1]))
       const data = Buffer.from(section(parts[2]))
       const name = url.searchParams.get('name')
-      if (!name || objects.has(name)) throw new Error('Unexpected object name')
+      if (!name) throw new Error('Unexpected object name')
+      if (objects.has(name)) {
+        response.statusCode = 412
+        response.end(JSON.stringify({ error: { code: 412, message: 'Synthetic precondition failure' } }))
+        return
+      }
       const object = { name, bucket: target.bucket, generation: String(objects.size + 100), metageneration: '1',
         timeCreated: created, size: String(data.length), crc32c: crc32c(data), metadata: sentMetadata.metadata }
       objects.set(name, object)
@@ -99,8 +105,17 @@ test('storage client sends create-only archives and completion metadata', async 
     assert.deepEqual(inventory.groupCounts, { daily: 1, weekly: 1 })
     assert.deepEqual(inventory.candidates, [])
     assert.equal(inventory.latestDailyAgeSeconds, 120)
+    const recordId = '11111111-1111-4111-8111-111111111111'
+    const record = Buffer.from('{"synthetic":"private decision"}')
+    await writeRecoveryJournalRecord(storage, target, recordId, record)
+    const recordName = `idea-map-v2/dev/recovery-journal/${recordId}.json`
+    assert.deepEqual(payloads.get(recordName), record)
+    assert.equal(objects.get(recordName).metadata, undefined)
+    await assert.rejects(writeRecoveryJournalRecord(storage, target, recordId, Buffer.from('{"synthetic":"different"}')),
+      /Journal write outcome is uncertain/)
+    assert.deepEqual(payloads.get(recordName), record)
     assert.equal(errors.length, 0)
-    assert.equal(requests.filter(item => item.method === 'POST').length, 3)
+    assert.equal(requests.filter(item => item.method === 'POST').length, 5)
     assert.deepEqual(new Set(requests.filter(item => item.path.endsWith('/o') && item.method === 'GET').map(item => item.query.prefix)),
       new Set(['daily', 'weekly', 'completion'].map(kind => `idea-map-v2/dev/${kind}/`)))
     assert.ok(requests.every(item => ['GET', 'POST'].includes(item.method)))
