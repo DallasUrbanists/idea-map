@@ -1,9 +1,8 @@
 # Controls and form components
 
 You can build forms with the project-owned Vue controls and inspect their states
-in Storybook under **Controls / Foundations**. The examples use synthetic content
-and the application's shared tokens; the separate Common Ground design specimen
-does not override the application palette.
+in Storybook under **Components**. The examples use synthetic content and the
+shared light and dark foundation tokens.
 
 The following contents links navigate within this guide:
 
@@ -120,8 +119,9 @@ or Firebase services. The selected production catalog destination is
 [application](https://mapmy.town/); this selection does not confirm deployment.
 Existing `ideam.app` staging configuration is unchanged.
 
-You can review **All states**, or use the buttons, fields, toggles, status,
-progress, and validation stories individually. Check keyboard focus, long labels,
+You can review **Components / Examples / All States**, or use the individual
+component stories. Use the Storybook theme toolbar to
+choose system, light, or dark appearance. Check keyboard focus, long labels,
 required and error descriptions, disabled controls, loading, and retry. Compare
 light/dark system themes, forced colors, and narrow screens. The catalog includes
 no production records or hosted operations.

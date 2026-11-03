@@ -33,16 +33,16 @@ const describedBy = computed(() => [props.hint && `${controlId.value}-hint`, pro
 </template>
 
 <style scoped>
-.idea-field { display: grid; gap: var(--space-2); min-width: 0; color: var(--color-text); font-family: var(--font-body); line-height: var(--line-body); }
+.idea-field { display: grid; gap: var(--space-2); min-width: 0; color: var(--color-text); font: var(--font-body) / var(--line-body) var(--font-family-body); text-wrap: pretty; }
 label { font-weight: 700; overflow-wrap: anywhere; }
 label span { font-weight: 400; }
 input, textarea { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: var(--space-2) var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-small); background: var(--color-surface); color: var(--color-text); font: inherit; }
 textarea { min-height: 8rem; resize: vertical; }
 input:focus-visible, textarea:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; }
-[aria-invalid] { border-color: var(--color-danger); box-shadow: inset 0 0 0 1px var(--color-danger); }
+[aria-invalid] { border-color: var(--color-error); box-shadow: inset 0 0 0 1px var(--color-error); }
 :disabled { background: var(--color-surface-raised); color: var(--color-text-muted); cursor: not-allowed; }
-p { margin: 0; font-size: var(--font-size-small); overflow-wrap: anywhere; }
+p { margin: 0; font-size: var(--font-small); overflow-wrap: anywhere; }
 .hint { color: var(--color-text-muted); }
-.error { color: var(--color-danger); }
-@media (forced-colors: active) { [aria-invalid] { border-style: double; border-width: 3px; } }
+.error { color: var(--color-error); }
+@media (forced-colors: active) { [aria-invalid] { border: 1px solid; } }
 </style>

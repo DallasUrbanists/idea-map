@@ -1,7 +1,7 @@
 import ControlSpecimens from './ControlSpecimens.vue'
 
 export default {
-  title: 'Controls/Foundations',
+  title: 'Components/Examples',
   component: ControlSpecimens,
   parameters: { layout: 'fullscreen' },
 }

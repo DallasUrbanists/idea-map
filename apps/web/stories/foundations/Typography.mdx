@@ -1,0 +1,43 @@
+import { Meta } from '@storybook/addon-docs/blocks'
+
+<Meta title="Foundations/Typography" />
+
+# Typography
+
+Figtree is the typeface for headings, controls, and reading text. The variable
+font ships with the web app and Storybook; the browser's sans-serif font is the
+fallback. The ramp and examples follow
+[Signal's typography reference](https://signal.chitransit.app/foundations/typography).
+
+<div role="region" aria-label="Typography ramp" tabIndex="0" style={{maxWidth: '100%', overflowX: 'auto'}}>
+<table>
+  <thead><tr><th scope="col">Token</th><th scope="col">Sample</th><th scope="col">Size / weight</th><th scope="col">Use</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>--font-title</code></th><td><span style={{fontFamily: 'var(--font-family-body)', fontSize: 'var(--font-title)', fontWeight: 'var(--weight-heavy)', lineHeight: 'var(--line-heading)', letterSpacing: '-0.02em'}}>Clark/Lake</span></td><td>32 px / 750</td><td>Page and sheet titles</td></tr>
+    <tr><th scope="row"><code>--font-heading</code></th><td><span style={{fontFamily: 'var(--font-family-body)', fontSize: 'var(--font-heading)', fontWeight: 'var(--weight-bold)', lineHeight: 'var(--line-heading)'}}>Favorites</span></td><td>20 px / 700</td><td>Section headings, sheet names, and dialog titles</td></tr>
+    <tr><th scope="row"><code>--font-body</code></th><td><span style={{fontFamily: 'var(--font-family-body)', fontSize: 'var(--font-body)', fontWeight: 'var(--weight-regular)'}}>Waveland/Broadway</span></td><td>16 px / 400</td><td>Rows, destinations, and times; names can use weight 600</td></tr>
+    <tr><th scope="row"><code>--font-small</code></th><td><span style={{fontFamily: 'var(--font-family-body)', fontSize: 'var(--font-small)', fontWeight: 'var(--weight-regular)'}}>0.2 mi · Southbound</span></td><td>13 px / 400</td><td>Subtitles, metadata, and labels</td></tr>
+    <tr><th scope="row"><code>--font-caption</code></th><td><span style={{fontFamily: 'var(--font-family-body)', fontSize: 'var(--font-caption)', fontWeight: 'var(--weight-regular)', fontVariantNumeric: 'tabular-nums'}}>2:14 PM</span></td><td>11 px / 400</td><td>Compact metadata and times</td></tr>
+  </tbody>
+</table>
+</div>
+
+The sizes shown assume a 16 px root font size. On the web, the
+relative sizes and browser zoom support text scaling; allow text to wrap and
+controls to grow without hiding content.
+
+Use tabular figures where numbers align in columns, such as times or counts.
+Align table cells, column headings, and row headings to the left by default.
+
+## Font weight
+
+<table>
+  <thead><tr><th scope="col">Token</th><th scope="col">Weight</th><th scope="col">Sample</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>--weight-regular</code></th><td>400</td><td><span style={{fontFamily: 'var(--font-family-body)', fontWeight: 'var(--weight-regular)'}}>Aa Bb 123</span></td></tr>
+    <tr><th scope="row"><code>--weight-medium</code></th><td>500</td><td><span style={{fontFamily: 'var(--font-family-body)', fontWeight: 'var(--weight-medium)'}}>Aa Bb 123</span></td></tr>
+    <tr><th scope="row"><code>--weight-semibold</code></th><td>600</td><td><span style={{fontFamily: 'var(--font-family-body)', fontWeight: 'var(--weight-semibold)'}}>Aa Bb 123</span></td></tr>
+    <tr><th scope="row"><code>--weight-bold</code></th><td>700</td><td><span style={{fontFamily: 'var(--font-family-body)', fontWeight: 'var(--weight-bold)'}}>Aa Bb 123</span></td></tr>
+    <tr><th scope="row"><code>--weight-heavy</code></th><td>750</td><td><span style={{fontFamily: 'var(--font-family-body)', fontWeight: 'var(--weight-heavy)'}}>Aa Bb 123</span></td></tr>
+  </tbody>
+</table>

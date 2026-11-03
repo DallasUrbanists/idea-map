@@ -8,6 +8,8 @@ test('modal is named, traps focus, closes on Escape and restores the trigger', a
   const dialog = page.getByRole('dialog', { name: 'Review idea' })
   await expect(dialog).toBeVisible()
   await expect(dialog).toHaveAccessibleDescription('Check the details before continuing.')
+  await expect(dialog).toHaveCSS('border-radius', '20px')
+  await expect(dialog.getByRole('heading')).toHaveCSS('font-weight', '700')
   await dialog.getByRole('button', { name: 'First action' }).focus()
   await page.keyboard.press('Tab')
   await expect(dialog.getByRole('button', { name: 'Close' })).toBeFocused()

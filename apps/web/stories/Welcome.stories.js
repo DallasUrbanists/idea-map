@@ -1,5 +1,5 @@
-export default { title: 'Setup/Welcome' }
+import WelcomePage from './Welcome.vue'
 
-export const Welcome = {
-  render: () => ({ template: '<main><h1>Idea Map</h1><p>Storybook is running.</p></main>' }),
-}
+export default { title: 'Components/Welcome', component: WelcomePage, parameters: { layout: 'fullscreen' } }
+
+export const Welcome = {}

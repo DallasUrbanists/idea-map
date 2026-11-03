@@ -359,6 +359,10 @@ installing Playwright Chromium. The [controls guide](../design/controls.md#revie
 describes keyboard, SSR, axe, responsive, and screenshot checks; its isolated
 harness needs no database or Firebase services.
 
+For Storybook documentation, run `pnpm --filter @idea-map/web test:storybook-docs`
+to check foundation pages in both themes and at narrow widths. The test starts
+and stops its own Storybook server and needs no database or Firebase services.
+
 ## Dialog checks
 
 You should check dialog server-side rendering (SSR), keyboard/focus behavior,

@@ -48,8 +48,8 @@ async function run(action: 'login' | 'register' | 'google' | 'reset' | 'verify' 
 </template>
 
 <style scoped>
-main { max-width: 32rem; margin: var(--space-8) auto; padding: 0 var(--space-4); color: var(--color-text); font: var(--font-size-body) / var(--line-body) var(--font-body); }
-h1 { font: var(--font-size-display) / var(--line-heading) var(--font-heading); }
+main { max-width: 32rem; margin: var(--space-8) auto; padding: 0 var(--space-4); color: var(--color-text); font: var(--font-body) / var(--line-body) var(--font-family-body); }
+h1 { font: var(--weight-heavy) var(--font-title) / var(--line-heading) var(--font-family-heading); letter-spacing: -.02em; }
 form { display: grid; gap: var(--space-2); }
 input, button { box-sizing: border-box; min-height: 44px; padding: var(--space-2) var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-small); font: inherit; }
 input { width: 100%; background: var(--color-surface); color: var(--color-text); }

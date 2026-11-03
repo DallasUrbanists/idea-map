@@ -1,9 +1,9 @@
 /* Paint tokens are separate from the specimen's transparent page layout. */
 body {
   --specimen-page-start: var(--color-page);
-  --specimen-page-middle: #f0f2f8;
-  --specimen-page-end: #eaf1f2;
-  --specimen-page-background: linear-gradient(90deg, var(--specimen-page-start) 0%, var(--specimen-page-middle) 50%, var(--specimen-page-end) 100%);
+  --specimen-page-middle: var(--color-page-middle);
+  --specimen-page-end: var(--color-page-end);
+  --specimen-page-background: var(--page-background);
   --specimen-border-subtle: #d7dee6;
   --specimen-shadow-flat: none;
   --specimen-shadow-floating: 0 4px 12px rgb(28 36 46 / 14%);
@@ -13,8 +13,6 @@ body {
 }
 
 :root[data-theme='dark'] body {
-  --specimen-page-middle: #242628;
-  --specimen-page-end: #26282a;
   --specimen-border-subtle: #465463;
   --specimen-shadow-floating: 0 4px 12px rgb(0 0 0 / 32%);
   --specimen-shadow-overlay: 0 12px 32px rgb(0 0 0 / 48%);
@@ -22,8 +20,6 @@ body {
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) body, :root[data-theme='system'] body {
-    --specimen-page-middle: #242628;
-    --specimen-page-end: #26282a;
     --specimen-border-subtle: #465463;
     --specimen-shadow-floating: 0 4px 12px rgb(0 0 0 / 32%);
     --specimen-shadow-overlay: 0 12px 32px rgb(0 0 0 / 48%);

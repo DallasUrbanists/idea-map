@@ -46,14 +46,15 @@ defineProps<{ title: string; description: string }>()
   overflow: auto;
   padding: var(--space-6);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-medium);
+  border-radius: var(--radius-large);
   color: var(--color-text);
   background: var(--color-surface);
-  font-family: var(--font-body);
-  line-height: var(--line-body);
+  box-shadow: var(--shadow-floating);
+  font: var(--font-body) / var(--line-body) var(--font-family-body);
+  text-wrap: pretty;
 }
 .idea-dialog-header { display: flex; align-items: flex-start; gap: var(--space-2); margin-bottom: var(--space-2); }
-.idea-dialog-title { flex: 1; min-width: 0; overflow-wrap: anywhere; margin: 0; font: var(--font-size-heading) / var(--line-heading) var(--font-heading); }
+.idea-dialog-title { flex: 1; min-width: 0; overflow-wrap: anywhere; margin: 0; font: 700 var(--font-heading) / var(--line-heading) var(--font-family-heading); }
 .idea-dialog-description { margin: 0 0 var(--space-4); color: var(--color-text-muted); }
 .idea-dialog-close {
   display: inline-flex;
@@ -71,5 +72,7 @@ defineProps<{ title: string; description: string }>()
   cursor: pointer;
 }
 .idea-dialog-close:hover { background: var(--color-surface-raised); }
-.idea-dialog-close:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }
+.idea-dialog-close:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; }
+@media (max-width: 640px) { .idea-dialog-content { padding: var(--space-4); } }
+@media (forced-colors: active) { .idea-dialog-content { box-shadow: none; } }
 </style>

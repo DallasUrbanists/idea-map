@@ -1,0 +1,472 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+import { getColorValue, getPaletteToken } from "./token-reference.js";
+import "./color-tables.css";
+
+<Meta title="Foundations/Color" />
+
+export const swatchForeground = (hex) => {
+  const luminance = (value) => {
+    const channels = value
+      .match(/[0-9a-f]{2}/gi)
+      .map((channel) => parseInt(channel, 16) / 255);
+    const linear = channels.map((channel) =>
+      channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4,
+    );
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+  };
+  const contrast = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  const background = luminance(hex);
+  const foregrounds = [
+    "--color-swatch-ink",
+    "--color-swatch-light",
+    "--color-swatch-black",
+  ];
+  return foregrounds.find(
+    (token) => contrast(background, luminance(getColorValue(token))) >= 4.5,
+  );
+};
+
+export const ColorSwatch = ({ token, theme, fixed = false }) => {
+  const hex = getColorValue(token, theme);
+  const foreground = swatchForeground(hex);
+  return (
+    <td style={{ backgroundColor: fixed ? `var(${token})` : hex, color: `var(${foreground})` }}>
+      {hex}
+    </td>
+  );
+};
+
+export const ColorRows = ({ rows }) =>
+  rows.map(({ token }) => (
+    <tr key={token}>
+      <th scope="row"><code>{token}</code></th>
+      <ColorSwatch token={token} theme="light" />
+      <ColorSwatch token={token} theme="dark" />
+    </tr>
+  ));
+
+export const SemanticColorRows = ({ tokens }) => tokens.map((token) => (
+  <tr key={token}>
+    <th scope="row"><code>{token}</code></th>
+    {["light", "dark"].map((theme) => {
+      const palette = getPaletteToken(token, theme);
+      const foreground = swatchForeground(getColorValue(palette));
+      return <td key={theme} style={{ backgroundColor: `var(${palette})`, color: `var(${foreground})` }}><code>{palette}</code></td>;
+    })}
+  </tr>
+));
+
+# Color
+
+Common Ground draws on neighborhood streets, buildings, trees, and public art.
+Neutral surfaces leave room for content, blue identifies primary actions, and
+supporting colors add warmth. This reference follows the section structure of
+[Signal's color guide](https://signal.chitransit.app/foundations/color) and
+documents Idea Map's current tokens.
+
+## Thematic colors
+
+The base palette remains visible in both themes. Controls use transit blue for
+actions and lilac for selection; dark mode pairs slate surfaces with lighter
+blue actions. Coral, canopy, and marigold add small moments of color.
+
+<table className="color-reference" tabIndex={0} aria-label="Thematic colors">
+  <thead>
+    <tr>
+      <th scope="col">Token</th>
+      <th scope="col">Value</th>
+      <th scope="col">Use</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th scope="row">
+        <code>--palette-sidewalk</code>
+      </th>
+      <ColorSwatch token="--palette-sidewalk" fixed />
+      <td>
+        Concrete and open sky provide a quiet light-theme page background,
+        paired with Asphalt text.
+      </td>
+    </tr>
+    <tr>
+      <th scope="row">
+        <code>--palette-daylight</code>
+      </th>
+      <ColorSwatch token="--palette-daylight" fixed />
+      <td>
+        Use this clear surface for light-theme cards and forms, with Asphalt
+        text and a border where needed.
+      </td>
+    </tr>
+    <tr>
+      <th scope="row">
+        <code>--palette-asphalt</code>
+      </th>
+      <ColorSwatch token="--palette-asphalt" fixed />
+      <td>
+        Use this stable dark color for light-theme text and icons, or pair
+        occasional dark fills with Daylight text.
+      </td>
+    </tr>
+    <tr>
+      <th scope="row">
+        <code>--palette-transit-blue</code>
+      </th>
+      <ColorSwatch token="--palette-transit-blue" fixed />
+      <td>
+        Use it for primary actions, underlined links, and light-theme focus;
+        pair solid fills with Daylight text.
+      </td>
+    </tr>
+    <tr>
+      <th scope="row">
+        <code>--palette-brick-coral</code>
+      </th>
+      <ColorSwatch token="--palette-brick-coral" fixed />
+      <td>
+        Add warmth to small community-story labels or illustrations; use the
+        error token for errors.
+      </td>
+    </tr>
+    <tr>
+      <th scope="row"><code>--palette-traffic-cone</code></th>
+      <ColorSwatch token="--palette-traffic-cone" fixed />
+      <td>Use for warning fills with Asphalt text and an explicit label or icon.</td>
+    </tr>
+    <tr>
+      <th scope="row">
+        <code>--palette-canopy</code>
+      </th>
+      <ColorSwatch token="--palette-canopy" fixed />
+      <td>
+        Use it for success fills or small nature-related labels and
+        illustrations; identify success with words or an icon as well.
+      </td>
+    </tr>
+    <tr>
+      <th scope="row">
+        <code>--palette-marigold</code>
+      </th>
+      <ColorSwatch token="--palette-marigold" fixed />
+      <td>
+        Use it for brief editorial highlights and workshop prompts; label
+        warnings explicitly.
+      </td>
+    </tr>
+    <tr>
+      <th scope="row">
+        <code>--palette-mural-lilac</code>
+      </th>
+      <ColorSwatch token="--palette-mural-lilac" fixed />
+      <td>
+        Use it for selection or small creative prompts; add a visible label or
+        mark for selection.
+      </td>
+    </tr>
+    <tr>
+      <th scope="row"><code>--palette-night</code></th>
+      <ColorSwatch token="--palette-night" fixed />
+      <td>Dark-theme page background.</td>
+    </tr>
+    <tr>
+      <th scope="row"><code>--palette-slate</code></th>
+      <ColorSwatch token="--palette-slate" fixed />
+      <td>Dark-theme surfaces.</td>
+    </tr>
+    <tr>
+      <th scope="row"><code>--palette-raised-slate</code></th>
+      <ColorSwatch token="--palette-raised-slate" fixed />
+      <td>Raised dark-theme surfaces.</td>
+    </tr>
+    <tr>
+      <th scope="row"><code>--palette-cloud</code></th>
+      <ColorSwatch token="--palette-cloud" fixed />
+      <td>Raised light-theme surfaces.</td>
+    </tr>
+    <tr>
+      <th scope="row"><code>--palette-steel</code></th>
+      <ColorSwatch token="--palette-steel" fixed />
+      <td>Muted text on light surfaces.</td>
+    </tr>
+    <tr>
+      <th scope="row"><code>--palette-silver</code></th>
+      <ColorSwatch token="--palette-silver" fixed />
+      <td>Muted text on dark surfaces.</td>
+    </tr>
+    <tr>
+      <th scope="row"><code>--palette-iron</code></th>
+      <ColorSwatch token="--palette-iron" fixed />
+      <td>Functional boundaries on light surfaces.</td>
+    </tr>
+    <tr>
+      <th scope="row"><code>--palette-zinc</code></th>
+      <ColorSwatch token="--palette-zinc" fixed />
+      <td>Functional boundaries on dark surfaces.</td>
+    </tr>
+    <tr>
+      <th scope="row"><code>--palette-mist</code></th>
+      <ColorSwatch token="--palette-mist" fixed />
+      <td>Subtle borders on light surfaces.</td>
+    </tr>
+    <tr>
+      <th scope="row"><code>--palette-shale</code></th>
+      <ColorSwatch token="--palette-shale" fixed />
+      <td>Subtle borders on dark surfaces.</td>
+    </tr>
+    <tr>
+      <th scope="row"><code>--palette-sky-blue</code></th>
+      <ColorSwatch token="--palette-sky-blue" fixed />
+      <td>Dark-theme action fills.</td>
+    </tr>
+    <tr>
+      <th scope="row"><code>--palette-midnight</code></th>
+      <ColorSwatch token="--palette-midnight" fixed />
+      <td>Text on dark-theme action fills.</td>
+    </tr>
+    <tr>
+      <th scope="row"><code>--palette-deep-brick</code></th>
+      <ColorSwatch token="--palette-deep-brick" fixed />
+      <td>Light-theme error fills and error text.</td>
+    </tr>
+    <tr>
+      <th scope="row"><code>--palette-soft-coral</code></th>
+      <ColorSwatch token="--palette-soft-coral" fixed />
+      <td>Dark-theme error fills and error text.</td>
+    </tr>
+  </tbody>
+</table>
+
+Use Asphalt text on the supporting coral, traffic cone, canopy, marigold, and lilac fills.
+Keep most of a page neutral, make blue the main action color, and choose
+supporting accents sparingly. The palette lists available colors rather than
+the proportions of a finished screen.
+
+## User interface colors
+
+Semantic tokens adapt to the selected or system theme. Dark mode uses slate
+surfaces and lighter blue actions; supporting fills keep Asphalt text in both
+themes.
+
+<table className="color-reference" tabIndex={0} aria-label="User interface colors">
+  <thead>
+    <tr>
+      <th scope="col">Token</th>
+      <th scope="col">Light theme</th>
+      <th scope="col">Dark theme</th>
+    </tr>
+  </thead>
+  <tbody>
+    <SemanticColorRows tokens={[
+      "--color-page",
+      "--color-surface",
+      "--color-surface-raised",
+      "--color-text",
+      "--color-text-muted",
+      "--color-border-hard",
+      "--color-border-soft",
+      "--color-accent",
+      "--color-accent-text",
+      "--color-selection",
+      "--color-selection-text",
+      "--color-focus",
+      "--color-warning",
+      "--color-warning-text",
+      "--color-error",
+      "--color-error-text",
+      "--color-success",
+      "--color-success-text",
+    ]} />
+  </tbody>
+</table>
+
+Use white text on the base transit blue and Asphalt text on coral, traffic cone,
+canopy, marigold, and lilac. White text on those supporting colors does not
+meet the 4.5:1 contrast requirement for ordinary text.
+
+Check ordinary text at 4.5:1 or higher and essential control boundaries and
+focus rings at 3:1 or higher against adjacent colors, including hover and
+selection states. Use a visible label, mark, or icon alongside color for status.
+
+## Map colors
+
+These tokens provide map ground, features, labels, and location colors. Their
+presence does not imply that a particular basemap or map interaction has
+already adopted them; check labels and controls against the actual map.
+
+<table className="color-reference" tabIndex={0} aria-label="Map colors">
+  <thead>
+    <tr>
+      <th scope="col">Token</th>
+      <th scope="col">Light</th>
+      <th scope="col">Dark</th>
+    </tr>
+  </thead>
+  <tbody>
+    <ColorRows
+      rows={[
+        {
+          token: "--map-ground",
+        },
+        {
+          token: "--map-water",
+        },
+        {
+          token: "--map-park",
+        },
+        {
+          token: "--map-road",
+        },
+        {
+          token: "--map-rail",
+        },
+        {
+          token: "--map-road-label",
+        },
+        {
+          token: "--map-place-label",
+        },
+        {
+          token: "--location",
+        },
+        {
+          token: "--location-halo",
+        },
+        {
+          token: "--map-route-highlight",
+        },
+      ]}
+    />
+  </tbody>
+</table>
+
+## Chart colors
+
+These categorical colors are available for chart graphics. Pair each series
+with text or another distinguishing mark, and check its contrast against the
+chart background; do not assume a chart color is suitable for text.
+
+<table className="color-reference" tabIndex={0} aria-label="Chart colors">
+  <thead>
+    <tr>
+      <th scope="col">Token</th>
+      <th scope="col">Light</th>
+      <th scope="col">Dark</th>
+    </tr>
+  </thead>
+  <tbody>
+    <ColorRows
+      rows={[
+        {
+          token: "--chart-1",
+        },
+        {
+          token: "--chart-2",
+        },
+        {
+          token: "--chart-3",
+        },
+        {
+          token: "--chart-4",
+        },
+        {
+          token: "--chart-5",
+        },
+        {
+          token: "--chart-6",
+        },
+        {
+          token: "--chart-7",
+        },
+        {
+          token: "--chart-none",
+        },
+      ]}
+    />
+  </tbody>
+</table>
+
+## DART public transit colors
+
+DART identifies its rail services by name and color: Red, Blue, Green, Orange,
+and Silver. Keep the line name available in text or an accessible label rather
+than relying on color alone.
+
+The following are reference colors reported for line icons from DART's
+[2025 rail guide](https://dartorgcmsblob.dart.org/prod/docs/default-source/silverline/dart-silverline-guide_oct-2025.pdf).
+The bus reference colors come from the category backgrounds on DART's
+[bus service page](https://www.dart.org/guide/transit-and-use/bus-routes).
+These tokens do not establish a verified contrast treatment for map lines.
+Use a text label or another distinguishing mark alongside each color, and
+check contrast against its actual background.
+
+<table className="color-reference" tabIndex={0} aria-label="DART public transit colors">
+  <thead>
+    <tr>
+      <th scope="col">Token</th>
+      <th scope="col">Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th scope="row">
+        <a href="https://commons.wikimedia.org/wiki/File:DART_Red_Line_bullet_2025.svg">
+          <code>--dart-rail-red</code>
+        </a>
+      </th>
+      <ColorSwatch token="--dart-rail-red" fixed />
+    </tr>
+    <tr>
+      <th scope="row">
+        <a href="https://commons.wikimedia.org/wiki/File:DART_Blue_Line_bullet_2025.svg">
+          <code>--dart-rail-blue</code>
+        </a>
+      </th>
+      <ColorSwatch token="--dart-rail-blue" fixed />
+    </tr>
+    <tr>
+      <th scope="row">
+        <a href="https://commons.wikimedia.org/wiki/File:DART_Green_Line_bullet_2025.svg">
+          <code>--dart-rail-green</code>
+        </a>
+      </th>
+      <ColorSwatch token="--dart-rail-green" fixed />
+    </tr>
+    <tr>
+      <th scope="row">
+        <a href="https://commons.wikimedia.org/wiki/File:DART_Orange_Line_bullet_2025.svg">
+          <code>--dart-rail-orange</code>
+        </a>
+      </th>
+      <ColorSwatch token="--dart-rail-orange" fixed />
+    </tr>
+    <tr>
+      <th scope="row">
+        <a href="https://commons.wikimedia.org/wiki/File:DART_Silver_Line_bullet_2025.svg">
+          <code>--dart-rail-silver</code>
+        </a>
+      </th>
+      <ColorSwatch token="--dart-rail-silver" fixed />
+    </tr>
+    <tr>
+      <th scope="row"><code>--dart-bus-local-yellow</code></th>
+      <ColorSwatch token="--dart-bus-local-yellow" fixed />
+    </tr>
+    <tr>
+      <th scope="row"><code>--dart-bus-local-purple</code></th>
+      <ColorSwatch token="--dart-bus-local-purple" fixed />
+    </tr>
+    <tr>
+      <th scope="row"><code>--dart-bus-local-cyan</code></th>
+      <ColorSwatch token="--dart-bus-local-cyan" fixed />
+    </tr>
+    <tr>
+      <th scope="row"><code>--dart-bus-express-pink</code></th>
+      <ColorSwatch token="--dart-bus-express-pink" fixed />
+    </tr>
+    <tr>
+      <th scope="row"><code>--dart-bus-shuttle-green</code></th>
+      <ColorSwatch token="--dart-bus-shuttle-green" fixed />
+    </tr>
+  </tbody>
+</table>

@@ -21,12 +21,12 @@ const controlId = computed(() => props.id || generatedId)
 </template>
 
 <style scoped>
-.idea-toggle { color: var(--color-text); font-family: var(--font-body); line-height: var(--line-body); }
+.idea-toggle { color: var(--color-text); font: var(--font-body) / var(--line-body) var(--font-family-body); text-wrap: pretty; }
 label { display: flex; align-items: center; gap: var(--space-3); min-height: 44px; cursor: pointer; }
 input { flex: 0 0 auto; width: 1.5rem; height: 1.5rem; margin: 0; accent-color: var(--color-accent); }
 input:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; }
-.label { flex: 1; overflow-wrap: anywhere; }
-.state { color: var(--color-text-muted); font-size: var(--font-size-small); }
+.label { flex: 1; min-width: 0; font-weight: 700; overflow-wrap: anywhere; }
+.state { color: var(--color-text-muted); font-size: var(--font-small); }
 label:has(:disabled) { cursor: not-allowed; color: var(--color-text-muted); }
-p { margin: var(--space-1) 0 0; color: var(--color-text-muted); font-size: var(--font-size-small); overflow-wrap: anywhere; }
+p { margin: var(--space-1) 0 0; color: var(--color-text-muted); font-size: var(--font-small); overflow-wrap: anywhere; }
 </style>

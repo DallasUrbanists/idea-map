@@ -5,6 +5,7 @@
   "type": "module",
   "license": "Apache-2.0",
   "dependencies": {
+    "@fontsource-variable/figtree": "^5.3.0",
     "@idea-map/server": "workspace:*",
     "firebase": "^13.1.0",
     "firebase-admin": "^14.5.0",
@@ -17,6 +18,7 @@
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
     "@playwright/test": "1.64.1",
+    "@storybook/addon-docs": "10.6.5",
     "@storybook/vue3-vite": "10.6.5",
     "@vitejs/plugin-vue": "6.0.10",
     "storybook": "10.6.5",
@@ -26,6 +28,7 @@
   "scripts": {
     "dev": "nuxt dev",
     "test:dialog": "nuxt prepare && node --test ../../scripts/dialog-ssr.mjs && playwright test --config tests/dialog/playwright.config.mjs",
+    "test:storybook-docs": "playwright test --config tests/storybook/playwright.config.mjs",
     "storybook": "storybook dev -p 6006",
     "build:storybook": "storybook build",
     "build": "nuxt build",

@@ -16,7 +16,7 @@ const percent = computed(() => progress.value === undefined ? undefined : Math.r
 </template>
 
 <style scoped>
-.idea-progress { display: grid; gap: var(--space-2); color: var(--color-text); font-family: var(--font-body); line-height: var(--line-body); }
+.idea-progress { display: grid; gap: var(--space-2); min-width: 0; color: var(--color-text); font: var(--font-body) / var(--line-body) var(--font-family-body); text-wrap: pretty; }
 .heading { display: flex; justify-content: space-between; gap: var(--space-3); }
 label { overflow-wrap: anywhere; min-width: 0; }
 .heading span { flex-shrink: 0; color: var(--color-text-muted); }
@@ -26,6 +26,6 @@ progress::-webkit-progress-value { background: var(--color-accent); }
 progress::-moz-progress-bar { background: var(--color-accent); }
 progress:indeterminate { background: repeating-linear-gradient(90deg, var(--color-accent) 0 1rem, var(--color-surface) 1rem 2rem); }
 progress:indeterminate::-webkit-progress-bar { background: transparent; }
-p { margin: 0; color: var(--color-text-muted); font-size: var(--font-size-small); overflow-wrap: anywhere; }
+p { margin: 0; color: var(--color-text-muted); font-size: var(--font-small); overflow-wrap: anywhere; }
 @media (forced-colors: active) { progress { appearance: auto; } }
 </style>

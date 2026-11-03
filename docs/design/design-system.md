@@ -1,9 +1,13 @@
 # Design system
 
+The Common Ground colors below and the shared token stylesheet define the
+current palette. For typography, spacing, radius, elevation, and motion, use
+the Storybook **Foundations** pages; the older examples below for those
+foundations require reconciliation.
+
 You can use Idea Map's design system to build components that look consistent
-and work with a keyboard, on a small screen, and in either theme. The
-[design specimen](specimen.html) lets you explore the palette, typography,
-spacing, corner radii, elevation, controls, and focus styles before you start.
+and work with a keyboard, on a small screen, and in either theme. Explore the
+current foundation pages and controls in Storybook before you start.
 
 The following contents links navigate within this guide:
 
@@ -39,12 +43,12 @@ while coral, green, yellow, and lilac bring warmth, optimism, and imagination.
 Poppins headings and Merriweather body text sit on flat surfaces with rounded
 controls.
 
-The specimen's color overrides live in [specimen.css](specimen.css), with page
+The application, Storybook, and specimen share the Common Ground semantic colors
+in [the token stylesheet](../../apps/web/src/styles/tokens.css). The specimen's
+reference swatches and layouts live in [specimen.css](specimen.css), with page
 paint and component surface rules in
-[specimen-surfaces.css](specimen-surfaces.css), loaded afterward. These styles
-apply only to the specimen. Application colors come from the shared token
-stylesheet; the specimen demonstrates Common Ground without changing
-application colors.
+[specimen-surfaces.css](specimen-surfaces.css), loaded afterward. Specimen styles
+do not override the shared semantic palette.
 
 ### Color rationale and roles
 
@@ -57,7 +61,8 @@ choose a color by its role and use the paired text color on filled areas.
 | Daylight `#FFFFFF` | Sunlit glass and library interiors suggest clarity and openness. | Light-theme cards, forms, and reading surfaces; use spacing and a border when their boundary matters. | Asphalt |
 | Asphalt `#28323E` | Streets and structural steel give the palette a stable anchor. | Light-theme headings, body copy, and icons; keep large dark fills occasional so pages stay open. | Daylight |
 | Transit blue `#3859C7` | Wayfinding and public transit suggest a shared civic purpose. | Primary actions, underlined links, and light-theme focus rings; keep secondary actions neutral and avoid blue decoration that competes with actions. | Daylight |
-| Brick coral `#F17C67` | Older masonry and neighborhood murals add human warmth. | Small community-story labels and editorial illustrations; use the danger token for errors and destructive actions. | Asphalt |
+| Brick coral `#F17C67` | Older masonry and neighborhood murals add human warmth. | Small community-story labels and editorial illustrations; use the error token for errors and destructive actions. | Asphalt |
+| Traffic cone `#FF8C00` | Street work brings a clear signal of caution. | Warning fills with an explicit label or icon. | Asphalt |
 | Canopy `#73A878` | Street trees and parks bring nature into the built environment. | Small nature-related editorial labels and illustrations; do not use it alone to communicate success or approval. | Asphalt |
 | Marigold `#F3CB4C` | Sunshine and public art express optimism and invitation. | Brief editorial highlights and workshop prompts, plus dark-theme focus rings; reserve warning meaning for a labeled warning treatment. | Asphalt |
 | Mural lilac `#B8A4DE` | Murals and creative spaces suggest possibility and imagination. | Selected items and small creative prompts; include a visible selection label or mark and keep unselected peers neutral. | Asphalt |
@@ -85,15 +90,16 @@ You should keep the following interaction roles consistent:
   native or ARIA state.
 - Use `--color-focus` for a 3px outline with space around the control; selection
   and keyboard focus must remain independently visible.
-- Use `--color-danger` with an explicit message for errors and destructive
-  actions; decorative coral, canopy, and marigold do not substitute for status.
+- Pair `--color-warning` with `--color-warning-text`, `--color-error` with
+  `--color-error-text`, and `--color-success` with `--color-success-text` for
+  status fills. Include an explicit message or icon with status colors.
 - Verify hover, pressed, and disabled treatments against their actual surfaces;
   do not reduce text opacity without checking readability, and expose disabled
   controls through native or ARIA semantics.
 
 ### Page background
 
-The specimen page uses a subtle, static three-shade gradient from left to right.
+The page canvas uses a subtle, static three-shade gradient from left to right.
 The cool neutral shifts add depth without competing with ideas or the palette's
 supporting accents. Dark mode uses closely spaced neutral charcoal shades. The
 following stops blend continuously at 0%, 50%, and 100%.
@@ -109,11 +115,11 @@ three stops throughout a page without restarting the gradient at each section,
 and keep it static. The solid `--color-page` remains the fallback; forced-colors
 mode removes the gradient so system colors can determine the page treatment.
 
-The gradient stops are local specimen variables named `--specimen-page-start`,
-`--specimen-page-middle`, and `--specimen-page-end`. Only
-`--specimen-page-background` contains a gradient, and only `body` consumes it as
-a background image. The `--color-page`, `--color-surface`, and
-`--color-surface-raised` tokens remain opaque colors; a surface must not use
+The shared `--color-page`, `--color-page-middle`, and `--color-page-end` tokens
+define the stops. Only `--page-background` contains a gradient; consume it on
+`body` as a background image. The specimen's corresponding `--specimen-page-*`
+variables are aliases for these shared values. The `--color-page`,
+`--color-surface`, and `--color-surface-raised` tokens remain opaque colors; a surface must not use
 `background: inherit` or inherit the page paint token. The page token remains
 the base shade, so the theme mappings below still describe the solid fallback.
 You should check page text and focus contrast against all three shades and
@@ -130,10 +136,10 @@ component interior.
 
 ### Theme mappings
 
-The specimen keeps the eight base swatches constant for reference. Its semantic
-colors adapt the surrounding interface to each theme; dark mode uses slate
-surfaces, light text, and lighter blue actions. The following values are the
-specimen's mappings, not replacements for the application stylesheet.
+The specimen keeps its eight illustrated swatches constant for reference.
+Shared semantic colors adapt the application, Storybook, and specimen to each
+theme; dark mode uses slate surfaces, light text, and lighter blue actions. The
+following values are the shared stylesheet's mappings.
 
 | Semantic token | Light theme | Dark theme |
 | --- | --- | --- |
@@ -142,18 +148,25 @@ specimen's mappings, not replacements for the application stylesheet.
 | `--color-surface-raised` | `#E8EDF3` | `#303E4E` |
 | `--color-text` | `#28323E` | `#F2F4F6` |
 | `--color-text-muted` | `#56616E` | `#BEC8D4` |
-| `--color-border` | `#7B8794` | `#8391A2` |
+| `--color-border-hard` | `#7B8794` | `#8391A2` |
+| `--color-border-soft` | `#D7DEE6` | `#465463` |
+| `--color-border` (functional boundary alias) | `#7B8794` | `#8391A2` |
 | `--color-accent` | `#3859C7` | `#9EB5FF` |
 | `--color-accent-text` | `#FFFFFF` | `#1C242E` |
 | `--color-selection` | `#B8A4DE` | `#B8A4DE` |
 | `--color-selection-text` | `#28323E` | `#28323E` |
 | `--color-focus` | `#3859C7` | `#F3CB4C` |
-| `--color-danger` | `#9B2727` | `#FFB4A9` |
+| `--color-warning` | `#FF8C00` | `#FF8C00` |
+| `--color-warning-text` | `#28323E` | `#28323E` |
+| `--color-error` | `#9B2727` | `#FFB4A9` |
+| `--color-error-text` | `#FFFFFF` | `#28323E` |
+| `--color-success` | `#73A878` | `#73A878` |
+| `--color-success-text` | `#28323E` | `#28323E` |
 
 You should use semantic tokens in interface examples instead of copying base
-hex values into controls. The specimen's `--specimen-*` variables identify its
-fixed reference swatches and editorial accents; they are local to the specimen
-and are not application token APIs. Fixed coral, canopy, marigold, and lilac
+hex values into controls. Shared `--palette-*` tokens provide fixed reference
+colors in both themes. The specimen's local `--specimen-*` variables alias
+those tokens. Fixed coral, canopy, marigold, and lilac
 fills retain Asphalt text in both themes, rather than inheriting light text
 from the dark-theme page.
 
@@ -168,11 +181,12 @@ text, with ratios rounded to two decimal places.
 | Asphalt | Daylight | 12.99:1 |
 | Daylight | Transit blue | 6.14:1 |
 | Asphalt | Brick coral | 4.84:1 |
+| Asphalt | Traffic cone | 5.57:1 |
 | Asphalt | Canopy | 4.70:1 |
 | Asphalt | Marigold | 8.33:1 |
 | Asphalt | Mural lilac | 5.82:1 |
 
-You should use Asphalt text on the four supporting fills; white text does not
+You should use Asphalt text on the supporting fills; white text does not
 meet 4.5:1 on those colors. Supporting colors are also unsuitable as small text
 on white. Use the accent token for links, and keep accent-colored labels on
 their specified fills.
@@ -196,9 +210,13 @@ When you build a component, you should use the tokens consistently:
   `--color-text` or `--color-text-muted`, and do not communicate status by color alone.
 - Pair `--color-accent` with `--color-accent-text`, and `--color-selection` with
   `--color-selection-text`.
-- Use `--color-border`, `--color-focus`, and `--color-danger` for boundaries,
-  focus, and errors, with text or icons alongside errors.
-- Use `--font-heading` for headings, `--font-body` for body text, and
+- Pair `--color-warning` with `--color-warning-text`, `--color-error` with
+  `--color-error-text`, and `--color-success` with `--color-success-text` when
+  using status fills.
+- Use `--color-border-hard` beneath headings and `--color-border-soft` for
+  decorative borders. Use `--color-border` for essential control boundaries,
+  and use `--color-focus` and `--color-error` for focus and errors.
+- Use `--font-family-heading` for headings, `--font-family-body` for body text, and
   `--font-mono` for literal code.
 - Use `--line-body` and `--line-heading` for readable text.
 - Use the spacing and radius scales for consistent layout and control shapes.
@@ -212,8 +230,8 @@ with serif fallbacks. Monospace text uses system fonts. Tokens do not load
 fonts. Applications must load Poppins 700 and Merriweather 400 and 700, plus any
 other weights or styles they use, or use the fallback stacks.
 
-The font-size tokens `--font-size-small`, `--font-size-body`,
-`--font-size-heading`, and `--font-size-display` form the 14 px, 16 px, 24 px,
+The font-size tokens `--font-small`, `--font-body`,
+`--font-heading`, and `--font-title` form the 14 px, 16 px, 24 px,
 and responsive 32–48 px scale. Spacing tokens `--space-1`, `-2`, `-3`, `-4`,
 `-6`, `-8`, and `-12` map to 4, 8, 12, 16, 24, 32, and 48 px at the default root
 size. The radius roles below use `--radius-small` for controls and compact
@@ -270,15 +288,15 @@ size; rem values preserve the reader's font-size settings.
 
 | Role | Size and line height | Use |
 | --- | --- | --- |
-| Display or page title | `--font-size-display`: `clamp(2rem, 4vw, 3rem)` / 32–48 px; 1.2 | Main page title or brief introductory statement, using Poppins 700 |
-| Section heading | `--font-size-heading`: `1.5rem` / 24 px; 1.2 | Major sections, using Poppins 700 |
+| Display or page title | `--font-title`: `clamp(2rem, 4vw, 3rem)` / 32–48 px; 1.2 | Main page title or brief introductory statement, using Poppins 700 |
+| Section heading | `--font-heading`: `1.5rem` / 24 px; 1.2 | Major sections, using Poppins 700 |
 | Subheading | `1.25rem` / 20 px; 1.2 | Subsections and prominent card titles, using Poppins 700 |
-| Compact heading | `--font-size-body`: `1rem` / 16 px; 1.2 | Small groups, dense card titles, or field-group headings, using Poppins 700 |
+| Compact heading | `--font-body`: `1rem` / 16 px; 1.2 | Small groups, dense card titles, or field-group headings, using Poppins 700 |
 | Lead paragraph | `1.125rem` / 18 px; 1.55 | A brief introduction, using Merriweather 400; regular paragraphs return to body size |
-| Body, lists, and table content | `--font-size-body`: `1rem` / 16 px; 1.55 | Reading text and essential instructions, using Merriweather 400 |
-| Buttons, fields, and field labels | `--font-size-body`: `1rem` / 16 px; 1.55 | Controls and their labels; button labels use weight 700 and targets remain at least 44 px |
-| Supporting text | `--font-size-small`: `0.875rem` / 14 px; 1.55 | Captions, timestamps, helper text, compact metadata, and eyebrows; essential instructions remain body size |
-| Literal code | `--font-size-small`: `0.875rem` / 14 px; 1.55 | Hex values, token names, and short code examples in the monospace stack |
+| Body, lists, and table content | `--font-body`: `1rem` / 16 px; 1.55 | Reading text and essential instructions, using Merriweather 400 |
+| Buttons, fields, and field labels | `--font-body`: `1rem` / 16 px; 1.55 | Controls and their labels; button labels use weight 700 and targets remain at least 44 px |
+| Supporting text | `--font-small`: `0.875rem` / 14 px; 1.55 | Captions, timestamps, helper text, compact metadata, and eyebrows; essential instructions remain body size |
+| Literal code | `--font-small`: `0.875rem` / 14 px; 1.55 | Hex values, token names, and short code examples in the monospace stack |
 
 The specimen defines the 20 px and 18 px roles locally as
 `--specimen-font-size-subheading` and `--specimen-font-size-lead`; these extend
@@ -327,7 +345,7 @@ themes.
 
 ```css
 body {
-  font-size: var(--font-size-body);
+  font-size: var(--font-body);
   line-height: var(--line-body);
   text-wrap: pretty;
 }
@@ -354,6 +372,12 @@ that a surface floats above other content. You should choose these properties
 independently: a rounded card can remain flat, and an overlay does not need a
 larger radius simply because it is elevated. The specimen demonstrates both
 properties using the shared radius tokens and local shadow recipes.
+
+For a common combination, apply a container class such as `contain-card`,
+`contain-chip`, or `contain-dialog` to the surface. These classes set its
+radius and shadow; continue to choose the surface color, border, and spacing
+for the component. The Containers page in Storybook lists the available
+classes and when to use them.
 
 ### Choose a corner radius
 
@@ -454,14 +478,14 @@ and surrounding space already establish the group.
 ### Border color and thickness
 
 The specimen separates decorative structure from essential control boundaries
-using the following colors. The subtle colors are specimen variables; the
-functional colors use the existing `--color-border` token.
+using the following colors. The specimen's subtle border matches the shared
+soft border; `--color-border` aliases the shared hard border.
 
 | Role | Light | Dark | Thickness and use |
 | --- | --- | --- | --- |
-| Subtle structure: `--specimen-border-subtle` | `#D7DEE6` | `#465463` | 1 px for optional card outlines, section dividers, table rules, swatch edges, and floating-panel outlines |
-| Functional boundary: `--color-border` | `#7B8794` | `#8391A2` | 1 px for fields and outlined buttons where the edge identifies the control |
-| State emphasis | Accent or danger token with a label | Accent or danger token with a label | 2 px when a selected or invalid boundary needs emphasis; reserve the space in every state to avoid layout shifts |
+| Subtle structure: `--color-border-soft` | `#D7DEE6` | `#465463` | 1 px for optional card outlines, section dividers, table rules, swatch edges, and floating-panel outlines |
+| Heading and functional boundary: `--color-border-hard` | `#7B8794` | `#8391A2` | 1 px beneath headings and for fields and outlined buttons where the edge identifies the control |
+| State emphasis | Accent or error token with a label | Accent or error token with a label | 2 px when a selected or invalid boundary needs emphasis; reserve the space in every state to avoid layout shifts |
 | Keyboard focus | `--color-focus` | `--color-focus` | 3 px outline with 3 px offset, independently visible around the control |
 
 You should start with no border, then use a 1 px subtle rule if a boundary helps

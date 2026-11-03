@@ -1,0 +1,49 @@
+import { Meta } from '@storybook/addon-docs/blocks'
+import { getTokenValue } from './token-reference.js'
+import './container-samples.css'
+
+<Meta title="Foundations/Containers" />
+
+export const containers = [
+  { name: 'card', radius: '--radius-small', use: 'Use for flat content cards, panels, and frames.' },
+  { name: 'chip', radius: '--radius-chip', use: 'Use for compact chips that identify a selection or category.' },
+  { name: 'control', radius: '--radius-small', shadow: '--shadow-control', use: 'Use for controls that need a subtle raised appearance.' },
+  { name: 'dialog', radius: '--radius-large', shadow: '--shadow-floating', use: 'Use for dialogs and sheets that appear above the current page.' },
+  { name: 'floating', radius: '--radius-small', shadow: '--shadow-floating', use: 'Use for floating surfaces such as popovers and map controls.' },
+  { name: 'pill', radius: '--radius-pill', use: 'Use for short standalone labels or counts with fully rounded ends.' },
+]
+
+export const shadowSize = (token) => token ? Number.parseFloat(getTokenValue(token).split(/\s+/)[2]) || 0 : 0
+
+export const ContainerRows = () => [...containers].sort((a, b) =>
+  Number.parseFloat(getTokenValue(a.radius)) - Number.parseFloat(getTokenValue(b.radius)) ||
+  shadowSize(a.shadow) - shadowSize(b.shadow) || a.name.localeCompare(b.name)
+).map(({ name, radius, shadow, use }) => (
+  <tr key={name}>
+    <th scope="row"><code>{`.contain-${name}`}</code></th>
+    <td><span className={`container-sample contain-${name}`} aria-hidden="true" /></td>
+    <td><code>{getTokenValue(radius)}</code></td>
+    <td><code>{shadow ? getTokenValue(shadow) : 'none'}</code></td>
+    <td>{use}</td>
+  </tr>
+))
+
+# Containers
+
+Use corner shapes and elevation to give containers a consistent appearance and
+distinguish floating surfaces from content in the page. The container classes
+combine radius and shadow values from the shared token stylesheet, following
+[Signal's radius scale](https://signal.chitransit.app/foundations/radius) and
+[elevation roles](https://signal.chitransit.app/foundations/elevation).
+Different components can share a container class while retaining their own
+behavior and content.
+
+<div role="region" aria-label="Container classes" tabIndex="0" style={{maxWidth: '100%', overflowX: 'auto'}}>
+<table>
+  <thead><tr><th scope="col">Class</th><th scope="col">Sample</th><th scope="col">Radius</th><th scope="col">Shadow</th><th scope="col">Use</th></tr></thead>
+  <tbody><ContainerRows /></tbody>
+</table>
+</div>
+
+Samples use equal-size shapes to make their corners easy to compare; a pill's
+visible curve is limited by the shape's dimensions.

@@ -85,19 +85,19 @@ async function save() {
 </template>
 
 <style scoped>
-.specimens { max-width: 76rem; margin: 0 auto; padding: var(--space-8); background: var(--color-page); color: var(--color-text); font: var(--font-size-body) / var(--line-body) var(--font-body); }
+.specimens { box-sizing: border-box; max-width: 76rem; margin: 0 auto; padding: var(--space-8); color: var(--color-text); font: var(--font-body) / var(--line-body) var(--font-family-body); text-wrap: pretty; }
 header { max-width: 45rem; margin-bottom: var(--space-8); }
-h1, h2 { font-family: var(--font-heading); line-height: var(--line-heading); }
-h1 { font-size: var(--font-size-display); margin: var(--space-2) 0 var(--space-4); }
-h2 { font-size: var(--font-size-heading); margin: 0; }
+h1, h2 { font-family: var(--font-family-heading); font-weight: 700; line-height: var(--line-heading); }
+h1 { font-size: var(--font-title); font-weight: var(--weight-heavy); letter-spacing: -.02em; margin: var(--space-2) 0 var(--space-4); }
+h2 { font-size: var(--font-heading); margin: 0; }
 p { margin: 0; }
-.eyebrow, .caption, footer { font-size: var(--font-size-small); color: var(--color-text-muted); }
-.eyebrow { font-family: var(--font-heading); letter-spacing: 0.08em; }
+.eyebrow, .caption, footer { font-size: var(--font-small); color: var(--color-text-muted); }
+.eyebrow { font-family: var(--font-family-heading); letter-spacing: 0.08em; }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-6); align-items: start; }
 section { display: grid; gap: var(--space-4); min-width: 0; padding: var(--space-6); border-radius: var(--radius-medium); background: var(--color-surface); }
 .fields { grid-row: span 3; }
 section > p { color: var(--color-text-muted); }
-.actions { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: start; }
+.actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: start; }
 form, .simulation { display: grid; gap: var(--space-4); }
 form > button { justify-self: start; }
 footer { margin-top: var(--space-8); }

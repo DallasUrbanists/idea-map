@@ -1,0 +1,31 @@
+/* Keep reference swatches distinct from Storybook's default table striping. */
+.sbdocs .sbdocs-content .color-reference {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.sbdocs .sbdocs-content .color-reference thead th,
+.sbdocs .sbdocs-content .color-reference tbody th,
+.sbdocs .sbdocs-content .color-reference tbody td[style],
+.sbdocs .sbdocs-content .color-reference tbody th code,
+.sbdocs .sbdocs-content .color-reference tbody td[style] code {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+.sbdocs .color-reference tbody tr:nth-of-type(2n) {
+  background: transparent;
+}
+
+/* MDX can wrap multiline swatch content in paragraphs. */
+.sbdocs .sbdocs-content .color-reference td[style] p {
+  color: inherit;
+}
+
+/* Keep token labels readable against the color they describe. */
+.sbdocs .sbdocs-content .color-reference td[style] code {
+  color: inherit;
+  background: transparent;
+  border-color: var(--color-border-soft);
+}

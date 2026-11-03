@@ -52,6 +52,15 @@ test('progress distinguishes zero, complete, and unknown duration', async ({ pag
   await expect(page.getByRole('progressbar', { name: 'Checking the upload' })).not.toHaveAttribute('value')
 })
 
+test('controls keep readable sizing and action emphasis in a smaller parent', async ({ page }) => {
+  await page.goto(specimen)
+  await page.locator('main').evaluate(el => { el.style.fontSize = '12px' })
+  for (const control of [page.getByRole('button', { name: 'Save idea', exact: true }), page.getByLabel('Idea title (required)'), page.getByLabel('Category', { exact: true })]) {
+    await expect(control).toHaveCSS('font-size', '16px')
+  }
+  await expect(page.getByRole('button', { name: 'Save idea', exact: true })).toHaveCSS('font-weight', '700')
+})
+
 for (const theme of ['light', 'dark']) {
   for (const width of [1280, 390]) {
     test(`${theme} at ${width}px: accessible specimens and no overflow`, async ({ page }) => {
