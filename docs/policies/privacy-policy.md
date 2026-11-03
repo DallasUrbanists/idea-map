@@ -63,6 +63,15 @@ copies have restricted access, and restoring a backup does not make removed
 content public again. Removal does not erase copies already downloaded by other
 people.
 
+Only the Dallas Urbanists Executive Director, or someone the Executive Director
+has explicitly delegated in writing, can place or release a legal hold. Each
+placement and release must record the authorized person, time, scope, a
+non-sensitive case reference and reason, and the authorization or delegation
+reference. A release must also record any required legal review. A legal hold
+does not by itself restore public access; after release, deletion resumes under
+the applicable policy. A moderator's review hold is a separate action and does
+not authorize retention beyond the normal limits.
+
 Idea Map keeps metadata about moderation decisions for 90 days. Trust-history
 records are maintained separately so metadata expiration does not alter approval
 counts; corrections to moderation decisions update the history used for later
