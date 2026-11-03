@@ -18,6 +18,7 @@ The following contents links navigate within this guide:
     - [Moderator rejection](#moderator-rejection)
     - [Moderator requests for changes](#moderator-requests-for-changes)
     - [Moderator removal](#moderator-removal)
+    - [Escalation owner transfers](#escalation-owner-transfers)
 
 ## Schema and migration boundary
 
@@ -430,8 +431,8 @@ the nullable assessment identity with a revision-bound foreign key and protects
 that evidence from later changes, including reassessment and hold release. A new
 escalation without an assessment records null. The escalation remains a hold
 across later edits and when the owner's assignment is revoked; it must be
-explicitly released. It does not clear or replace an ordinary hold. The record retains the initial owner's internal user ID for a
-future authorized interface; it does not prove the owner can still sign in.
+explicitly released. It does not clear or replace an ordinary hold. The record
+retains the initial owner's internal user ID for a future authorized interface; it does not prove the owner can still sign in.
 Notifications and a usable interface remain open. Do not enable live
 escalations until those processes and privacy controls are reviewed.
 
