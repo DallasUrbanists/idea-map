@@ -133,7 +133,7 @@ export async function freezeRegisteredDraft(context: Context, id: string, revisi
   const observed = initial.rows[0]
   if (!observed) return { state: 'forbidden' }
   if (observed.revision !== revision) return { state: 'stale' }
-  if (observed.frozen_manifest !== null) return { state: 'ok', value: { canonical: observed.frozen_manifest as string } }
+  if (!validContent(observed.content) || observed.content.captions.length !== observed.expected_media) return { state: 'incomplete' }
   const result = await pool.query<AssetRow>('SELECT * FROM registered_draft_media WHERE draft_id=$1 AND revision=$2 ORDER BY slot', [id, revision])
   const assets = result.rows
   if (assets.length !== observed.expected_media || assets.some((asset, slot) => asset.slot !== slot || !asset.generation || !asset.digest)) return { state: 'incomplete' }
@@ -145,7 +145,7 @@ export async function freezeRegisteredDraft(context: Context, id: string, revisi
     const draft = await owned(client, id, context.projectId, identity.uid)
     if (!draft) return { state: 'forbidden' }
     if (draft.revision !== revision) return { state: 'stale' }
-    if (draft.frozen_manifest !== null) return { state: 'ok', value: { canonical: draft.frozen_manifest as string } }
+    if (!validContent(draft.content) || draft.content.captions.length !== draft.expected_media) return { state: 'incomplete' }
     const locked = await client.query<AssetRow>('SELECT * FROM registered_draft_media WHERE draft_id=$1 AND revision=$2 ORDER BY slot FOR UPDATE', [id, revision])
     if (locked.rows.length !== draft.expected_media || locked.rows.length !== assets.length || locked.rows.some((asset, i) => {
       const prior = assets[i]
@@ -154,6 +154,8 @@ export async function freezeRegisteredDraft(context: Context, id: string, revisi
     const content = draft.content
     const canonical = JSON.stringify({ version: 1, draftId: id, revision, text: { title: content.title, description: content.description },
       media: locked.rows.map((asset, i) => ({ slot: i, caption: content.captions[i], objectName: asset.object_name, generation: asset.generation, digest: asset.digest })) })
+    if (draft.frozen_manifest !== null) return draft.frozen_manifest === canonical
+      ? { state: 'ok', value: { canonical } } : { state: 'incomplete' }
     await client.query('UPDATE registered_drafts SET frozen_manifest=$2 WHERE id=$1', [id, canonical])
     if (!await current(context, identity)) throw new Error('Identity changed during draft operation')
     return { state: 'ok', value: { canonical } }
