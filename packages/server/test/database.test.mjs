@@ -60,6 +60,16 @@ test('bootstrap, forward migrations, ownership constraints and PostGIS', async (
     await writeFile(journalPath, JSON.stringify(journal))
     await migrate(db, { migrationsFolder: initial })
     assert.equal((await client.query('SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations')).rows[0].count, decisionIndex + 1)
+    // Upgrade from the merged escalation schema before adding removal controls.
+    const escalationIndex = allEntries.findIndex(entry => entry.tag === '0025_escalation_assessment_evidence')
+    assert.ok(escalationIndex > decisionIndex)
+    journal.entries = allEntries.slice(0, escalationIndex + 1)
+    for (const entry of journal.entries.slice(decisionIndex + 1)) {
+      await cp(join(migrations, `${entry.tag}.sql`), join(initial, `${entry.tag}.sql`))
+    }
+    await writeFile(journalPath, JSON.stringify(journal))
+    await migrate(db, { migrationsFolder: initial })
+    assert.equal((await client.query('SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations')).rows[0].count, escalationIndex + 1)
     await migrate(db, { migrationsFolder: migrations })
     await migrate(db, { migrationsFolder: migrations })
     assert.equal((await client.query('SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations')).rows[0].count, expectedMigrations)
