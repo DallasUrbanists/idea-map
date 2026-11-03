@@ -1,0 +1,41 @@
+name: Auth emulator
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: cp .env.example .env
+      - run: pnpm --filter @idea-map/web exec playwright install --with-deps chromium --only-shell
+      - run: pnpm dev:services
+      - name: Wait for local services
+        run: |
+          for attempt in {1..60}; do
+            if pnpm dev:check; then exit 0; fi
+            sleep 2
+          done
+          exit 1
+      - run: pnpm dev:db:migrate
+      - run: pnpm build
+      - run: pnpm test:auth
+      - name: Stop local services
+        if: always()
+        run: pnpm dev:stop
+      - name: Confirm local services stopped
+        if: always()
+        run: pnpm dev:status

@@ -4,6 +4,8 @@ import { createServer } from 'node:net'
 import { setTimeout as delay } from 'node:timers/promises'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
+import { trackAuthTestAccounts } from './auth-emulator-accounts.mjs'
 const require = createRequire(new URL('../apps/web/package.json', import.meta.url))
 const { chromium } = require('@playwright/test')
 
@@ -15,14 +17,24 @@ test('registration, verification claims, session renewal/retry, reset, and devic
   const base = `http://127.0.0.1:${port}`
   const server = spawn(process.execPath, ['apps/web/.output/server/index.mjs'], { env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), NUXT_SESSION_ORIGIN: base, NUXT_FIREBASE_PROJECT_ID: 'demo-idea-map', FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099', NUXT_PUBLIC_FIREBASE_API_KEY: 'fake-key', NUXT_PUBLIC_FIREBASE_AUTH_DOMAIN: 'localhost', NUXT_PUBLIC_FIREBASE_PROJECT_ID: 'demo-idea-map', NUXT_PUBLIC_FIREBASE_AUTH_EMULATOR: 'http://127.0.0.1:9099' }, stdio: 'ignore' })
   let browser
+  const accounts = trackAuthTestAccounts()
+  const email = `browser-${randomUUID()}@example.test`
+  const googleEmail = `google-${randomUUID()}@example.test`
+  const pendingResponses = []
   try {
     let ready = false
     for (let i = 0; i < 80; i++) { try { await fetch(`${base}/api/health`); ready = true; break } catch { await delay(250) } }
     assert.ok(ready)
     browser = await chromium.launch({ headless: true })
     const page = await browser.newPage()
+    page.context().on('response', response => {
+      if (!response.url().startsWith('http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:') || !response.ok()) return
+      if (!/accounts:(signUp|signInWithIdp)\?/.test(response.url())) return
+      pendingResponses.push(response.json().then(body => {
+        if (body.email === email || body.email === googleEmail) accounts.add(body.email, body.idToken)
+      }).then(() => null, () => 'capture failed'))
+    })
     await page.goto(`${base}/account`)
-    const email = `browser-${Date.now()}@example.test`
     await page.waitForFunction(() => !document.querySelector('#email')?.disabled)
     await page.locator('#email').focus()
     assert.equal(await page.evaluate(() => document.activeElement?.id), 'email')
@@ -103,9 +115,18 @@ test('registration, verification claims, session renewal/retry, reset, and devic
     await popup.waitForLoadState('domcontentloaded')
     await delay(1000)
     await popup.getByText('Add new account').click()
-    const googleEmail = 'google-' + Date.now() + '@example.test'
     await popup.locator('input').first().fill(googleEmail)
     await popup.getByRole('button', { name: 'Sign in with Google.com' }).click()
     await page.getByText(`Signed in as ${googleEmail}`).waitFor({ timeout: 15000 })
-  } finally { await browser?.close(); server.kill() }
+    assert.ok((await Promise.all(pendingResponses)).every(result => result === null), 'Auth responses must be available for cleanup')
+    assert.equal(accounts.size, 2, 'Both created browser accounts must be available for cleanup')
+  } finally {
+    try {
+      const responses = await Promise.all(pendingResponses)
+      await accounts.cleanup()
+      if (responses.some(Boolean)) throw new Error('Could not capture an Auth emulator response for cleanup')
+    } finally {
+      try { await browser?.close() } finally { server.kill() }
+    }
+  }
 })

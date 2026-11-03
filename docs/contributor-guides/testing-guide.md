@@ -13,6 +13,7 @@ covers wording changes; code changes need the checks relevant to their behavior.
 The following contents links navigate within this guide:
 
 - [Everyday checks](#everyday-checks)
+- [Offline provider fixtures](#offline-provider-fixtures)
 - [Package tests](#package-tests)
 - [Database tests](#database-tests)
 - [UI changes](#ui-changes)
@@ -56,6 +57,35 @@ synthetic outbox, moderation, approval-history, and worker checks on pull
 requests, including forks. It uses a disposable PostGIS service and requires no
 hosted credentials. It does not test real moderation authorization or enable
 automatic publication.
+
+## Offline provider fixtures
+
+You can exercise the existing Streetmix, email, and task-dispatch interfaces with
+in-memory synthetic adapters without provider credentials or services. After the
+one-time setup, build the packages and run the demonstration from the repository
+root:
+
+```sh
+pnpm exec tsc --build
+node scripts/provider-fixtures-demo.mjs --mode=offline
+```
+
+The output identifies the offline design provider, accepted fake email, and
+in-memory task. No email is sent, and tasks are not executed. The adapters exist
+only for the calling process and disappear when it exits. `pnpm test` checks
+that their selection and the existing interfaces behave as expected.
+
+Code using `selectFixtureProvider` must explicitly choose `offline` or `provider`
+and supply the corresponding factory. An unavailable or failing factory does not
+fall back to the other mode. The demonstration supplies only offline factories;
+`--mode=provider` fails because it has no real adapters. A separate caller may
+supply its own explicitly configured provider adapter and is responsible for
+credentials, authorization, and provider data handling.
+
+These fixtures do not configure the running application or worker, validate a
+real provider, or implement map, Gemini, boundary, or representative adapters.
+Browse, submission, and end-to-end job workflows need their own integrations
+before contributors can exercise them through the application.
 
 ## Package tests
 
@@ -205,6 +235,19 @@ describes provider checks and their limitations.
 The check restores the synthetic idea after its withdrawal assertion. If the test
 process is interrupted before cleanup, contributors should inspect and restore
 that fixture in the disposable test database before reusing it.
+
+To check local fixture repeatability, privacy, and cleanup, migrate a separate
+empty local `idea_map_test_*` database and set `TEST_DATABASE_URL` to its
+connection string. Run `pnpm exec tsc --build`, then `pnpm test:fixtures`. The
+check inserts synthetic records, verifies that the public reader excludes the
+private idea, and checks that seed and cleanup refuse incomplete or changed
+fixtures. Cleanup also refuses unrelated references and cascading foreign keys.
+It removes the records it creates. Use a disposable database so an interrupted
+test can be discarded safely. The synthetic fixtures CI job runs the same check
+against its own disposable PostGIS service. It also runs the root tests, offline
+provider demonstration, and existing Streetmix, email, Cloud Tasks, worker,
+outbox, and moderation checks using
+separate databases for the job tests.
 
 ## UI changes
 
@@ -432,14 +475,22 @@ You can run the automated server and browser checks during the same session:
     pnpm test:auth
     ```
 
-4. Confirm both tests pass.
+4. Confirm all three tests pass.
 5. Run the other applicable checks in the
     [everyday checks section](#everyday-checks).
 
 The tests start temporary web servers on free ports, create synthetic accounts,
-and stop their servers when finished. Playwright's clock advances the renewal
-and retry timers. The tests set up demo credentials automatically. You do not
-need shell variable assignments, and the tests do not read credentials from your
+attempt to delete their accounts even if an assertion fails, and stop their
+servers when finished. Cleanup uses captured account tokens against the local Auth
+emulator; it does not clear other accounts. If a response cannot be captured or
+cleanup fails, a test account may remain until the emulator is stopped, and the
+test reports the failure. The cleanup integration check verifies that an unrelated
+emulator account remains available. The server check uses a synthetic Google
+credential; the browser check separately exercises the Google popup. Neither validates a real
+Google provider. The Auth emulator CI job installs the pinned Playwright
+browser and runs all three checks against disposable local services. Playwright's
+clock advances the renewal and retry timers. The tests set up demo credentials
+automatically. You do not need shell variable assignments, and the tests do not read credentials from your
 `.env`.
 
 ### Finish authentication testing
