@@ -472,9 +472,10 @@ emulator; it does not clear other accounts. If a response cannot be captured or
 cleanup fails, a test account may remain until the emulator is stopped, and the
 test reports the failure. The server check uses a synthetic Google credential;
 the browser check separately exercises the Google popup. Neither validates a real
-Google provider. Playwright's clock advances the renewal
-and retry timers. The tests set up demo credentials automatically. You do not
-need shell variable assignments, and the tests do not read credentials from your
+Google provider. The Auth emulator CI job installs the pinned Playwright
+browser and runs both checks against disposable local services. Playwright's
+clock advances the renewal and retry timers. The tests set up demo credentials
+automatically. You do not need shell variable assignments, and the tests do not read credentials from your
 `.env`.
 
 ### Finish authentication testing
