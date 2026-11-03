@@ -228,3 +228,12 @@ an empty bucket, and missing series can understate the total. Verify that data
 arrives and independently inspect growth and Neon storage. Test each threshold
 and notification in an authorized isolated environment before relying on the
 policies.
+
+For an authorized Neon environment, use the provider's existing
+[monitoring dashboard](https://neon.com/blog/announcing-monitoring-and-organizations)
+to inspect database-size samples over time. Record the environment, time window,
+units, and missing or stale samples when comparing growth. Database size does
+not account for every retained branch or history copy, so inspect those provider
+signals separately. This manual comparison is not a configured growth alert;
+verify the available history and a tested notification path before relying on
+it for unattended monitoring.
