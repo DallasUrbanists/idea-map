@@ -5,6 +5,7 @@
   "type": "module",
   "license": "Apache-2.0",
   "dependencies": {
+    "@google-cloud/storage": "^8.4.0",
     "@idea-map/server": "workspace:*",
     "google-auth-library": "11.3.2",
     "pg": "8.16.3"
@@ -12,7 +13,8 @@
   "devDependencies": { "@types/pg": "8.15.6" },
   "scripts": {
     "test": "tsc --build && node --test test/*.test.mjs",
-    "test:integration": "tsc --build && node --test --test-concurrency=1 test/worker-database.integration.mjs test/recovery.integration.mjs test/inspect-job.integration.mjs test/operations-snapshot.integration.mjs",
+    "test:integration": "tsc --build && node --test --test-concurrency=1 test/worker-database.integration.mjs test/recovery.integration.mjs test/inspect-job.integration.mjs",
+    "test:operations": "tsc --build && node --test test/operations-snapshot.integration.mjs",
     "test:delivery": "tsc --build && node --test test/task-delivery.integration.mjs"
   }
 }

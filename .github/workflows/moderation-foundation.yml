@@ -39,6 +39,12 @@ jobs:
           pnpm typecheck
           pnpm build
           pnpm test:web
+      - name: Synthetic backup and restore rehearsal
+        run: |
+          cp .env.example .env
+          pnpm test:recovery-rehearsal
+          docker build -f Dockerfile.backup -t idea-map-backup-ci .
+          docker run --rm --entrypoint sh idea-map-backup-ci -c 'test "$(id -u)" -ne 0 && test -r /etc/ssl/certs/ca-certificates.crt && pg_dump --version'
       - name: Provider-fake and authentication checks
         run: |
           pnpm --filter @idea-map/server test:cloud-tasks
@@ -62,6 +68,7 @@ jobs:
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_escalation_transfers
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_database
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_worker
+          docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_operations
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_delivery
       - name: Outbox transactions
         env:
@@ -131,6 +138,13 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_worker
         run: pnpm --filter @idea-map/worker test:integration
+      - name: Operations snapshot
+        env:
+          DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_operations
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_operations
+        run: |
+          pnpm --filter @idea-map/server db:migrate
+          pnpm --filter @idea-map/worker test:operations
       - name: Migrate task delivery test database
         env:
           DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_delivery

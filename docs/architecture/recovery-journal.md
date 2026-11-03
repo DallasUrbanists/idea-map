@@ -1,0 +1,155 @@
+# Recovery decision journal
+
+Recovery operators need an independent record of removals and legal-hold
+decisions made after a database backup. This design uses the existing private
+backup bucket and keeps PostgreSQL as the application's authority. The journal
+is not implemented; a restored service must remain isolated until its decisions
+can be reconciled and the [recovery procedure](../contributor-guides/backup-recovery.md)
+is satisfied.
+
+The following contents links navigate within this guide:
+
+- [Purpose and boundaries](#purpose-and-boundaries)
+- [Record and access](#record-and-access)
+- [Write and reconcile](#write-and-reconcile)
+- [Retention and held material](#retention-and-held-material)
+- [Required evidence](#required-evidence)
+
+## Purpose and boundaries
+
+An older database archive can contain content that was later withdrawn, or lack
+a later legal hold. The journal preserves evidence of those decisions outside
+PostgreSQL so recovery can fail closed. It does not replace database backups,
+authorize a removal or hold, invalidate public caches, or by itself preserve
+all held material. Sharing the existing bucket also means it is not independent
+of a loss or compromise of that bucket.
+
+Separate development and production environments use separate bucket prefixes
+under `idea-map-v2/ENVIRONMENT/recovery-journal/`. No new database, bucket,
+provider, or independent Terraform state is assumed. The backup writer must not
+be able to create, update, or delete journal records; the journal writer must
+not be able to change backup archives or completion records. Review inherited
+grants and deny policies as well as the explicitly scoped grants.
+
+## Record and access
+
+Use versioned, create-only records with a unique operation ID and an opaque
+object name. A record identifies its environment, operation, affected idea,
+decision type, and time. Hold records also preserve the authorized person,
+scope, non-sensitive case reference and reason, and authorization or delegation
+reference; release evidence includes any required legal review. These fields
+follow the [Privacy Policy](../policies/privacy-policy.md#retention-and-deletion).
+Do not put raw content, contact details, credentials, or reasons in object names,
+custom metadata, or operational logs.
+
+Protect record bodies with the existing bucket's private access and encryption.
+Give a dedicated writer only the object creation needed for the journal prefix,
+not update, deletion, or backup-prefix access. Recovery readers need explicitly
+reviewed access to record contents. Cloud Storage object listing is authorized at
+bucket scope, so prefix restrictions do not by themselves confine list access;
+account for that exposure when assigning the reader identity.
+
+## Write and reconcile
+
+All authorized removal, withdrawal, hold placement, and hold release paths need
+coverage, including database entry points, retries, and future writers. A
+deployment must prevent an older or direct write path from bypassing the
+journal. Establish a reviewed coverage checkpoint only after those paths are
+guarded and the current decision state has been verified. A backup older than
+the checkpoint cannot rely on the journal alone.
+
+The intended write protocol records an intent before the associated database
+transaction can commit, while the transaction holds the relevant idea lock. The
+writer must use a create-only precondition and a bounded timeout. A confirmation
+may be written only after a database commit is known to have succeeded. A lost
+response, rollback, or failed confirmation can leave an intent without proof of
+the outcome; recovery must treat it as uncertain rather than infer a commit.
+
+The intent must exist before commit even when storage returns an ambiguous
+response. A timeout is not proof that the object was not created, and a retry
+must reuse the operation ID and verify the existing record rather than create a
+second decision. A database commit response can also be lost after commit. Do
+not write a negative confirmation based only on an exception. Reconciliation
+must account for both cases and keep uncertain material private.
+
+The checkpoint needs a coordinated boundary, not merely a timestamp. Suspend
+all covered mutations, drain in-flight transactions and journal writes, verify
+the current decision state and writer restrictions, and record the checkpoint
+before resuming mutations through the guarded paths. Keep an inventory of archives
+that predate that boundary: a checkpoint cannot supply decisions missing from an
+older archive unless a separately verified baseline includes them. Establishing
+coverage also requires a way to detect a missing or deleted record; successful
+listing alone does not prove that no record was lost or bypassed.
+
+During a recovery, fence the original writers and wait for in-flight operations
+to finish before taking the journal inventory. Verify its checkpoint, integrity,
+and complete coverage through the fence. An object timestamp or a backup start
+time alone cannot identify every concurrent committed transaction: replay the
+verified relevant overlap conservatively, and require authorized reconciliation
+where order or outcome is unclear. If writers cannot be fenced or completeness
+cannot be verified, keep the restored service isolated.
+
+On restore, an operator verifies coverage and reads the relevant complete
+journal before public reads or side effects resume. Apply removals and hold
+placements conservatively and idempotently; do not release a hold or republish
+content solely because an intent lacks a confirmation. An unresolved intent,
+missing record, coverage gap, or incompatible schema keeps affected material
+private and requires authorized reconciliation. Record the uncertainty and
+include reconciliation time in the recovery measurement.
+
+The write protocol alone does not solve an unavailable journal: an already
+authorized removal must still stop public access immediately, and a failed
+write must not silently create a coverage gap. The public-access and emergency
+failure path must be designed and tested before these operations are enabled.
+The existing [Hosting cache policy](hosting-cache.md#cache-and-withdrawal-behavior)
+uses `private, no-store` for dynamic production responses, and media previews
+recheck publication state after fetching the object. Those controls are useful
+starting points, but a complete failure path must also cover in-flight reads,
+all public projections, and any direct media or cache access. The synthetic
+staging cache has different behavior and is not evidence for live removals.
+
+## Retention and held material
+
+Retain decision records while any recoverable backup can require them, subject
+to the privacy and legal-hold rules. Before deleting a journal record, verify
+that older live, noncurrent, and soft-deleted backups can no longer restore the
+affected decision and that no applicable hold requires the record. Review
+deletion with a separate identity; the writer cannot delete records.
+
+A hold on a complete database archive can retain unrelated people's data past
+their deletion deadlines. Preserve only the material and evidence covered by an
+authorized hold, with restricted access and its own reviewed release and
+deletion process. The record is not the held material. The exact evidence
+capture, scope, and lifecycle remain unresolved and must be established before
+live backups or holds depend on this design.
+
+Capture must cover material added or changed after the latest archive and any
+associated media, not just a database row or a reference to an expiring object.
+For an authorized scope, a future capture must identify exact content revisions
+and media generations, preserve the scoped material separately, and verify that
+capture completed before treating it as recoverable. Coordinate that capture
+with the idea and retention locks so deletion or replacement cannot silently race
+it; a missing generation, interrupted capture, or ambiguous completion requires
+an explicit hold on deletion and authorized follow-up. Do not place raw content
+in decision records or extend a hold to unrelated material by default.
+The retention and disposition work in
+[#56](https://github.com/DallasUrbanists/idea-map/issues/56) owns application-data
+lifecycle integration. Coordinate its guarded mutation paths and scoped evidence
+with this recovery process; a journal record by itself is not that integration.
+
+## Required evidence
+
+Before relying on the journal, test with synthetic data and isolated resources:
+
+1. Verify effective identity boundaries, including inherited access, prefix
+    conditions, no update or delete, and denial of backup-writer journal access.
+2. Exercise all removal and hold paths, retries, direct database bypass attempts,
+    concurrent decisions, failed or ambiguous storage writes, rollbacks, lost
+    commit responses, and failed confirmations.
+3. Restore an older archive after later synthetic decisions, reconcile the
+    journal, and prove that withdrawn content and held material remain private.
+4. Verify coverage checkpoint handling, old-schema compatibility, retention of
+    records and held material, and expiration of unrelated backup copies.
+5. Measure both recovery objectives on replacement infrastructure, including
+    access, evidence capture, reconciliation, and any manual review. Do not
+    claim the 24-hour recovery target from a local or incomplete rehearsal.

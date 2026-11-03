@@ -231,7 +231,13 @@ For the worker integration check, migrate a different disposable database,
 set `TEST_DATABASE_URL`, and run `pnpm --filter @idea-map/worker test:integration`.
 The worker integration test also checks recovery with fake queue responses,
 including inaccessible queues, timeouts, concurrent recovery, and active leases.
-It checks aggregate backlog and email-event snapshots using synthetic records.
+For aggregate backlog and email-event snapshots, migrate a separate, otherwise
+empty disposable database, set `TEST_DATABASE_URL`, and run
+`pnpm --filter @idea-map/worker test:operations`. It checks synthetic records
+and a concurrent outbox insertion.
+For encrypted database export and restore, run the [synthetic recovery rehearsal](backup-recovery.md#rehearse-with-synthetic-data).
+The worker tests also exercise the Cloud Storage client against a credential-free
+loopback fake; they do not verify provider encryption or hosted permissions.
 For the controlled-time delivery check, migrate another empty local disposable
 database, set `TEST_DATABASE_URL`, and run
 `pnpm --filter @idea-map/worker test:delivery`. This combines the adopted review

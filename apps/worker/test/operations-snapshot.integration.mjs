@@ -52,3 +52,35 @@ test('snapshot reports private aggregate backlog, overdue jobs and recent failur
     await pool.end()
   }
 })
+
+test('an outbox row committed after the observation time has age zero', async () => {
+  const pool = new pg.Pool({ connectionString: url, max: 2 })
+  const marker = `snapshot-race-${randomUUID()}`
+  let jobId
+  try {
+    const before = await readOperationsSnapshot(pool)
+    assert.equal(before.backlog.unpublished, 0, 'Use a dedicated, otherwise empty synthetic operations database')
+    const racingPool = { async connect() {
+      const client = await pool.connect()
+      return {
+        async query(statement, ...args) {
+          if (statement.includes('WITH snapshot AS')) {
+            jobId = (await pool.query("INSERT INTO jobs(kind,idempotency_key,scheduled_at) VALUES ('test',$1,now()+interval '1 hour') RETURNING id", [marker])).rows[0].id
+            await pool.query('INSERT INTO outbox(job_id,created_at) VALUES ($1,clock_timestamp())', [jobId])
+          }
+          return client.query(statement, ...args)
+        },
+        release() { client.release() },
+      }
+    } }
+    const snapshot = await readOperationsSnapshot(racingPool)
+    assert.equal(snapshot.backlog.unpublished, 1)
+    assert.equal(snapshot.backlog.oldest_seconds, 0)
+  } finally {
+    if (jobId) {
+      await pool.query('DELETE FROM outbox WHERE job_id=$1', [jobId])
+      await pool.query('DELETE FROM jobs WHERE id=$1', [jobId])
+    }
+    await pool.end()
+  }
+})

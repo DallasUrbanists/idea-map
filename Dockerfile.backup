@@ -1,0 +1,23 @@
+FROM node:24.22.1-trixie-slim@sha256:89c5244bc22a9bc3287d89ebc7e49b9cb5bb84cd40e6175ac3421d5a9f68b95a AS build
+WORKDIR /app
+RUN --mount=type=secret,id=proxy_ca \
+    export NODE_USE_ENV_PROXY=1 \
+    && if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi \
+    && corepack enable && corepack prepare pnpm@11.25.0 --activate
+COPY . .
+RUN --mount=type=secret,id=proxy_ca \
+    export NODE_USE_ENV_PROXY=1 \
+    && if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi \
+    && pnpm install --frozen-lockfile --filter @idea-map/worker... --filter idea-map \
+    && pnpm --filter @idea-map/worker deploy --prod --legacy /worker \
+    && test -f /worker/ops/export-encrypted-backup.mjs \
+    && test -d /worker/node_modules/@google-cloud/storage
+
+FROM postgis/postgis@sha256:4a43e3c3e5d55b9208240fc71db543b79c638766280c625a425bd0a2390989c4
+ENV NODE_ENV=production
+WORKDIR /app
+RUN test -r /etc/ssl/certs/ca-certificates.crt && pg_dump --version
+COPY --from=build /usr/local/bin/node /usr/local/bin/node
+COPY --from=build --chown=postgres:postgres /worker ./
+USER postgres
+ENTRYPOINT ["node", "ops/export-encrypted-backup.mjs"]

@@ -6,12 +6,14 @@ export async function readOperationsSnapshot(pool: pg.Pool) {
   try {
     await client.query('BEGIN READ ONLY')
     await client.query("SET LOCAL statement_timeout = '5s'")
+    // A row committed between BEGIN and the statement can be newer than the
+    // transaction timestamp. Clamp that tiny observation race to zero.
     const result = await client.query(`
       WITH snapshot AS (SELECT transaction_timestamp() AS observed_at),
       backlog AS (
         SELECT count(*)::int AS unpublished,
           count(*) FILTER (WHERE o.dispatch_attempts >= 5)::int AS exhausted,
-          max(extract(epoch FROM (s.observed_at - o.created_at)))::float8 AS oldest_seconds
+          max(greatest(0, extract(epoch FROM (s.observed_at - o.created_at))))::float8 AS oldest_seconds
         FROM outbox o JOIN jobs j ON j.id = o.job_id CROSS JOIN snapshot s
         WHERE o.published_at IS NULL AND j.state = 'pending'
       ), overdue AS (
