@@ -3,10 +3,10 @@
 Recovery operators need an independent record of removals and legal-hold
 decisions made after a database backup. This design uses the foundation's private
 backup bucket when it is provisioned and keeps PostgreSQL as the application's
-authority. Only unwired record, storage, and conservative summary components
-are implemented; a restored service must remain isolated until its decisions
-can be reconciled and the [recovery procedure](../contributor-guides/backup-recovery.md)
-is satisfied.
+authority. The journal components and database read-lease primitive are not
+wired into public requests or decision mutations. A restored service must remain
+isolated until its decisions can be reconciled and the
+[recovery procedure](../contributor-guides/backup-recovery.md) is satisfied.
 
 The following contents links navigate within this guide:
 
@@ -173,6 +173,15 @@ reopen access or discard the pending decision. Do not enable live integration
 until the complete ordering, access boundaries, and failure cases are implemented
 and tested. If the pending transaction's outcome cannot be established, an
 independent fail-closed fence must remain in place until authorized reconciliation.
+
+The database schema creates one `public_access_gate` row in the closed state and
+revokes table access from `PUBLIC`. The server package has an unwired read-lease
+primitive that holds a shared transaction-scoped advisory lock and refuses a
+missing, closed, or unreadable gate. It reports a lost database connection through
+an abort signal. The caller must hold the lease through delivery and stop the
+response when the signal aborts. This primitive has no reviewed runtime grant,
+does not persist pending decisions or close the gate, and is not used by public
+requests. It is not sufficient to enable the gate or live removal integration.
 
 The suggestion page renders an idea fetched from the idea API. Guarding only the
 inner API response is insufficient: the outer HTML response can continue after

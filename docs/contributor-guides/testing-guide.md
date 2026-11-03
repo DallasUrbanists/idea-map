@@ -244,6 +244,13 @@ Run `pnpm --filter @idea-map/server test:recovery-journal` for the unwired
 journal record encoding, decoding, create-only transport, and conservative
 summary. This does not test live decision coverage,
 held-evidence capture, public-access gating, or recovery reconciliation.
+For the separate read-lease primitive, migrate an otherwise empty local
+`idea_map_test_public_gate` database, set `TEST_DATABASE_URL` to its loopback
+connection, and run `pnpm --filter @idea-map/server test:public-access-lease`.
+The test changes the gate and terminates one test connection, so use only that
+disposable database. It checks lock ordering, a closed or missing gate, and a
+lost connection; it does not exercise public responses, decision mutations, or
+the hosted Neon pooler.
 For the controlled-time delivery check, migrate another empty local disposable
 database, set `TEST_DATABASE_URL`, and run
 `pnpm --filter @idea-map/worker test:delivery`. This combines the adopted review

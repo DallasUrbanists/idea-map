@@ -225,6 +225,13 @@
       "when": 1793728863429,
       "tag": "0031_registered_submissions",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793740600082,
+      "tag": "0032_brief_riptide",
+      "breakpoints": true
     }
   ]
 }

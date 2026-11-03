@@ -7,6 +7,12 @@ const geographyPoint = customType<{ data: string }>({ dataType: () => 'geography
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
 export const publicationState = pgEnum('publication_state', ['private', 'approved', 'withdrawn'])
 export const reviewState = pgEnum('review_state', ['waiting', 'queued', 'reviewing', 'escalated', 'approved', 'rejected'])
+// A missing or closed gate must deny public access. Only reviewed recovery
+// procedures may open it after journal coverage and pending decisions are known.
+export const publicAccessGate = pgTable('public_access_gate', {
+  singleton: boolean('singleton').primaryKey().default(true),
+  isOpen: boolean('is_open').notNull().default(false),
+}, table => [check('public_access_gate_singleton', sql`${table.singleton} = true`)])
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   createdAt: createdAt(),

@@ -68,6 +68,7 @@ jobs:
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderator_removals
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_escalation_transfers
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_database
+          docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_public_gate
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_worker
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_operations
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_registered_drafts
@@ -88,6 +89,13 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_database
         run: pnpm --filter @idea-map/server test:database
+      - name: Public access lease
+        env:
+          DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_public_gate
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_public_gate
+        run: |
+          pnpm --filter @idea-map/server db:migrate
+          pnpm --filter @idea-map/server test:public-access-lease
       - name: Moderation transactions
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_moderation
