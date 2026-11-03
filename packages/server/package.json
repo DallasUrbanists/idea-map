@@ -30,6 +30,7 @@
     "test:moderation-schedule": "tsc --build && node --test test/moderation-schedule.test.mjs",
     "test:moderation-clock": "tsc --build && node --test test/moderation-clock.test.mjs",
     "test:moderation-jobs": "tsc --build && node --test test/moderation-jobs.test.mjs",
+    "test:moderator-holds": "tsc --build && node --test test/moderator-holds.test.mjs",
     "test:verified-ownership": "tsc --build && node --test test/verified-ownership.test.mjs",
     "test:moderator-authorization": "tsc --build && node --test test/moderator-authorization.test.mjs",
     "test:approval-history": "tsc --build && node --test test/approval-history.test.mjs",
