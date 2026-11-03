@@ -153,6 +153,21 @@ export const moderationEvents = pgTable('moderation_events', {
 }, table => [index('moderation_events_revision_idx').on(table.revisionId),
   foreignKey({ columns: [table.assessmentId, table.revisionId], foreignColumns: [revisionAssessments.id, revisionAssessments.revisionId] }),
 ])
+// Removal metadata is private and separate from durable trust state.
+export const moderatorRemovals = pgTable('moderator_removals', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ideaId: uuid('idea_id').notNull().references(() => ideas.id),
+  revisionId: uuid('revision_id').notNull(),
+  actorId: uuid('actor_id').notNull().references(() => users.id),
+  classification: text('classification').notNull(),
+  reason: text('reason').notNull(),
+  projectionJobId: uuid('projection_job_id').notNull().references(() => jobs.id),
+  createdAt: createdAt(),
+}, table => [
+  foreignKey({ columns: [table.ideaId, table.revisionId], foreignColumns: [ideaRevisions.ideaId, ideaRevisions.id] }),
+  check('moderator_removals_classification', sql`${table.classification} IN ('violation','other')`),
+  check('moderator_removals_reason', sql`length(trim(${table.reason})) > 0 AND octet_length(${table.reason}) <= 1000`),
+])
 // Assessment evidence and review holds are private server-side state.
 export const reviewGates = pgTable('review_gates', {
   revisionId: uuid('revision_id').primaryKey().references(() => ideaRevisions.id),
@@ -211,6 +226,25 @@ export const moderatorChangeRequests = pgTable('moderator_change_requests', {
   foreignKey({ columns: [table.resolvedAssessmentId, table.resolvedRevisionId], foreignColumns: [revisionAssessments.id, revisionAssessments.revisionId] }),
   check('moderator_change_requests_reason', sql`length(trim(${table.reason})) > 0 AND octet_length(${table.reason}) <= 1000`),
   check('moderator_change_requests_resolution', sql`(${table.resolvedAt} IS NULL AND ${table.resolvedBy} IS NULL AND ${table.resolvedRevisionId} IS NULL AND ${table.resolvedAssessmentId} IS NULL AND ${table.resolutionReason} IS NULL) OR (${table.resolvedAt} IS NOT NULL AND ${table.resolvedBy} IS NOT NULL AND ${table.resolvedRevisionId} IS NOT NULL AND ${table.resolutionReason} IS NOT NULL AND length(trim(${table.resolutionReason})) > 0 AND octet_length(${table.resolutionReason}) <= 1000)`),
+])
+// An escalation transfer is append-only; the greatest sequence names its current owner.
+export const moderatorEscalationTransfers = pgTable('moderator_escalation_transfers', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  holdId: uuid('hold_id').notNull().references(() => moderatorHolds.id),
+  sequence: integer('sequence').notNull(),
+  previousOwnerId: uuid('previous_owner_id').notNull().references(() => users.id),
+  ownerId: uuid('owner_id').notNull().references(() => users.id),
+  actorId: uuid('actor_id').notNull().references(() => users.id),
+  revisionId: uuid('revision_id').notNull().references(() => ideaRevisions.id),
+  assessmentId: text('assessment_id'),
+  reason: text('reason').notNull(),
+  createdAt: createdAt(),
+}, table => [
+  uniqueIndex('moderator_escalation_transfers_sequence_key').on(table.holdId, table.sequence),
+  foreignKey({ columns: [table.assessmentId, table.revisionId], foreignColumns: [revisionAssessments.id, revisionAssessments.revisionId] }),
+  check('moderator_escalation_transfers_sequence', sql`${table.sequence} > 0`),
+  check('moderator_escalation_transfers_distinct', sql`${table.previousOwnerId} <> ${table.ownerId}`),
+  check('moderator_escalation_transfers_reason', sql`length(trim(${table.reason})) > 0 AND octet_length(${table.reason}) <= 1000`),
 ])
 export const jobs = pgTable('jobs', {
   id: uuid('id').primaryKey().defaultRandom(),

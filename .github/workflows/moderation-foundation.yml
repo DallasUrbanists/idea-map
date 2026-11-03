@@ -58,6 +58,8 @@ jobs:
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderator_changes
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderator_escalations
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderation_integrated
+          docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderator_removals
+          docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_escalation_transfers
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_database
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_worker
       - name: Outbox transactions
@@ -112,6 +114,14 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_moderation_integrated
         run: pnpm --filter @idea-map/server test:moderation-integrated
+      - name: Moderator removal transaction
+        env:
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_moderator_removals
+        run: pnpm --filter @idea-map/server test:moderator-removals
+      - name: Escalation owner transfers
+        env:
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_escalation_transfers
+        run: pnpm --filter @idea-map/server test:escalation-transfers
       - name: Migrate worker test database
         env:
           DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_worker

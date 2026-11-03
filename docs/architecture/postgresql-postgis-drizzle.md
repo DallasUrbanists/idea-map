@@ -14,6 +14,13 @@ The following contents links navigate within this guide:
 - [Approval history and corrections](#approval-history-and-corrections)
 - [Outbox recovery](#outbox-recovery)
 - [Consent and retention](#consent-and-retention)
+    - [Moderator holds](#moderator-holds)
+    - [Legal holds and decision metadata](#legal-holds-and-decision-metadata)
+    - [Moderator rejection](#moderator-rejection)
+    - [Moderator requests for changes](#moderator-requests-for-changes)
+    - [Moderator escalations](#moderator-escalations)
+    - [Moderator removal](#moderator-removal)
+    - [Escalation owner transfers](#escalation-owner-transfers)
 
 ## Schema and migration boundary
 
@@ -413,11 +420,10 @@ and an owner who has an active database moderator assignment. The transaction
 locks both assignments and checks the current revision and assessment. The
 escalation remains a hold across later edits and when the owner's assignment is
 revoked; it must be explicitly released. It does not clear or replace an
-ordinary hold. The current record exposes the owner's internal user ID for a
+ordinary hold. The record retains the initial owner's internal user ID for a
 future authorized interface; it does not prove the owner can still sign in.
-Notifications, a usable interface, and an atomic owner-transfer process remain
-open. Do not enable live escalations until those processes and privacy controls
-are reviewed.
+Notifications and a usable interface remain open. Do not enable live
+escalations until those processes and privacy controls are reviewed.
 
 The migration preserves existing holds as ordinary holds and replaces their
 partial uniqueness index. Older code that expects the prior index cannot place
@@ -430,3 +436,39 @@ or silently release them to make rollback succeed.
 A separately permissioned, unscheduled retention primitive removes released hold
 metadata only after 90 days and only when no legal hold applies. Active holds
 remain until explicitly released. The functions grant no live permissions.
+
+### Moderator removal
+
+The server-only moderator removal transaction verifies the current database
+assignment and approved revision, then marks the idea withdrawn, marks its
+previews unpublished, records the actor, reason, and classification, and writes
+one projection job and outbox intent. A removal classified as a policy violation
+also excludes its approval from future trust calculations and records the
+correction in the same transaction. A legal hold does not prevent removing
+public access; the transaction does not delete held content. A pending edit
+cannot publish after withdrawal. Stale and duplicate actions do not create new
+removal records.
+
+The projection intent is not evidence of cache invalidation. The production
+worker and complete public cache purge remain unimplemented; do not enable this
+primitive for live removal until those delivery, privacy, audit, and recovery
+paths are complete and reviewed. A separate, unscheduled retention primitive
+removes removal metadata only after 90 days and only when no legal hold applies.
+The functions grant no live permissions and expose no moderator interface.
+
+### Escalation owner transfers
+
+An authorized moderator can transfer an active escalation to another user with
+an active database moderator assignment. The transaction locks the idea and
+hold, checks the current revision and assessment, and appends the previous and
+new owner, actor, time, reason, and a monotonically increasing sequence. The
+original hold remains active throughout. A caller must supply the sequence it
+reviewed; a stale retry cannot reverse a newer transfer. The original hold's
+owner is the initial owner; the highest transfer sequence identifies the
+current owner. An assignment alone does not prove the owner can still sign in.
+
+Released holds and their transfer records can be pruned together only after
+90 days and only when no legal hold applies. The transfer function is not
+exposed as a route or granted to a live role. An authorized interface,
+notifications, privacy-safe deletion, and operational access review remain
+necessary before use.
