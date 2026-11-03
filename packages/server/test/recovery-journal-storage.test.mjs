@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { Readable, Writable } from 'node:stream'
 import { after, test } from 'node:test'
+import { CRC32C } from '@google-cloud/storage'
 import { compareCurrentRecoveryJournalRecord, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
 import { encodeRecoveryConfirmation } from '../dist/recovery-journal-record.js'
 
@@ -126,8 +127,10 @@ test('ambiguous write readback requires the same current generation and exact sa
   const body = encodeRecoveryConfirmation(id, 'dev', '2026-11-03T12:00:00.000Z')
   const generation = '90071992547409931234'
   const path = `idea-map-v2/dev/recovery-journal/${id}.json`
+  const checksum = new CRC32C()
+  checksum.update(body)
   const base = { bucket: target.bucket, name: path, generation, metageneration: '1',
-    size: String(body.length), contentType: 'application/json', crc32c: 'AAAAAA==' }
+    size: String(body.length), contentType: 'application/json', crc32c: checksum.toString() }
   function storageFor({ metadata = [base, base], stored = body, hang = false } = {}) {
     let calls = 0
     return { bucket: () => ({ file: () => ({ interceptors: [],
@@ -150,6 +153,7 @@ test('ambiguous write readback requires the same current generation and exact sa
     storageFor({ metadata: [base, { ...base, metageneration: '2' }] }),
     storageFor({ metadata: [{ ...base, bucket: 'wrong-bucket' }] }),
     storageFor({ metadata: [{ ...base, crc32c: undefined }] }),
+    storageFor({ metadata: [{ ...base, crc32c: checksum.toString() === 'AAAAAA==' ? 'AQAAAA==' : 'AAAAAA==' }] }),
     storageFor({ metadata: [{ ...base, timeDeleted: '2026-11-03T12:00:00.000Z' }] }),
     storageFor({ hang: true }),
   ]) await assert.rejects(compareCurrentRecoveryJournalRecord(storage, target, id, body, 20),

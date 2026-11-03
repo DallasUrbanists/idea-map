@@ -35,6 +35,7 @@ test('storage client sends create-only archives, completion metadata, and journa
   const payloads = new Map()
   const errors = []
   let omitStoredEncoding = false
+  let overrideMetadataChecksum = false
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, 'http://127.0.0.1')
@@ -68,7 +69,7 @@ test('storage client sends create-only archives, completion metadata, and journa
         const name = decodeURIComponent(url.pathname.slice(`/storage/v1/b/${target.bucket}/o/`.length))
         const object = objects.get(name)
         if (!object) throw new Error('Missing synthetic object')
-        response.end(JSON.stringify(object))
+        response.end(JSON.stringify(overrideMetadataChecksum ? { ...object, crc32c: 'AAAAAA==' } : object))
         return
       }
       if (request.method !== 'POST' || url.pathname !== `/upload/storage/v1/b/${target.bucket}/o` ||
@@ -137,6 +138,10 @@ test('storage client sends create-only archives, completion metadata, and journa
     assert.deepEqual(Buffer.from(await readRecoveryJournalRecord(storage, target, recordId, objects.get(recordName).generation)), record)
     assert.deepEqual(await compareCurrentRecoveryJournalRecord(storage, target, recordId, record),
       { generation: '90071992547409931234', coverageVerified: false })
+    overrideMetadataChecksum = true
+    assert.notEqual(objects.get(recordName).crc32c, 'AAAAAA==')
+    await assert.rejects(compareCurrentRecoveryJournalRecord(storage, target, recordId, record), /could not be verified/)
+    overrideMetadataChecksum = false
     await assert.rejects(compareCurrentRecoveryJournalRecord(storage, target, recordId,
       encodeRecoveryConfirmation(recordId, 'dev', '2026-11-02T10:01:01.000Z')), /could not be verified/)
     const checksum = objects.get(recordName).crc32c

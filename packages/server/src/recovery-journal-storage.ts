@@ -1,4 +1,4 @@
-import type { Storage } from '@google-cloud/storage'
+import { CRC32C, type Storage } from '@google-cloud/storage'
 import { finished } from 'node:stream/promises'
 import { decodeRecoveryRecord } from './recovery-journal-record.js'
 import { exactGenerationFile } from './storage-generation.js'
@@ -122,6 +122,9 @@ export async function compareCurrentRecoveryJournalRecord(storage: Storage, targ
       } finally { if (timer) clearTimeout(timer) }
     }
     const first = await metadata()
+    const checksum = new CRC32C()
+    checksum.update(bytes)
+    if (!checksum.validate(first.crc32c)) throw new Error('Journal checksum differs')
     const observed = await readRecoveryJournalRecord(storage, target, recordId, first.generation, timeoutMs)
     if (!Buffer.from(observed).equals(bytes)) throw new Error('Journal record differs')
     const last = await metadata()
