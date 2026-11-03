@@ -25,9 +25,13 @@ Complete the [development setup](development-guide.md#one-time-setup-for-each-ch
 and build the workspace with `pnpm build`. The database must have the current
 migrations. Provide `OPERATIONS_DATABASE_URL` through an approved secret-handling
 method in the command's environment; the command does not load the root `.env`.
-Use an already-authorized, read-only database identity with `SELECT` on `jobs`,
-`outbox`, and `email_delivery_events`. These table grants also allow direct
-access to their rows, so restrict the identity and its credentials accordingly.
+Use an already-authorized, read-only database identity with `SELECT` on only
+the columns needed by the snapshot: `jobs.id`, `jobs.state`,
+`jobs.scheduled_at`; `outbox.job_id`, `outbox.published_at`,
+`outbox.dispatch_attempts`, `outbox.created_at`; and
+`email_delivery_events.event_type`, `email_delivery_events.created_at`. It also
+needs schema usage. These grants allow direct access to those individual column
+values, including job IDs and timing, so restrict the identity and credentials.
 Access to a hosted or production database requires separate authorization.
 
 From the repository root, run:
@@ -100,8 +104,8 @@ worker image to assess these two snapshots. The collector and its alerts start
 disabled; the scheduler starts paused. No additional queue
 or database is created. A distinct service account receives queue-scoped
 `cloudtasks.tasks.list` and access to an existing operations-only database
-secret. That database identity needs the read-only grants described above; the
-table grants permit reading individual rows, so review and restrict it. Secret
+secret. That database identity needs the column-scoped read-only grants
+described above; they permit reading individual values, so review and restrict it. Secret
 Manager grants access to the secret rather than a single version, even though
 the job pins a version.
 

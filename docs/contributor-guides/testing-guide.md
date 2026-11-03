@@ -233,8 +233,10 @@ The worker integration test also checks recovery with fake queue responses,
 including inaccessible queues, timeouts, concurrent recovery, and active leases.
 For aggregate backlog and email-event snapshots, migrate a separate, otherwise
 empty disposable database, set `TEST_DATABASE_URL`, and run
-`pnpm --filter @idea-map/worker test:operations`. It checks synthetic records
-and a concurrent outbox insertion.
+`pnpm --filter @idea-map/worker test:operations`. It checks synthetic records,
+a concurrent outbox insertion, and column-scoped access. The role check requires
+the local `idea_map_test_operations` database and creates and removes its own
+uniquely named test role.
 For encrypted database export and restore, run the [synthetic recovery rehearsal](backup-recovery.md#rehearse-with-synthetic-data).
 The worker tests also exercise the Cloud Storage client against a credential-free
 loopback fake; they do not verify provider encryption or hosted permissions.

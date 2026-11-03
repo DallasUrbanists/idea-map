@@ -67,10 +67,13 @@ the outcome; recovery must treat it as uncertain rather than infer a commit.
 
 The intent must exist before commit even when storage returns an ambiguous
 response. A timeout is not proof that the object was not created, and a retry
-must reuse the operation ID and verify the existing record rather than create a
-second decision. A database commit response can also be lost after commit. Do
-not write a negative confirmation based only on an exception. Reconciliation
-must account for both cases and keep uncertain material private.
+must reuse the operation ID rather than create a second decision. A failed
+create-only precondition does not prove the existing record matches: a
+separately authorized journal reader must verify its exact contents before the
+operation can rely on it. The create-only writer cannot perform that read. A
+database commit response can also be lost after commit. Do not write a negative
+confirmation based only on an exception. Reconciliation must account for both
+cases and keep uncertain material private.
 
 The checkpoint needs a coordinated boundary, not merely a timestamp. Suspend
 all covered mutations, drain in-flight transactions and journal writes, verify
@@ -99,8 +102,22 @@ include reconciliation time in the recovery measurement.
 
 The write protocol alone does not solve an unavailable journal: an already
 authorized removal must still stop public access immediately, and a failed
-write must not silently create a coverage gap. The public-access and emergency
-failure path must be designed and tested before these operations are enabled.
+write must not silently create a coverage gap. If an authorized removal cannot
+be recorded because the journal is unavailable or the write outcome is
+uncertain, block all public idea and media access until the removal and journal
+are reconciled. The gate must fail closed when its own state cannot be verified.
+Preserve the authorized pending decision and mark the journal coverage gap; do
+not report the removal or recovery as complete merely because the gate closed.
+Only an authorized recovery process can reopen public access after verifying
+the removal, journal continuity, and all other pending decisions.
+
+The gate and pending state need a guarded transaction and must cover every
+public read, projection, and media delivery path. A restored older database may
+not contain the later gate or pending decision, so recovery must begin behind an
+independent access fence. If journal coverage or the pending decisions cannot be
+proved after a failure, keep the replacement isolated for authorized
+reconciliation. Implement and test that fence and the emergency path before
+enabling live removals or relying on the journal.
 The existing [Hosting cache policy](hosting-cache.md#cache-and-withdrawal-behavior)
 uses `private, no-store` for dynamic production responses, and media previews
 recheck publication state after fetching the object. Those controls are useful

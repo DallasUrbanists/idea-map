@@ -84,3 +84,38 @@ test('an outbox row committed after the observation time has age zero', async ()
     await pool.end()
   }
 })
+
+test('the snapshot works with column-scoped read-only access', async () => {
+  const target = new URL(url)
+  if (!['localhost', '127.0.0.1', '[::1]'].includes(target.hostname) || target.pathname !== '/idea_map_test_operations') {
+    throw new Error('Role tests require the dedicated local synthetic operations database')
+  }
+  const pool = new pg.Pool({ connectionString: url, max: 1 })
+  const role = `operations_test_${randomUUID().replaceAll('-', '')}`
+  let created = false
+  let client
+  try {
+    await pool.query(`CREATE ROLE "${role}" NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`)
+    created = true
+    await pool.query(`GRANT USAGE ON SCHEMA public TO "${role}"`)
+    await pool.query(`GRANT SELECT (id, state, scheduled_at) ON public.jobs TO "${role}"`)
+    await pool.query(`GRANT SELECT (job_id, published_at, dispatch_attempts, created_at) ON public.outbox TO "${role}"`)
+    await pool.query(`GRANT SELECT (event_type, created_at) ON public.email_delivery_events TO "${role}"`)
+    client = await pool.connect()
+    await client.query(`SET ROLE "${role}"`)
+    const scopedPool = { async connect() { return { query: client.query.bind(client), release() {} } } }
+    const snapshot = await readOperationsSnapshot(scopedPool)
+    assert.equal(snapshot.backlog.unpublished, 0)
+    await assert.rejects(client.query('SELECT idempotency_key FROM public.jobs'), { code: '42501' })
+    await assert.rejects(client.query('SELECT email_id FROM public.email_delivery_events'), { code: '42501' })
+    await assert.rejects(client.query('SELECT * FROM public.contacts'), { code: '42501' })
+    await assert.rejects(client.query('UPDATE public.outbox SET published_at=now()'), { code: '42501' })
+  } finally {
+    if (client) { await client.query('RESET ROLE'); client.release() }
+    if (created) {
+      await pool.query(`DROP OWNED BY "${role}"`)
+      await pool.query(`DROP ROLE "${role}"`)
+    }
+    await pool.end()
+  }
+})
