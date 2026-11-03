@@ -27,7 +27,7 @@ this table:
 | Address / scope | Resource behavior | Review before any real plan or apply |
 | --- | --- | --- |
 | `google_service_account.runtime` | Separate web and worker identities per environment, no IAM grants | Verify names, required permissions and deployment ownership; never reuse unrelated identities |
-| `google_cloud_run_v2_service.runtime` | Internal-only services, separate identities, immutable images, zero minimum; web max 2/concurrency 20, worker max 1/concurrency 1 | Verify image provenance, sizing, health, runtime secrets and reviewed ingress/invoker grants. Public web routing requires explicit reviewed ingress and invoker configuration |
+| `google_cloud_run_v2_service.runtime` | Internal-only services, separate identities, bootstrap images, request-based CPU, zero minimum; web max 2/concurrency 20, worker max 1/concurrency 1 | Verify image provenance, sizing, health, runtime secrets and reviewed ingress/invoker grants. Public web routing requires explicit reviewed ingress and invoker configuration |
 | `google_storage_bucket.media` | Separate uploads, approved-media and backup buckets; uniform access, public access prevention, versioning, no forced deletion and `prevent_destroy` | Confirm unique names, retention, backup access and recovery; approved-media access uses the reviewed delivery boundary |
 | `google_cloud_tasks_queue.jobs` | Per-environment queue with bounded dispatch and five attempts | Verify quotas, idempotent handlers, dead-letter/reconciliation behavior and authenticated target before use |
 | `enable_task_delivery` | Opt-in task and repair invokers, worker-only invocation grants, scoped queue access and a paused hourly scheduler | Review service identity, queue inspection access, worker configuration and recovery before a live plan; unpausing is a separate operation |
@@ -40,6 +40,12 @@ The definitions in this table do not show which changes a live plan will report.
 An actual credentialed plan against the approved state and target shows the
 exact creates, updates, replacements, and deletes. A plan must be reviewed
 before any apply. Applying infrastructure requires explicit authorization.
+
+After service creation, the [release workflow](../contributor-guides/cloud-run-release.md)
+owns image and traffic changes. Terraform ignores those fields during updates;
+the image variables supply bootstrap values only. Operators should review the
+live image, traffic, and the impact of any other revision-template change before
+applying a plan.
 
 The worker runtime option requires `enable_task_delivery`, an exact
 `worker_origin`, an existing `worker_database_secret_id`, and a numeric

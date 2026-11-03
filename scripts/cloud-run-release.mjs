@@ -1,0 +1,116 @@
+import { spawnSync } from 'node:child_process'
+import { appendFileSync, writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const digestPattern = /^[a-z0-9-]+-docker\.pkg\.dev\/[a-z][a-z0-9-]{4,28}[a-z0-9]\/[a-z][a-z0-9-]{0,62}\/idea-map-(web|worker)@sha256:[0-9a-f]{64}$/
+const revisionPattern = /^[a-z][a-z0-9-]{0,62}$/
+
+function requireMatch(value, pattern, label) {
+  if (typeof value !== 'string' || !pattern.test(value)) throw new Error(`Invalid ${label}`)
+  return value
+}
+
+function ready(resource) {
+  return resource?.status?.conditions?.some(condition => condition.type === 'Ready' && condition.status === 'True') &&
+    String(resource.metadata?.generation) === String(resource.status?.observedGeneration) &&
+    resource.metadata?.generation != null
+}
+
+function currentRevision(service, serviceName, project, serviceKind) {
+  if (!ready(service)) throw new Error('Service has not reconciled successfully')
+  const serviceAnnotations = service.metadata?.annotations ?? {}
+  const templateAnnotations = service.spec?.template?.metadata?.annotations ?? {}
+  if ((serviceAnnotations['run.googleapis.com/minScale'] ?? '0') !== '0' ||
+      (templateAnnotations['autoscaling.knative.dev/minScale'] ?? '0') !== '0' ||
+      templateAnnotations['run.googleapis.com/cpu-throttling'] === 'false' ||
+      service.spec?.template?.spec?.serviceAccountName !== `${serviceName}@${project}.iam.gserviceaccount.com` ||
+      (serviceKind === 'worker' && serviceAnnotations['run.googleapis.com/ingress'] !== 'internal')) {
+    throw new Error('Service scaling, identity, billing, or worker ingress is not the reviewed configuration')
+  }
+  const traffic = (service.status?.traffic ?? []).filter(target => (target.percent ?? 0) > 0)
+  if (traffic.length !== 1 || traffic[0].percent !== 100 ||
+      !traffic[0].revisionName?.startsWith(`${serviceName}-`)) {
+    throw new Error('Service must have exactly one revision receiving 100% of traffic')
+  }
+  return requireMatch(traffic[0].revisionName, revisionPattern, 'current revision')
+}
+
+function checkedRevision(revision, serviceName, name, image, project) {
+  const annotations = revision.metadata?.annotations ?? {}
+  if (revision.metadata?.name !== name || revision.metadata?.labels?.['serving.knative.dev/service'] !== serviceName ||
+      !ready(revision) || revision.spec?.containers?.length !== 1 ||
+      revision.spec?.serviceAccountName !== `${serviceName}@${project}.iam.gserviceaccount.com` ||
+      (annotations['autoscaling.knative.dev/minScale'] ?? '0') !== '0' ||
+      annotations['run.googleapis.com/cpu-throttling'] === 'false' ||
+      revision.spec.containers[0].image !== image ||
+      revision.status?.imageDigest?.split('@').pop() !== image.split('@').pop()) {
+    throw new Error('Revision identity, image, or health metadata does not match')
+  }
+}
+
+/** Execute one release operation using an injected Cloud Run command adapter. */
+export function release(config, run) {
+  if (!['staging', 'production'].includes(config.environment)) throw new Error('Invalid environment')
+  if (!['web', 'worker'].includes(config.service)) throw new Error('Invalid service')
+  if (!['prepare', 'promote', 'rollback'].includes(config.operation)) throw new Error('Invalid operation')
+  requireMatch(config.project, /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/, 'project')
+  requireMatch(config.region, /^[a-z]+(-[a-z0-9]+)+[0-9]$/, 'region')
+  requireMatch(config.image, digestPattern, 'immutable image')
+  if (config.image.split('/')[1] !== config.project ||
+      !config.image.startsWith(`${config.imageRepository}/idea-map-${config.service}@sha256:`)) {
+    throw new Error('Image does not belong to the configured release repository and service')
+  }
+  const serviceName = `idea-map-${config.service}-${config.environment === 'staging' ? 'dev' : 'prod'}`
+  requireMatch(config.expectedRevision, revisionPattern, 'expected current revision')
+  if (!config.expectedRevision.startsWith(`${serviceName}-`)) throw new Error('Current revision is for another service')
+  const common = [`--project=${config.project}`, `--region=${config.region}`, '--quiet']
+  const service = () => run(['run', 'services', 'describe', serviceName, ...common, '--format=json'], true)
+  const revision = name => run(['run', 'revisions', 'describe', name, ...common, '--format=json'], true)
+  const current = () => currentRevision(service(), serviceName, config.project, config.service)
+  const before = current()
+  if (before !== config.expectedRevision) throw new Error('Current revision changed since review')
+  let target
+  if (config.operation === 'prepare') {
+    requireMatch(config.suffix, /^r[0-9]+-[0-9]+$/, 'revision suffix')
+    target = `${serviceName}-${config.suffix}`
+    requireMatch(target, revisionPattern, 'candidate revision')
+    run(['run', 'services', 'update', serviceName, `--image=${config.image}`,
+      `--revision-suffix=${config.suffix}`, '--no-traffic', ...common], false)
+    checkedRevision(revision(target), serviceName, target, config.image, config.project)
+    if (current() !== before) throw new Error('Traffic changed while preparing candidate')
+  } else {
+    target = requireMatch(config.revision, revisionPattern, 'target revision')
+    if (!target.startsWith(`${serviceName}-`) || target === before) throw new Error('Invalid target revision')
+    checkedRevision(revision(target), serviceName, target, config.image, config.project)
+    if (current() !== before) throw new Error('Traffic changed before update')
+    run(['run', 'services', 'update-traffic', serviceName, `--to-revisions=${target}=100`, ...common], false)
+    if (current() !== target) throw new Error('Traffic did not converge to target revision')
+  }
+  return { environment: config.environment, service: config.service, operation: config.operation,
+    project: config.project, region: config.region, image: config.image, previousRevision: before, revision: target }
+}
+
+function gcloud(args, json) {
+  const result = spawnSync('gcloud', args, { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 })
+  if (result.error || result.status !== 0) throw new Error('Cloud Run command failed; inspect the service before retrying')
+  return json ? JSON.parse(result.stdout) : undefined
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    const env = process.env
+    const result = release({ environment: env.RELEASE_ENVIRONMENT, service: env.RELEASE_SERVICE,
+      operation: env.RELEASE_OPERATION, project: env.GCP_PROJECT_ID, region: env.GCP_RUN_REGION,
+      imageRepository: env.RELEASE_IMAGE_REPOSITORY, image: env.RELEASE_IMAGE,
+      revision: env.RELEASE_REVISION, expectedRevision: env.EXPECTED_REVISION,
+      suffix: `r${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}` }, gcloud)
+    writeFileSync('release-receipt.json', JSON.stringify({ ...result,
+      run_id: env.GITHUB_RUN_ID, run_attempt: env.GITHUB_RUN_ATTEMPT, source: env.GITHUB_SHA }, null, 2) + '\n')
+    if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY,
+      `\n### Cloud Run ${result.operation}\n\nService: \`${result.service}\` (${result.environment})\n\nImage: \`${result.image}\`\n\nPrevious revision: \`${result.previousRevision}\`\n\nTarget revision: \`${result.revision}\`\n\nRevision Ready=True; resolved image digest matches.\n`)
+  } catch (error) {
+    console.error(error.message)
+    process.exitCode = 1
+  }
+}

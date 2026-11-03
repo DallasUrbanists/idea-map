@@ -1,0 +1,151 @@
+name: Cloud Run release
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Protected target environment
+        type: choice
+        options: [staging, production]
+        required: true
+      operation:
+        description: Prepare without traffic, promote, or roll back
+        type: choice
+        options: [prepare, promote, rollback]
+        required: true
+      service:
+        description: Service to change
+        type: choice
+        options: [web, worker]
+        required: true
+      image:
+        description: Exact target repository image reference with sha256 digest
+        type: string
+        required: true
+      expected_revision:
+        description: Revision currently receiving all traffic
+        type: string
+        required: true
+      revision:
+        description: Target revision for promotion or rollback
+        type: string
+      build_run_id:
+        description: Successful image-build run ID (not needed for rollback)
+        type: string
+      build_attempt:
+        description: Image-build run attempt
+        type: string
+        default: '1'
+      staging_run_id:
+        description: Successful staging promotion run ID (production only)
+        type: string
+      staging_attempt:
+        description: Staging promotion run attempt
+        type: string
+        default: '1'
+
+permissions: {}
+
+concurrency:
+  group: cloud-run-release
+  cancel-in-progress: false
+
+jobs:
+  evidence:
+    if: github.repository == 'DallasUrbanists/idea-map' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_ENVIRONMENT: ${{ inputs.environment }}
+      RELEASE_OPERATION: ${{ inputs.operation }}
+      RELEASE_SERVICE: ${{ inputs.service }}
+      RELEASE_IMAGE: ${{ inputs.image }}
+      BUILD_RUN_ID: ${{ inputs.build_run_id }}
+      BUILD_ATTEMPT: ${{ inputs.build_attempt }}
+      STAGING_RUN_ID: ${{ inputs.staging_run_id }}
+      STAGING_ATTEMPT: ${{ inputs.staging_attempt }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Inspect evidence run metadata
+        if: inputs.operation != 'rollback'
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$BUILD_RUN_ID" =~ ^[1-9][0-9]*$ && "$BUILD_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID" > build-run.json
+          if [[ "$RELEASE_ENVIRONMENT" == production ]]; then
+            [[ "$STAGING_RUN_ID" =~ ^[1-9][0-9]*$ && "$STAGING_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$STAGING_RUN_ID" > staging-run.json
+          fi
+      - name: Download checked image metadata
+        if: inputs.operation != 'rollback'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-image-metadata-${{ inputs.build_attempt }}
+          path: build-evidence
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+      - name: Download staging promotion receipt
+        if: inputs.operation != 'rollback' && inputs.environment == 'production'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-receipt-${{ inputs.staging_attempt }}
+          path: staging-evidence
+          run-id: ${{ inputs.staging_run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify build and staging evidence
+        if: inputs.operation != 'rollback'
+        run: node scripts/release-evidence.mjs
+
+  release:
+    needs: evidence
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_ENVIRONMENT: ${{ inputs.environment }}
+      RELEASE_OPERATION: ${{ inputs.operation }}
+      RELEASE_SERVICE: ${{ inputs.service }}
+      RELEASE_IMAGE: ${{ inputs.image }}
+      RELEASE_REVISION: ${{ inputs.revision }}
+      EXPECTED_REVISION: ${{ inputs.expected_revision }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_RUN_REGION: ${{ vars.GCP_RUN_REGION }}
+      RELEASE_IMAGE_REPOSITORY: ${{ vars.RELEASE_IMAGE_REPOSITORY }}
+      WIF_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      DEPLOYER_ACCOUNT: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Validate deployment identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_ENVIRONMENT" == staging || "$RELEASE_ENVIRONMENT" == production ]]
+          [[ "$GCP_PROJECT_ID" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]]
+          [[ "$WIF_PROVIDER" =~ ^projects/[0-9]+/locations/global/workloadIdentityPools/[a-z0-9-]+/providers/[a-z0-9-]+$ ]]
+          [[ "$DEPLOYER_ACCOUNT" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]@${GCP_PROJECT_ID}\.iam\.gserviceaccount\.com$ ]]
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_ACCOUNT }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - name: Prepare or route the reviewed revision
+        run: node scripts/cloud-run-release.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-receipt-${{ github.run_attempt }}
+          path: release-receipt.json
+          retention-days: 90
+          if-no-files-found: error
