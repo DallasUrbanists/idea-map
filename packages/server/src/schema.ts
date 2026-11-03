@@ -64,6 +64,24 @@ export const ideas = pgTable('ideas', {
   location: geographyPoint('location'),
   createdAt: createdAt(),
 }, table => [index('ideas_owner_idx').on(table.ownerId), index('ideas_author_contact_idx').on(table.authorContactId), index('ideas_location_gist_idx').using('gist', table.location), uniqueIndex('ideas_id_author_contact_key').on(table.id, table.authorContactId)])
+// Private short-lived verifier material; never store a bearer token or email here.
+export const guestEmailVerifications = pgTable('guest_email_verifications', {
+  id: uuid('id').primaryKey(),
+  ideaId: uuid('idea_id').notNull(),
+  contactId: uuid('contact_id').notNull(),
+  secretDigest: text('secret_digest').notNull(),
+  emailMac: text('email_mac').notNull(),
+  createdAt: createdAt(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+}, table => [
+  foreignKey({ columns: [table.ideaId, table.contactId], foreignColumns: [ideas.id, ideas.authorContactId] }),
+  uniqueIndex('guest_email_verifications_digest_key').on(table.secretDigest),
+  index('guest_email_verifications_idea_idx').on(table.ideaId),
+  index('guest_email_verifications_contact_idx').on(table.contactId),
+  check('guest_email_verifications_digests', sql`${table.secretDigest} ~ '^[0-9a-f]{64}$' AND ${table.emailMac} ~ '^[0-9a-f]{64}$'`),
+  check('guest_email_verifications_expiry', sql`${table.expiresAt} > ${table.createdAt}`),
+])
 // One record covers one idea and one documented case; different cases may overlap.
 export const legalHolds = pgTable('legal_holds', {
   id: uuid('id').primaryKey().defaultRandom(),

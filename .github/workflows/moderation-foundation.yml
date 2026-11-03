@@ -52,6 +52,7 @@ jobs:
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_history
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderator
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_ownership
+          docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_guest_verification
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_holds
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_legal_holds
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_legal_disposition
@@ -94,6 +95,10 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_ownership
         run: pnpm --filter @idea-map/server test:verified-ownership
+      - name: Guest email verification
+        env:
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_guest_verification
+        run: pnpm --filter @idea-map/server test:guest-verification
       - name: Moderator hold races
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_holds

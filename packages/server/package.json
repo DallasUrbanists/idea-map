@@ -46,6 +46,7 @@
     "test:legal-disposition": "tsc --build && node --test test/legal-disposition.test.mjs",
     "test:moderator-manual-approval": "tsc --build && node --test test/moderator-manual-approval.test.mjs",
     "test:moderator-review": "tsc --build && node --test test/moderator-review.test.mjs",
-    "test:moderator-queue": "tsc --build && node --test test/moderator-queue.test.mjs"
+    "test:moderator-queue": "tsc --build && node --test test/moderator-queue.test.mjs",
+    "test:guest-verification": "tsc --build && node --test test/guest-verification.test.mjs"
   }
 }
