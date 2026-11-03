@@ -52,6 +52,10 @@ run "scoped_paused_delivery" {
     error_message = "The queue must use bounded retries and concurrency."
   }
   assert {
+    condition     = google_cloud_tasks_queue.jobs[0].stackdriver_logging_config[0].sampling_ratio == 1
+    error_message = "The synthetic queue must request logging for every operation."
+  }
+  assert {
     condition     = google_cloud_scheduler_job.repair[0].paused && google_cloud_scheduler_job.repair[0].schedule == "0 * * * *" && google_cloud_scheduler_job.repair[0].http_target[0].oidc_token[0].audience == var.worker_origin
     error_message = "Hourly repair must start paused with the exact worker audience."
   }

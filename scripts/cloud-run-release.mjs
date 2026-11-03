@@ -48,6 +48,8 @@ function checkedRevision(revision, serviceName, name, image, project, allowFaile
   if (revision?.metadata?.name !== name || revision.metadata?.labels?.['serving.knative.dev/service'] !== serviceName ||
       (status !== 'True' && !(allowFailed && status === 'False')) ||
       revision.spec?.containers?.length !== 1 ||
+      (serviceName.startsWith('idea-map-worker-') &&
+        ((revision.spec.containers[0].command?.length ?? 0) > 0 || (revision.spec.containers[0].args?.length ?? 0) > 0)) ||
       revision.spec?.serviceAccountName !== `${serviceName}@${project}.iam.gserviceaccount.com` ||
       (annotations['autoscaling.knative.dev/minScale'] ?? '0') !== '0' ||
       annotations['run.googleapis.com/cpu-throttling'] === 'false' ||

@@ -55,7 +55,9 @@ subject to repository retention limits.
 
 The intermediate image archive has one-day retention. If approval is delayed
 until it expires, the publishing job fails and an operator must start a new
-build.
+build. If publishing fails before the archive expires, rerun the failed job to
+reuse the checked archive from the successful build; the published metadata is
+identified by the new publishing attempt.
 
 Review the run result, source commit, both smoke checks, registry destination,
 and both digest references. A failed run can leave one image in the registry;
