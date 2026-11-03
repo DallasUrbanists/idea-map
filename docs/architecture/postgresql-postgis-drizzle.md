@@ -365,9 +365,17 @@ before retention runs.
 These primitives do not provide a legal-hold review interface, delegation
 administration, complete hold scope, deletion, backup expiry, or restore safety.
 The current append-only hold and authority records also prevent deletion of
-referenced ideas and users. Their retention and privacy-safe deletion lifecycle
-must be decided and implemented before live use. Do not grant live access or
-schedule retention based on these tests alone.
+referenced ideas and users. For released holds, a separate server-only function
+allows an active Executive Director or delegate to record a case-specific
+delete-by date, non-sensitive basis, and any legal review reference. Amendments
+are sequenced and stale requests fail, preserving the prior decisions. Existing
+records receive no invented date. The function records a decision only: it has
+no route, live grant, scheduler, or deletion capability. It does not determine
+whether legal review is needed or find holds outside the implemented idea scope.
+The approved record-retention process still requires privacy-safe deletion,
+including other applicable holds, authority records, backups, and restore safety,
+before live use. Do not grant live access or schedule retention based on these
+tests alone.
 
 ### Moderator rejection
 

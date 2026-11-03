@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { boolean, check, customType, foreignKey, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import { boolean, check, customType, date, foreignKey, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 
 // Contact details and moderation records are private; access control belongs to
 // server-side authorization and must not rely on these table definitions.
@@ -83,6 +83,23 @@ export const legalHolds = pgTable('legal_holds', {
   check('legal_holds_case_reference', sql`length(trim(${table.caseReference})) > 0 AND octet_length(${table.caseReference}) <= 300`),
   check('legal_holds_reason', sql`length(trim(${table.reason})) > 0 AND octet_length(${table.reason}) <= 1000`),
   check('legal_holds_release', sql`(${table.releasedAt} IS NULL AND ${table.releasedBy} IS NULL AND ${table.releaseAuthorityId} IS NULL AND ${table.releaseReason} IS NULL AND ${table.legalReviewReference} IS NULL) OR (${table.releasedAt} IS NOT NULL AND ${table.releasedBy} IS NOT NULL AND ${table.releaseAuthorityId} IS NOT NULL AND ${table.releaseReason} IS NOT NULL AND length(trim(${table.releaseReason})) > 0 AND octet_length(${table.releaseReason}) <= 1000 AND (${table.legalReviewReference} IS NULL OR (length(trim(${table.legalReviewReference})) > 0 AND octet_length(${table.legalReviewReference}) <= 300)))`),
+])
+// Each revision records the authority and non-sensitive basis for a case-specific date.
+export const legalHoldDispositionDates = pgTable('legal_hold_disposition_dates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  holdId: uuid('hold_id').notNull().references(() => legalHolds.id, { onDelete: 'cascade' }),
+  sequence: integer('sequence').notNull(),
+  deleteBy: date('delete_by').notNull(),
+  basis: text('basis').notNull(),
+  legalReviewReference: text('legal_review_reference'),
+  actorId: uuid('actor_id').notNull().references(() => users.id),
+  authorityId: uuid('authority_id').notNull().references(() => legalHoldAssignments.id),
+  createdAt: createdAt(),
+}, table => [
+  uniqueIndex('legal_hold_disposition_dates_sequence_key').on(table.holdId, table.sequence),
+  check('legal_hold_disposition_dates_sequence', sql`${table.sequence} > 0`),
+  check('legal_hold_disposition_dates_basis', sql`length(trim(${table.basis})) > 0 AND octet_length(${table.basis}) <= 1000`),
+  check('legal_hold_disposition_dates_review', sql`${table.legalReviewReference} IS NULL OR (length(trim(${table.legalReviewReference})) > 0 AND octet_length(${table.legalReviewReference}) <= 300)`),
 ])
 // A claim is evidence of an ownership transfer, not proof that a caller owns
 // an email address. The server must verify that evidence before inserting it.

@@ -59,6 +59,23 @@ export async function releaseLegalHold(databaseUrl: string, projectId: string, c
   })
 }
 
+/** Record a case-specific date or an amendment; this does not delete records. */
+export async function recordLegalHoldDisposition(databaseUrl: string, projectId: string, cookie: string, verifier: RegisteredSessionVerifier,
+  input: { holdId: string, expectedSequence: number, deleteBy: string, basis: string, legalReviewReference: string | null }): Promise<Access | { state: 'processed', outcome: 'recorded' | 'stale' | 'not-released' }> {
+  const validDate = /^\d{4}-\d{2}-\d{2}$/u.test(input.deleteBy) && input.deleteBy >= '1000-01-01' &&
+    !Number.isNaN(Date.parse(`${input.deleteBy}T00:00:00Z`)) && new Date(`${input.deleteBy}T00:00:00Z`).toISOString().slice(0, 10) === input.deleteBy
+  if (!uuid.test(input.holdId) || !Number.isInteger(input.expectedSequence) || input.expectedSequence < 0 || input.expectedSequence >= 2147483647 ||
+      !validDate || !reference(input.basis, 1000) || (input.legalReviewReference !== null && !reference(input.legalReviewReference, 300))) throw new Error('Invalid legal hold disposition')
+  let outcome: 'recorded' | 'stale' | 'not-released' = 'not-released'
+  const access = await withLegalAuthority(databaseUrl, projectId, cookie, verifier, async (client, provider, subject) => {
+    const result = await client.query<{ outcome: 'recorded' | 'stale' | 'not-released' }>(
+      'SELECT public.record_legal_hold_disposition($1,$2,$3,$4,$5,$6,$7) AS outcome',
+      [provider, subject, input.holdId, input.expectedSequence, input.deleteBy, input.basis, input.legalReviewReference])
+    outcome = result.rows[0].outcome
+  })
+  return access.state === 'processed' ? { state: 'processed', outcome } : access
+}
+
 /** Check active holds only, inside the deletion transaction; this is not deletion authorization. */
 export async function lockIdeaIfNotHeld(client: pg.PoolClient, ideaId: string): Promise<boolean> {
   if (!uuid.test(ideaId)) return false
