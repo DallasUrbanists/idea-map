@@ -87,6 +87,14 @@ journal. Establish a reviewed coverage checkpoint only after those paths are
 guarded and the current decision state has been verified. A backup older than
 the checkpoint cannot rely on the journal alone.
 
+The unjournaled moderator-removal and legal-hold mutation helpers remain
+available to their internal tests but are not exported from the server package
+entry point. The locking hold check remains available for retention work.
+This package boundary reduces accidental use; it does not revoke database
+execution grants or prevent a direct SQL caller or an older deployed revision
+from bypassing the journal. Review those paths and effective privileges before
+establishing coverage.
+
 The intended write protocol records an intent before the associated database
 transaction can commit, while the transaction holds the relevant idea lock. The
 writer must use a create-only precondition and a bounded timeout. A confirmation

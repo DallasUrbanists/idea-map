@@ -16,11 +16,11 @@ export * from './provider-mode.js'
 export * from './moderator-authorization.js'
 export * from './verified-ownership.js'
 export * from './moderator-holds.js'
-export * from './legal-holds.js'
+// Decision writers remain internal until they participate in recovery journaling.
+export { lockIdeaIfNotHeld } from './legal-holds.js'
 export * from './moderator-decisions.js'
 export * from './moderator-change-requests.js'
 export * from './moderator-escalations.js'
-export * from './moderator-removals.js'
 export * from './moderator-escalation-transfers.js'
 
 export * from './registered-drafts.js'

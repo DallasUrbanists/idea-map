@@ -20,6 +20,8 @@ test('server public content APIs require a real, active lease', async () => {
   assert.equal('getMediaPreview' in server, false)
   assert.equal('readMediaPreview' in server, false)
   assert.equal('publicAccessLeaseClient' in server, false)
+  for (const name of ['removePublishedIdea', 'placeLegalHold', 'releaseLegalHold']) assert.equal(name in server, false)
+  assert.equal(typeof server.lockIdeaIfNotHeld, 'function')
   const pool = fakePool()
   const forged = { client: pool.client, signal: new AbortController().signal, release: async () => {} }
   await assert.rejects(server.readGuardedPublishedIdea('synthetic', forged), /Public access unavailable/)
