@@ -56,6 +56,28 @@ real assessment data before the rollout gates are accepted. See the
 for runtime settings and the [recovery procedure](../architecture/postgresql-postgis-drizzle.md#outbox-recovery)
 for the provider checks required before rearming a delivery.
 
+The independent [`infra/worker-staging-db`](../../infra/worker-staging-db)
+root defines a separate PostgreSQL instance and disposable database for this
+worker. It does not manage the existing SSR staging database. It requires
+connectors, guards deletion, and disables backups; use it only for synthetic
+data that can be recreated. The instance runs continuously and incurs compute
+and storage charges. The root does not create database roles, passwords, secret
+versions, migrations, or Cloud Run access. Those need separate review and
+authorization, including a least-privilege worker role and a secure migration
+procedure. Review a real plan and separately controlled state before an apply.
+
+From the repository root, the database root can be checked without cloud access:
+
+```sh
+terraform fmt -check -recursive infra/worker-staging-db
+terraform -chdir=infra/worker-staging-db init -backend=false -lockfile=readonly
+terraform -chdir=infra/worker-staging-db validate
+terraform -chdir=infra/worker-staging-db test
+```
+
+These mocked tests do not establish Cloud SQL connectivity, database grants,
+cost, or recovery. They do not authorize provisioning.
+
 ## Review the scoped delivery configuration
 
 The independent [`infra/task-delivery-staging`](../../infra/task-delivery-staging)
