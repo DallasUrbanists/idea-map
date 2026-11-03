@@ -1,0 +1,37 @@
+name: Moderator review screen
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web/app/pages/moderation/**'
+      - 'apps/web/tests/moderation/**'
+      - 'apps/web/package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/moderator-screen.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/app/pages/moderation/**'
+      - 'apps/web/tests/moderation/**'
+      - 'apps/web/package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/moderator-screen.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Exercise the screen with synthetic responses
+        run: CHROME_PATH="$(command -v google-chrome || command -v chromium)" pnpm --filter @idea-map/web test:moderation-ui

@@ -47,7 +47,10 @@ actions people take in the application. Each Markdown filename follows
 Authors should explain user-facing prerequisites, steps, results, and recovery
 options without developer commands, source paths, or architecture. Add or update
 guides alongside user-facing feature changes once the interactions can be
-described accurately; the empty directory is retained with `.gitkeep`.
+described accurately.
+
+- [Review pending revisions](user-guides/how-to-review-pending-revisions.md):
+  Inspect submitted content and manage holds and change requests as a moderator.
 
 ## Architecture
 
