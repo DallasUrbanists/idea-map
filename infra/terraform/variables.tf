@@ -67,6 +67,20 @@ variable "enable_worker_runtime" {
   type        = bool
   default     = false
 }
+variable "enable_worker_bootstrap" {
+  description = "Temporarily start a non-operational internal worker to discover its generated URI in dev."
+  type        = bool
+  default     = false
+}
+variable "worker_cloud_sql_instance" {
+  description = "Optional same-project, same-region Cloud SQL instance name for the worker."
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.worker_cloud_sql_instance == "" || can(regex("^[a-z][a-z0-9-]{0,96}[a-z0-9]$", var.worker_cloud_sql_instance))
+    error_message = "Use an empty value or a valid Cloud SQL instance name."
+  }
+}
 variable "worker_origin" {
   description = "Exact HTTPS origin of the reviewed worker service, without a trailing slash."
   type        = string

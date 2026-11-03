@@ -1,4 +1,16 @@
 # No schedule runs until an operator explicitly unpauses the reviewed job.
+resource "google_project_iam_member" "worker_cloud_sql" {
+  count   = var.enable_worker_runtime && var.worker_cloud_sql_instance != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.runtime["worker"].email}"
+  condition {
+    title       = "worker-cloud-sql-instance"
+    description = "Connect only to the reviewed worker database instance."
+    expression  = "resource.name == 'projects/${var.project_id}/instances/${var.worker_cloud_sql_instance}' && resource.service == 'sqladmin.googleapis.com'"
+  }
+}
+
 resource "google_secret_manager_secret_iam_member" "worker_database" {
   count     = var.enable_worker_runtime && var.worker_database_secret_id != "" ? 1 : 0
   project   = var.project_id

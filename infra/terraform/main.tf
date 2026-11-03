@@ -30,10 +30,28 @@ resource "google_cloud_run_v2_service" "runtime" {
       min_instance_count = 0
       max_instance_count = each.value.max_instances
     }
+    dynamic "volumes" {
+      for_each = each.key == "worker" && var.enable_worker_runtime && var.worker_cloud_sql_instance != "" ? [1] : []
+      content {
+        name = "worker-cloudsql"
+        cloud_sql_instance {
+          instances = ["${var.project_id}:${var.region}:${var.worker_cloud_sql_instance}"]
+        }
+      }
+    }
     containers {
       image = each.value.image
+      # This temporary dev-only process serves no requests and supplies no data.
+      command = each.key == "worker" && var.enable_worker_bootstrap ? ["node", "-e", "require('node:http').createServer((req,res)=>{res.writeHead(503);res.end()}).listen(process.env.PORT || 8080,'0.0.0.0')"] : null
       resources {
         cpu_idle = true
+      }
+      dynamic "volume_mounts" {
+        for_each = each.key == "worker" && var.enable_worker_runtime && var.worker_cloud_sql_instance != "" ? [1] : []
+        content {
+          name       = "worker-cloudsql"
+          mount_path = "/cloudsql"
+        }
       }
       dynamic "env" {
         for_each = each.key == "web" && var.enable_resend_secrets && var.resend_webhook_secret_version != "" ? [1] : []
@@ -86,12 +104,20 @@ resource "google_cloud_run_v2_service" "runtime" {
       condition     = !var.enable_worker_runtime || (var.enable_task_delivery && var.worker_origin != "" && var.worker_database_secret_id != "" && var.worker_database_secret_version != "")
       error_message = "Worker runtime requires task delivery, the exact worker origin, and a pinned existing database secret."
     }
+    precondition {
+      condition     = !var.enable_worker_bootstrap || (var.environment == "dev" && !var.enable_worker_runtime && !var.enable_task_delivery && var.worker_cloud_sql_instance == "")
+      error_message = "Worker bootstrap is dev-only and cannot enable runtime, delivery, or Cloud SQL access."
+    }
+    precondition {
+      condition     = var.worker_cloud_sql_instance == "" || var.enable_worker_runtime
+      error_message = "Worker Cloud SQL access requires the configured worker runtime."
+    }
     postcondition {
       condition     = each.key != "worker" || !var.enable_worker_runtime || self.uri == var.worker_origin
       error_message = "The configured worker origin must match the Cloud Run service URI."
     }
   }
-  depends_on = [google_secret_manager_secret_iam_member.resend, google_secret_manager_secret_iam_member.worker_database]
+  depends_on = [google_secret_manager_secret_iam_member.resend, google_secret_manager_secret_iam_member.worker_database, google_project_iam_member.worker_cloud_sql]
 }
 
 resource "google_storage_bucket" "media" {
