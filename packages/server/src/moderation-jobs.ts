@@ -19,7 +19,7 @@ export async function recordAcceptedAssessment(pool: pg.Pool, input: AcceptedAss
     (input.waitMilliseconds === null && input.shortcutRequested)) throw new Error('Invalid accepted assessment')
   const client = await pool.connect()
   try {
-    await client.query('BEGIN')
+    await client.query('BEGIN ISOLATION LEVEL READ COMMITTED')
     const revision = await client.query<{ idea_id: string }>(`SELECT r.idea_id FROM idea_revisions r
       JOIN ideas i ON i.id = r.idea_id WHERE r.id = $1 FOR UPDATE OF i, r`, [input.revisionId])
     if (!revision.rowCount) throw new Error('Revision not found')
@@ -101,6 +101,11 @@ export async function executeModerationJob(pool: pg.Pool, jobId: string, policy:
     [result.rows[0].idea_id, job.revisionId, job.assessmentId, job.assessmentReceivedAt, job.kind, job.scheduledAt])
     if (!eligible.rowCount) return 'stale'
     if (result.rows[0].blocked) throw new Error('Moderation is on hold')
+    // Query after acquiring the idea lock so a hold committed while this job
+    // waited is visible under READ COMMITTED. Other review blocks remain separate.
+    const hold = await client.query(`SELECT 1 FROM moderator_holds h JOIN idea_revisions r ON r.id = h.revision_id
+      WHERE r.idea_id = $1 AND h.released_at IS NULL`, [result.rows[0].idea_id])
+    if (hold.rowCount) throw new Error('Moderation is on hold')
     const decision = await policy(client, job)
     if (decision === 'retry') throw new Error('Moderation eligibility is unavailable')
     if (decision === 'stale') return 'stale'

@@ -85,6 +85,13 @@
       "when": 1793652298355,
       "tag": "0011_verified_ownership_claim",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793653341678,
+      "tag": "0012_moderator_holds",
+      "breakpoints": true
     }
   ]
 }
