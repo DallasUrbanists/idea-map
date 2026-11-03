@@ -7,6 +7,20 @@ The screen can place and release holds, request and resolve changes, and assign
 and transfer escalations. It does not offer approval or rejection while private
 media review is unavailable.
 
+## When to use this guide
+
+You can use these situations to decide whether this local test covers your change.
+
+| When this happens... | Use this guide to... |
+| --- | --- |
+| You change moderator holds or change requests. | Verify that a browser can record and resolve those actions through local authentication and database services while the idea stays private. |
+| You change moderator access checks. | Verify that revoking a moderator role clears displayed review content. |
+| You need reproducible reviewer-screen evidence. | Run the synthetic integration test with a fresh disposable database and clean up its services. |
+
+## Run the local test
+
+You should complete these steps from the repository root.
+
 1. Follow the [development setup](../contributor-guides/development-guide.md)
    and start this checkout's services with `pnpm dev:services`. Run
    `pnpm dev:status` and `pnpm dev:check`. Verify that `127.0.0.1:54329` and
