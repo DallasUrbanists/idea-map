@@ -241,7 +241,8 @@ For encrypted database export and restore, run the [synthetic recovery rehearsal
 The worker tests also exercise the Cloud Storage client against a credential-free
 loopback fake; they do not verify provider encryption or hosted permissions.
 Run `pnpm --filter @idea-map/server test:recovery-journal` for the unwired
-create-only journal transport. This does not test live decision coverage,
+journal record encoding, decoding, create-only transport, and conservative
+summary. This does not test live decision coverage,
 held-evidence capture, public-access gating, or recovery reconciliation.
 For the controlled-time delivery check, migrate another empty local disposable
 database, set `TEST_DATABASE_URL`, and run

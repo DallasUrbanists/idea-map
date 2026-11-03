@@ -39,7 +39,7 @@
     "dev:fixtures:clean": "node scripts/local-fixtures.mjs clean",
     "test:fixtures": "node --test scripts/local-fixtures.integration.mjs",
     "test:offline-job-delivery": "node scripts/offline-job-delivery.mjs",
-    "test:recovery-rehearsal": "node scripts/rehearse-database-recovery.mjs"
+    "test:recovery-rehearsal": "tsc --build packages/server && node scripts/rehearse-database-recovery.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "3.0.3",

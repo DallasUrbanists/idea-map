@@ -3,8 +3,8 @@
 Recovery operators need an independent record of removals and legal-hold
 decisions made after a database backup. This design uses the foundation's private
 backup bucket when it is provisioned and keeps PostgreSQL as the application's
-authority. Only an unwired storage transport is implemented; a restored service
-must remain isolated until its decisions
+authority. Only unwired record, storage, and conservative summary components
+are implemented; a restored service must remain isolated until its decisions
 can be reconciled and the [recovery procedure](../contributor-guides/backup-recovery.md)
 is satisfied.
 
@@ -34,13 +34,25 @@ be able to create, update, or delete journal records; the journal writer must
 not be able to change backup archives or completion records. Review inherited
 grants and deny policies as well as the explicitly scoped grants.
 
-The server package contains a create-only storage transport for a prevalidated
-private JSON record. It bounds record size and write time, uses an opaque
+The server package contains an encoder and decoder for version-one intent and
+commit confirmation records, a create-only transport for private JSON, and an
+unverified recovery summary. The
+encoder checks required fields and sizes but cannot verify authority, legal
+meaning, or whether a reason or reference is non-sensitive; its caller must
+establish those facts. The decoder rejects unknown versions, extra fields,
+duplicate keys, noncanonical bytes, and a different environment. Preserve the
+version-one encoding when extending the format; a failed decode keeps recovery
+isolated. The transport bounds record size and write time, uses an opaque
 caller-supplied record ID and a create-only precondition, and treats provider
-errors and timeouts as uncertain. It does not validate decision authority or
-record schema, read existing records, guard mutation paths, capture held
-material, establish coverage, or reconcile a restore. It is not connected to
-live removal or hold operations and is not sufficient to enable them.
+errors and timeouts as uncertain. The summary conservatively identifies ideas
+in removal and hold-placement intents, flags unconfirmed operations and all hold
+releases for authorized review, and reports confirmations without intents. It
+never establishes inventory coverage, removes a hold, changes a database, or
+authorizes public access. Its output contains private identifiers and must not
+be written to public logs. These components do not read existing records, guard
+mutation paths, capture held material, establish coverage, or reconcile a
+restore. They are not connected to live removal or hold operations and are not
+sufficient to enable them.
 
 ## Record and access
 

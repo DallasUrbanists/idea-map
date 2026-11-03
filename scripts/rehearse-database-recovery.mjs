@@ -4,9 +4,13 @@ import { createReadStream, createWriteStream } from 'node:fs'
 import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
+import { Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { dumpArguments, exportEncryptedBackup } from '../apps/worker/ops/export-encrypted-backup.mjs'
+import { encodeRecoveryConfirmation, encodeRecoveryIntent } from '../packages/server/dist/recovery-journal-record.js'
+import { summarizeUnverifiedRecovery } from '../packages/server/dist/recovery-journal-plan.js'
+import { writeRecoveryJournalRecord } from '../packages/server/dist/recovery-journal-storage.js'
 
 // The rehearsal owns every target it creates. It has no database or bucket inputs.
 const id = randomUUID()
@@ -72,6 +76,8 @@ try {
   await run(packageManager, migrateArgs, undefined, { env: { ...process.env, DATABASE_URL: databaseUrl } })
   await sql(source, `CREATE TABLE synthetic_recovery_marker (id text PRIMARY KEY, recorded_at timestamptz NOT NULL DEFAULT clock_timestamp()); INSERT INTO synthetic_recovery_marker(id) VALUES ('${marker}-before'); INSERT INTO contacts(normalized_email) VALUES ('${marker}@example.invalid'); INSERT INTO ideas(author_contact_id,publication_state) SELECT id,'approved' FROM contacts WHERE normalized_email='${marker}@example.invalid'`)
   await sql(source, `INSERT INTO idea_revisions(idea_id,version,content,review_state) SELECT i.id,1,'{"title":"Synthetic title","description":"Synthetic description"}'::jsonb,'approved' FROM ideas i JOIN contacts c ON c.id=i.author_contact_id WHERE c.normalized_email='${marker}@example.invalid'; INSERT INTO approved_revisions(idea_id,revision_id) SELECT r.idea_id,r.id FROM idea_revisions r JOIN ideas i ON i.id=r.idea_id JOIN contacts c ON c.id=i.author_contact_id WHERE c.normalized_email='${marker}@example.invalid'`)
+  const ideaId = await sql(source, `SELECT i.id FROM ideas i JOIN contacts c ON c.id=i.author_contact_id WHERE c.normalized_email='${marker}@example.invalid'`)
+  const revisionId = await sql(source, `SELECT r.id FROM idea_revisions r WHERE r.idea_id='${ideaId}'`)
   await sql(source, `CREATE ROLE ${reader} NOLOGIN; GRANT EXECUTE ON FUNCTION public.place_legal_hold_outcome(text,text,uuid,text,text) TO ${reader}`)
   const captured = await sql(source, `SELECT extract(epoch FROM recorded_at) * 1000 FROM synthetic_recovery_marker WHERE id='${marker}-before'`)
   const dumpStarted = Date.now()
@@ -99,9 +105,38 @@ try {
   await exportEncryptedBackup({ environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789', databaseUrl },
     { start: startSyntheticDump, storage, now: new Date('2026-11-03T00:00:00Z') })
   const backupFinished = Date.now()
-  await sql(source, `INSERT INTO synthetic_recovery_marker(id) VALUES ('${marker}-after'); UPDATE ideas SET publication_state='withdrawn' WHERE author_contact_id=(SELECT id FROM contacts WHERE normalized_email='${marker}@example.invalid')`)
-  await sql(source, `INSERT INTO users(id) VALUES ('${director}'); INSERT INTO identities(user_id,provider,subject) VALUES ('${director}','firebase:demo-idea-map','${marker}'); INSERT INTO legal_hold_assignments(user_id,authority,authorization_reference,granted_by) VALUES ('${director}','executive_director','synthetic authority','${director}')`)
-  const holdOutcome = await sql(source, `SELECT public.place_legal_hold_outcome('firebase:demo-idea-map','${marker}',(SELECT i.id FROM ideas i JOIN contacts c ON c.id=i.author_contact_id WHERE c.normalized_email='${marker}@example.invalid'),'synthetic case','synthetic preservation')`)
+  await sql(source, `INSERT INTO synthetic_recovery_marker(id) VALUES ('${marker}-after'); INSERT INTO users(id) VALUES ('${director}'); INSERT INTO identities(user_id,provider,subject) VALUES ('${director}','firebase:demo-idea-map','${marker}'); INSERT INTO moderator_assignments(user_id,granted_by,grant_reason) VALUES ('${director}','${director}','synthetic grant'); INSERT INTO legal_hold_assignments(user_id,authority,authorization_reference,granted_by) VALUES ('${director}','executive_director','synthetic authority','${director}')`)
+  const entries = []
+  const journal = { bucket: () => ({ file: () => ({ createWriteStream(options) {
+    if (options.preconditionOpts.ifGenerationMatch !== 0 || options.validation !== 'crc32c') throw new Error('Synthetic journal safeguards missing')
+    const chunks = []
+    return new Writable({ write(chunk, _encoding, callback) { chunks.push(Buffer.from(chunk)); callback() },
+      final(callback) { entries.push(Buffer.concat(chunks)); callback() } })
+  } }) }) }
+  const journalTarget = { environment: 'dev', bucket: 'synthetic-private-backups' }
+  const removalOperation = randomUUID()
+  const holdOperation = randomUUID()
+  const authorizedAt = new Date().toISOString()
+  const base = { environment: 'dev', ideaId, actorId: director, authorizedAt }
+  const previousEmulator = process.env.STORAGE_EMULATOR_HOST
+  delete process.env.STORAGE_EMULATOR_HOST
+  try {
+    await writeRecoveryJournalRecord(journal, journalTarget, randomUUID(), encodeRecoveryIntent({ ...base, operationId: removalOperation,
+      decision: { kind: 'removal', classification: 'other', reason: 'synthetic removal' } }))
+    await writeRecoveryJournalRecord(journal, journalTarget, randomUUID(), encodeRecoveryIntent({ ...base, operationId: holdOperation,
+      decision: { kind: 'hold_placement', caseReference: 'synthetic case', reason: 'synthetic preservation',
+        authorizationReference: 'synthetic authority', scope: 'synthetic idea' } }))
+    const removed = await sql(source, `SELECT public.remove_published_idea('firebase:demo-idea-map','${marker}','${ideaId}','${revisionId}','other','synthetic removal')`)
+    if (removed !== 'removed') throw new Error('Synthetic removal failed')
+    const holdOutcome = await sql(source, `SELECT public.place_legal_hold_outcome('firebase:demo-idea-map','${marker}','${ideaId}','synthetic case','synthetic preservation')`)
+    if (holdOutcome !== 'processed') throw new Error('Synthetic legal hold failed')
+    const confirmedAt = new Date().toISOString()
+    await writeRecoveryJournalRecord(journal, journalTarget, randomUUID(), encodeRecoveryConfirmation(removalOperation, 'dev', confirmedAt))
+    await writeRecoveryJournalRecord(journal, journalTarget, randomUUID(), encodeRecoveryConfirmation(holdOperation, 'dev', confirmedAt))
+  } finally {
+    if (previousEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
+    else process.env.STORAGE_EMULATOR_HOST = previousEmulator
+  }
   const latest = await sql(source, `SELECT extract(epoch FROM recorded_at) * 1000 FROM synthetic_recovery_marker WHERE id='${marker}-after'`)
   const namedPrivilege = `SELECT has_function_privilege('${reader}','public.place_legal_hold_outcome(text,text,uuid,text,text)','EXECUTE')`
   const sourceNamedExecute = await sql(source, namedPrivilege)
@@ -130,16 +165,26 @@ try {
   const holdQuery = `SELECT count(*) FROM legal_holds h JOIN ideas i ON i.id=h.idea_id JOIN contacts c ON c.id=i.author_contact_id WHERE c.normalized_email='${marker}@example.invalid' AND h.released_at IS NULL`
   const sourceHolds = await sql(source, holdQuery)
   const restoredHolds = await sql(target, holdQuery)
+  const summary = summarizeUnverifiedRecovery(entries, 'dev')
+  if (summary.coverageVerified !== false || summary.removals.length !== 1 || summary.removals[0] !== ideaId ||
+      summary.holdPlacements.length !== 1 || summary.holdPlacements[0] !== ideaId || summary.reviewOperations.length !== 0 || summary.unmatchedConfirmations !== 0) {
+    throw new Error('Synthetic journal summary failed verification')
+  }
+  // This conservative local update suppresses the known removal while the
+  // target stays isolated. It is not a complete live reconciliation procedure.
+  await sql(target, `UPDATE ideas SET publication_state='withdrawn' WHERE id='${ideaId}'`)
+  const reconciledVisible = await sql(target, visibleQuery)
   const functionPrivilege = "SELECT has_function_privilege('public','public.place_legal_hold_outcome(text,text,uuid,text,text)','EXECUTE')"
   const sourcePublicExecute = await sql(source, functionPrivilege)
   const restoredPublicExecute = await sql(target, functionPrivilege)
   const restoredNamedExecute = await sql(target, namedPrivilege)
-  if (restored !== '1' || excluded !== '0' || postgis !== '1' || ideas !== '1' || Number(migrations) < 1 || sourceVisible !== '0' || restoredVisible !== '1' || holdOutcome !== 'processed' || sourceHolds !== '1' || restoredHolds !== '0' || sourcePublicExecute !== 'f' || restoredPublicExecute !== 'f' || sourceNamedExecute !== 't' || restoredNamedExecute !== 't') throw new Error('Restored synthetic database failed verification')
+  if (restored !== '1' || excluded !== '0' || postgis !== '1' || ideas !== '1' || Number(migrations) < 1 || sourceVisible !== '0' || restoredVisible !== '1' || reconciledVisible !== '0' || sourceHolds !== '1' || restoredHolds !== '0' || sourcePublicExecute !== 'f' || restoredPublicExecute !== 'f' || sourceNamedExecute !== 't' || restoredNamedExecute !== 't') throw new Error('Restored synthetic database failed verification')
   const lossMs = Number(latest) - Number(captured)
   if (!Number.isFinite(lossMs) || lossMs < 0) throw new Error('Synthetic data-loss interval could not be measured')
   console.log(JSON.stringify({ backupSeconds: (backupFinished - dumpStarted) / 1000,
     recoverySeconds: (Date.now() - recoveryStarted) / 1000, dataLossSeconds: lossMs / 1000,
-    migrations: Number(migrations), postgisRestored: true, staleDecisionsRequireReconciliation: true, syntheticGrantAndRevocationRestored: true, missingRoleRejected: true }))
+    migrations: Number(migrations), postgisRestored: true, syntheticRemovalSuppressed: true, heldEvidenceRequiresReconciliation: true,
+    journalCoverageVerified: false, syntheticGrantAndRevocationRestored: true, missingRoleRejected: true }))
 } finally {
   try {
     if (created) {

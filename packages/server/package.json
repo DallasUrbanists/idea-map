@@ -26,7 +26,7 @@
     "db:generate": "drizzle-kit generate",
     "test:registered-drafts": "tsc --build && node --test test/registered-drafts.test.mjs test/registered-submissions.test.mjs",
     "test:resend": "tsc --build && node --test test/resend.test.mjs",
-    "test:recovery-journal": "tsc --build && node --test test/recovery-journal-storage.test.mjs",
+    "test:recovery-journal": "tsc --build && node --test test/recovery-journal-storage.test.mjs test/recovery-journal-record.test.mjs test/recovery-journal-plan.test.mjs",
     "test:media": "tsc --build && node --test test/media-upload.test.mjs",
     "test:outbox": "tsc --build && node --test test/outbox.test.mjs",
     "test:moderation-schedule": "tsc --build && node --test test/moderation-schedule.test.mjs",
