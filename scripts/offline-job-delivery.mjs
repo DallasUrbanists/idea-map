@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
+import { offlinePnpmCommand } from './offline-job-command.mjs'
 
 // This runner creates and removes only its own disposable container and databases.
 const name = `idea-map-offline-jobs-${randomUUID()}`
@@ -44,8 +45,10 @@ try {
     const url = `postgres://idea_map:local-only@127.0.0.1:${match[1]}/${database}`
     const env = { ...process.env, DATABASE_URL: url, TEST_DATABASE_URL: url }
     console.log(`Running ${task} against a disposable local database`)
-    run('pnpm', ['--filter', '@idea-map/server', 'db:migrate'], { env, stdio: 'inherit' })
-    run('pnpm', ['--filter', filter, task], { env, stdio: 'inherit' })
+    for (const [packageName, script] of [['@idea-map/server', 'db:migrate'], [filter, task]]) {
+      const invocation = offlinePnpmCommand(process.platform, packageName, script)
+      run(invocation.command, invocation.args, { env, stdio: 'inherit' })
+    }
   }
   console.log('Offline job-delivery scenarios passed; no real tasks or email were sent.')
 } catch (error) {
