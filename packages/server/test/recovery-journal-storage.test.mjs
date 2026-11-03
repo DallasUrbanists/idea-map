@@ -195,3 +195,11 @@ test('journal inventory discovers bounded exact generations without asserting co
   await assert.rejects(listUnverifiedRecoveryJournal(storageFor([new Error('synthetic sensitive provider error')]), target), error =>
     error.message === 'Journal inventory could not be verified' && !error.message.includes('sensitive'))
 })
+
+test('journal inventory fails closed when listing does not respond', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const storage = { bucket: () => ({ getFiles: () => new Promise(() => {}) }) }
+  const rejected = assert.rejects(listUnverifiedRecoveryJournal(storage, target), /could not be verified/)
+  t.mock.timers.tick(5000)
+  await rejected
+})

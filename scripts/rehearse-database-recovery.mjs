@@ -4,13 +4,16 @@ import { createReadStream, createWriteStream } from 'node:fs'
 import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
-import { Writable } from 'node:stream'
+import { Readable, Writable } from 'node:stream'
+import { createRequire } from 'node:module'
 import { pipeline } from 'node:stream/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { dumpArguments, exportEncryptedBackup } from '../apps/worker/ops/export-encrypted-backup.mjs'
 import { encodeRecoveryConfirmation, encodeRecoveryHoldConfirmation, encodeRecoveryIntent } from '../packages/server/dist/recovery-journal-record.js'
 import { summarizeUnverifiedRecovery } from '../packages/server/dist/recovery-journal-plan.js'
-import { writeRecoveryJournalRecord } from '../packages/server/dist/recovery-journal-storage.js'
+import { listUnverifiedRecoveryJournal, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../packages/server/dist/recovery-journal-storage.js'
+
+const { CRC32C } = createRequire(new URL('../packages/server/package.json', import.meta.url))('@google-cloud/storage')
 
 // The rehearsal owns every target it creates. It has no database or bucket inputs.
 const id = randomUUID()
@@ -106,14 +109,48 @@ try {
     { start: startSyntheticDump, storage, now: new Date('2026-11-03T00:00:00Z') })
   const backupFinished = Date.now()
   await sql(source, `INSERT INTO synthetic_recovery_marker(id) VALUES ('${marker}-after'); INSERT INTO idea_revisions(idea_id,version,content) VALUES ('${ideaId}',2,'{"title":"Synthetic later held material"}'::jsonb); INSERT INTO users(id) VALUES ('${director}'); INSERT INTO identities(user_id,provider,subject) VALUES ('${director}','firebase:demo-idea-map','${marker}'); INSERT INTO moderator_assignments(user_id,granted_by,grant_reason) VALUES ('${director}','${director}','synthetic grant'); INSERT INTO legal_hold_assignments(user_id,authority,authorization_reference,granted_by) VALUES ('${director}','executive_director','synthetic authority','${director}')`)
-  const entries = []
-  const journal = { bucket: () => ({ file: () => ({ createWriteStream(options) {
-    if (options.preconditionOpts.ifGenerationMatch !== 0 || options.validation !== 'crc32c') throw new Error('Synthetic journal safeguards missing')
-    const chunks = []
-    return new Writable({ write(chunk, _encoding, callback) { chunks.push(Buffer.from(chunk)); callback() },
-      final(callback) { entries.push(Buffer.concat(chunks)); callback() } })
-  } }) }) }
   const journalTarget = { environment: 'dev', bucket: 'synthetic-private-backups' }
+  const entries = new Map()
+  const journal = { bucket: bucket => {
+    if (bucket !== journalTarget.bucket) throw new Error('Unexpected synthetic journal bucket')
+    return { async getFiles(query) {
+      if (query.prefix !== 'idea-map-v2/dev/recovery-journal/' || query.versions !== true || query.autoPaginate !== false ||
+          (query.pageToken !== undefined && query.pageToken !== 'second')) throw new Error('Unexpected synthetic journal inventory')
+      const objects = [...entries.values()].sort((a, b) => a.metadata.name.localeCompare(b.metadata.name))
+      return query.pageToken ? [objects.slice(2), null] : [objects.slice(0, 2), objects.length > 2 ? { pageToken: 'second' } : null]
+    }, file(name) {
+      const file = { interceptors: [], createWriteStream(options) {
+        if (options.preconditionOpts.ifGenerationMatch !== 0 || options.validation !== 'crc32c') throw new Error('Synthetic journal safeguards missing')
+        const chunks = []
+        return new Writable({ write(chunk, _encoding, callback) { chunks.push(Buffer.from(chunk)); callback() },
+          final(callback) {
+            if (entries.has(name)) return callback(new Error('Synthetic journal already exists'))
+            const body = Buffer.concat(chunks)
+            const checksum = new CRC32C()
+            checksum.update(body)
+            entries.set(name, { body, metadata: { name, bucket, generation: String(90071992547409931234n + BigInt(entries.size)),
+              metageneration: '1', size: String(body.length), contentType: 'application/json', crc32c: checksum.toString() } })
+            callback()
+          } })
+      }, createReadStream(options) {
+        const entry = entries.get(name)
+        const request = file.interceptors[0]?.request({ uri: '/synthetic', qs: {} })
+        if (!entry || options.validation !== 'crc32c' || options.decompress !== false ||
+            request?.qs?.generation !== entry.metadata.generation || request.qs.ifGenerationMatch !== entry.metadata.generation) {
+          throw new Error('Unexpected synthetic journal read')
+        }
+        const checksum = new CRC32C()
+        checksum.update(entry.body)
+        if (!checksum.validate(entry.metadata.crc32c)) throw new Error('Synthetic journal checksum mismatch')
+        const stream = Readable.from([entry.body])
+        process.nextTick(() => stream.emit('response', { toJSON: () => ({ headers: {
+          'x-goog-stored-content-encoding': 'identity', 'x-goog-hash': `crc32c=${entry.metadata.crc32c}`,
+        } }) }))
+        return stream
+      } }
+      return file
+    } }
+  } }
   const removalOperation = randomUUID()
   const holdOperation = randomUUID()
   let committedHoldId
@@ -179,7 +216,21 @@ try {
   const laterRevisionQuery = `SELECT count(*) FROM idea_revisions WHERE idea_id='${ideaId}' AND version=2`
   const sourceLaterRevision = await sql(source, laterRevisionQuery)
   const restoredLaterRevision = await sql(target, laterRevisionQuery)
-  const summary = summarizeUnverifiedRecovery(entries, 'dev')
+  let summary
+  const inventoryEmulator = process.env.STORAGE_EMULATOR_HOST
+  delete process.env.STORAGE_EMULATOR_HOST
+  try {
+    const inventory = await listUnverifiedRecoveryJournal(journal, journalTarget)
+    if (inventory.coverageVerified !== false || inventory.softDeletedChecked !== false || inventory.references.length !== 4) {
+      throw new Error('Synthetic journal inventory failed verification')
+    }
+    const records = await Promise.all(inventory.references.map(reference =>
+      readRecoveryJournalRecord(journal, journalTarget, reference.recordId, reference.generation)))
+    summary = summarizeUnverifiedRecovery(records, 'dev')
+  } finally {
+    if (inventoryEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
+    else process.env.STORAGE_EMULATOR_HOST = inventoryEmulator
+  }
   if (summary.coverageVerified !== false || summary.removals.length !== 1 || summary.removals[0] !== ideaId ||
       summary.holdPlacements.length !== 1 || summary.holdPlacements[0] !== ideaId || summary.holdIdentities.length !== 1 ||
       summary.holdIdentities[0].operationId !== holdOperation || summary.holdIdentities[0].ideaId !== ideaId ||
