@@ -145,13 +145,21 @@ the removal, journal continuity, and all other pending decisions.
 
 Closing the gate only after a failed journal call is insufficient: the process
 can stop after an authorized decision or an ambiguous write and before it closes
-the gate. The removal protocol needs a durable protective boundary that survives
-that interruption and prevents public access whenever the decision is pending.
-It must also coordinate requests already in flight. Whether the existing access
-paths can provide that boundary without interrupting ordinary successful removals
-remains unverified; do not enable the integration until the complete ordering is
-implemented and tested. A timeout, process termination, or lost database commit
-response must not silently reopen access or discard the pending decision.
+the gate. Close public access and durably record the authorized pending decision
+in the same protected transaction before attempting the journal write. Public
+idea and media access briefly pauses for successful removals too. Keep it closed
+if the write or commit is uncertain,
+and reopen it only after the decision and journal are reconciled. Concurrent
+removals must not reopen the gate while another decision remains pending.
+
+This boundary must coordinate requests already in flight, including responses
+that have read content but have not finished delivery. An unreadable or missing
+gate state must deny access, and all public serving paths must honor it. A
+timeout, process termination, or lost database commit response must not silently
+reopen access or discard the pending decision. Do not enable live integration
+until the complete ordering, access boundaries, and failure cases are implemented
+and tested. If the pending transaction's outcome cannot be established, an
+independent fail-closed fence must remain in place until authorized reconciliation.
 
 The gate and pending state need a guarded transaction and must cover every
 public read, projection, and media delivery path. A restored older database may
