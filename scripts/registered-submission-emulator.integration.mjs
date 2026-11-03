@@ -2,12 +2,12 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { test } from 'node:test'
+import { requireLocalTestDatabase } from './local-test-database.mjs'
 import { firebaseAdmin } from '../apps/web/server/utils/firebase-admin.ts'
 import { allocateRegisteredDraftMedia, createRegisteredDraft, finalizeRegisteredDraftMedia, freezeRegisteredDraft, registeredSubmissionTermsVersion, submitRegisteredDraft } from '../packages/server/dist/registered-drafts.js'
 
-const databaseUrl = process.env.TEST_DATABASE_URL
+const databaseUrl = requireLocalTestDatabase(process.env.TEST_DATABASE_URL)
 const host = process.env.FIREBASE_AUTH_EMULATOR_HOST
-if (!databaseUrl || !['localhost', '127.0.0.1', '[::1]'].includes(new URL(databaseUrl).hostname) || !new URL(databaseUrl).pathname.startsWith('/idea_map_test_')) throw new Error('A local disposable test database is required')
 if (!/^(?:localhost|127\.0\.0\.1):\d{1,5}$/.test(host || '')) throw new Error('A local Firebase Auth emulator is required')
 const require = createRequire(new URL('../packages/server/package.json', import.meta.url))
 const { Pool } = require('pg')

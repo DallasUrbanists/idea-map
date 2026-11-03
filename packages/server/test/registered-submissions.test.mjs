@@ -3,10 +3,11 @@ import { createHash, randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
 import pg from 'pg'
+import { requireLocalTestDatabase } from '../../../scripts/local-test-database.mjs'
 import { allocateRegisteredDraftMedia, createRegisteredDraft, finalizeRegisteredDraftMedia, freezeRegisteredDraft, registeredSubmissionTermsVersion, reviseRegisteredDraft, submitRegisteredDraft } from '../dist/registered-drafts.js'
+import { claimVerifiedOwnership } from '../dist/verified-ownership.js'
 
-const url = process.env.TEST_DATABASE_URL
-if (!url || !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname) || !new URL(url).pathname.startsWith('/idea_map_test_')) throw new Error('Local disposable database required')
+const url = requireLocalTestDatabase(process.env.TEST_DATABASE_URL)
 const verifier = (uid, provider = 'password') => ({
   async verifySessionCookie() { return { uid, email: `${uid}@example.invalid`, email_verified: true, firebase: { sign_in_provider: provider } } },
   async getUser() { return { uid, email: `${uid}@example.invalid`, emailVerified: true, disabled: false } },
@@ -98,4 +99,45 @@ test('media changed while verification is in flight cannot be submitted', async 
     assert.equal((await pending).state, 'incomplete')
     assert.equal((await pool.query('SELECT count(*)::int n FROM registered_submissions WHERE draft_id=$1', [draft.id])).rows[0].n, 0)
   } finally { await pool.end() }
+})
+
+test('first submission and ownership claim serialize creation of the same verified identity', async () => {
+  const pool = new pg.Pool({ connectionString: url, max: 4 }); const uid = 'submit-claim-race'; const owner = context(uid)
+  let release
+  try {
+    const draft = await frozenDraft(owner)
+    const contact = (await pool.query('INSERT INTO contacts(normalized_email) VALUES ($1) RETURNING id', [`${uid}@example.invalid`])).rows[0].id
+    const target = (await pool.query('INSERT INTO ideas(author_contact_id) VALUES ($1) RETURNING id', [contact])).rows[0].id
+    assert.equal((await pool.query('SELECT count(*)::int n FROM identities WHERE provider=$1 AND subject=$2', ['firebase:demo-idea-map', uid])).rows[0].n, 0)
+    let signal; let calls = 0
+    const entered = new Promise(resolve => { signal = resolve }); const wait = new Promise(resolve => { release = resolve })
+    owner.verifier.getUser = async () => {
+      if (++calls === 4) { signal(); await wait }
+      return { uid, email: `${uid}@example.invalid`, emailVerified: true, disabled: false }
+    }
+    const submission = submitRegisteredDraft(owner, request(draft.id), good)
+    await entered
+    const claim = claimVerifiedOwnership(url, 'demo-idea-map', 'synthetic', verifier(uid), target)
+      .then(value => ({ value }), error => ({ error }))
+    let blocked = false
+    try {
+      for (let attempt = 0; attempt < 100 && !blocked; attempt++) {
+        const waiting = await pool.query(`SELECT 1 FROM pg_stat_activity WHERE datname=current_database()
+          AND query LIKE 'SELECT public.claim_verified_idea%' AND wait_event_type='Lock'`)
+        blocked = waiting.rowCount > 0
+        if (!blocked) await new Promise(resolve => setTimeout(resolve, 20))
+      }
+      assert.ok(blocked, 'ownership claim did not overlap the uncommitted submission')
+    } finally { release() }
+    const accepted = await submission
+    const claimed = await claim
+    if (claimed.error) throw claimed.error
+    assert.equal(accepted.state, 'ok'); assert.equal(claimed.value, 'processed')
+    const identities = (await pool.query('SELECT id,user_id FROM identities WHERE provider=$1 AND subject=$2', ['firebase:demo-idea-map', uid])).rows
+    assert.equal(identities.length, 1)
+    const rows = (await pool.query('SELECT id,owner_id FROM ideas WHERE id=ANY($1::uuid[])', [[target, accepted.value.ideaId]])).rows
+    assert.equal(rows.length, 2); assert.ok(rows.every(row => row.owner_id === identities[0].user_id))
+    const evidence = (await pool.query('SELECT user_id,verified_identity_id FROM ownership_claims WHERE idea_id=$1', [target])).rows[0]
+    assert.equal(evidence.user_id, identities[0].user_id); assert.equal(evidence.verified_identity_id, identities[0].id)
+  } finally { if (release) release(); await pool.end() }
 })

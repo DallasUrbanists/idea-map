@@ -220,8 +220,9 @@ export async function submitRegisteredDraft(context: Context, request: Submissio
   if (frozen.state !== 'ok') return frozen
   if (frozen.value.canonical !== observed.rows[0].frozen_manifest) return { state: 'incomplete' }
   return transact(pool, async client => {
-    // Serialize identity creation and concurrent submissions without trusting email as an account key.
-    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [JSON.stringify([provider, identity.uid])])
+    // Match claim_verified_idea's JSONB lock key so both paths serialize identity creation.
+    await client.query(`SELECT pg_catalog.pg_advisory_xact_lock(
+      pg_catalog.hashtextextended(pg_catalog.jsonb_build_array($1::text, $2::text)::text, 0))`, [provider, identity.uid])
     const saved = await prior(client)
     if (saved) {
       if (!await current(context, identity)) throw new Error('Identity changed during submission')
