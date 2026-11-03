@@ -72,12 +72,16 @@ docker build -f dev/Dockerfile.browser-ci -t idea-map-browser-ci .
 docker run --rm --init idea-map-browser-ci
 ```
 
-The Node base image is pinned by digest, pnpm and the JavaScript dependencies
-are locked, but Debian's Chromium package is selected at image build time and
-can change. Record the built image and Chromium version when comparing runs;
-this is not a fully pinned browser image. Native development is unchanged. The
-browser container requires no hosted credentials or services. For a proxy with a
-custom CA, pass `--secret id=proxy_ca,src="$CODEX_PROXY_CERT"` to the build.
+The Node and Chromium headless-shell base images are pinned by digest; the
+browser image includes its operating-system libraries. The browser is the
+Chromedp project’s modified Chromium headless shell, not Playwright’s bundled
+browser; manual and other browser checks remain separate. The pinned browser
+image is for Linux amd64, matching the hosted runner. pnpm and JavaScript dependencies
+are locked. The workflow records the image ID and Chromium version; update the
+browser digest through a reviewed change and rerun the checks to receive fixes.
+Native development is unchanged. The browser container requires no hosted
+credentials or services. For a proxy with a custom CA, pass
+`--secret id=proxy_ca,src="$CODEX_PROXY_CERT"` to the build.
 
 The dependency-audit workflow checks production dependencies at high severity or
 above on pull requests, main, and weekly. Run `pnpm audit --prod --audit-level

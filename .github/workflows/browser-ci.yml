@@ -16,6 +16,6 @@ jobs:
       - name: Record browser and image
         run: |
           docker image inspect --format '{{.Id}}' idea-map-browser-ci
-          docker run --rm --entrypoint chromium idea-map-browser-ci --version
+          docker run --rm --entrypoint /headless-shell/headless-shell idea-map-browser-ci --version
       - name: Run focused dialog checks
         run: docker run --rm --init idea-map-browser-ci
