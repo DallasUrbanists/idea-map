@@ -50,6 +50,16 @@ test('bootstrap, forward migrations, ownership constraints and PostGIS', async (
     await writeFile(journalPath, JSON.stringify(journal))
     await migrate(db, { migrationsFolder: initial })
     assert.ok((await client.query("SELECT to_regprocedure('public.place_legal_hold_outcome(text,text,uuid,text,text)') AS fn")).rows[0].fn)
+    // Reproduce an upgrade from the reviewed moderator-decision stack as well.
+    const decisionIndex = allEntries.findIndex(entry => entry.tag === '0022_change_request_retention')
+    assert.ok(decisionIndex > baseIndex)
+    journal.entries = allEntries.slice(0, decisionIndex + 1)
+    for (const entry of journal.entries.slice(baseIndex + 1)) {
+      await cp(join(migrations, `${entry.tag}.sql`), join(initial, `${entry.tag}.sql`))
+    }
+    await writeFile(journalPath, JSON.stringify(journal))
+    await migrate(db, { migrationsFolder: initial })
+    assert.equal((await client.query('SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations')).rows[0].count, decisionIndex + 1)
     await migrate(db, { migrationsFolder: migrations })
     await migrate(db, { migrationsFolder: migrations })
     assert.equal((await client.query('SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations')).rows[0].count, expectedMigrations)
