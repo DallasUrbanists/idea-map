@@ -302,3 +302,38 @@ export const mediaPreviews = pgTable('media_previews', {
   check('media_previews_generation_format', sql`${table.generation} ~ '^[1-9][0-9]*$'`),
   check('media_previews_content_type', sql`${table.contentType} IN ('image/jpeg', 'image/png', 'image/webp')`),
 ])
+
+// Registered-only draft preparation; this is not an accepted submission.
+export const registeredDrafts = pgTable('registered_drafts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  provider: text('provider').notNull(),
+  subject: text('subject').notNull(),
+  creationKey: uuid('creation_key').notNull(),
+  creationDigest: text('creation_digest').notNull(),
+  revision: integer('revision').notNull().default(1),
+  content: jsonb('content').notNull(),
+  expectedMedia: integer('expected_media').notNull(),
+  frozenManifest: text('frozen_manifest'),
+  createdAt: createdAt(),
+}, table => [
+  uniqueIndex('registered_drafts_creation_key').on(table.provider, table.subject, table.creationKey),
+  check('registered_drafts_creation_digest', sql`${table.creationDigest} ~ '^[a-f0-9]{64}$'`),
+  check('registered_drafts_revision_positive', sql`${table.revision} > 0`),
+  check('registered_drafts_media_count', sql`${table.expectedMedia} between 0 and 10`),
+])
+export const registeredDraftMedia = pgTable('registered_draft_media', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  draftId: uuid('draft_id').notNull().references(() => registeredDrafts.id),
+  revision: integer('revision').notNull(),
+  slot: integer('slot').notNull(),
+  objectName: text('object_name').notNull(),
+  generation: text('generation'),
+  digest: text('digest'),
+  createdAt: createdAt(),
+}, table => [
+  uniqueIndex('registered_draft_media_slot_key').on(table.draftId, table.revision, table.slot),
+  uniqueIndex('registered_draft_media_object_key').on(table.objectName),
+  check('registered_draft_media_slot', sql`${table.slot} between 0 and 9`),
+  check('registered_draft_media_revision', sql`${table.revision} > 0`),
+  check('registered_draft_media_evidence', sql`(${table.generation} IS NULL AND ${table.digest} IS NULL) OR (${table.generation} IS NOT NULL AND ${table.digest} IS NOT NULL AND ${table.generation} ~ '^[1-9][0-9]*$' AND ${table.digest} ~ '^[a-f0-9]{64}$')`),
+])
