@@ -61,7 +61,16 @@ node --test scripts/compliance-candidate.test.mjs
 ```
 
 The evaluation prints the per-case scores or unavailable state and aggregate
-counts. Training and evaluation rows are separate, but both were authored for
+counts, including incomplete cases that scored and violations reaching the
+trusted-user shortcut for each history count from zero through ten. Group
+counts include labelled denominators, unavailable results, and compliant cases
+sent to human review. These shortcut counts assume a verified owner and a known
+history only for comparison; they do not establish either condition. A case
+with a null reference in this fixture is expected to be unavailable. The report
+rejects malformed rows and duplicate case IDs; it does not decide whether a
+method or evaluation set is acceptable.
+
+Training and evaluation rows are separate, but both were authored for
 this experiment by the same contributor. They contain no real submissions,
 photos, provider calls, or independently verified provider outputs. The case
 names describe intended scenarios rather than actual text or images.
@@ -74,6 +83,9 @@ under the 60% threshold; eight need human review or have no score. One of the
 three scored cases labelled as violations is eligible for automatic approval,
 and one of the four scored cases labelled compliant is sent to human review.
 No violating case in this tiny fixture reaches the 95% instant threshold.
+None reaches the trusted-user shortcut thresholds for zero through ten prior
+approvals, and none of the five incomplete cases receives a score. The separate
+60% automatic-approval failure still disqualifies this candidate from use.
 
 The low-signal threat case is scored about 87.5% despite its violation label.
 The civic-criticism case is scored about 41.9% despite its compliant label.
@@ -115,9 +127,17 @@ content; this offline experiment does not authorize provider use.
 Before proposing a production method, reviewers need independently labelled,
 representative and consented or synthetic examples with documented provenance,
 separate development and evaluation sets, and explicit checks for each policy
-rule and required medium. They should establish and approve measurable limits
-for missed violations, false flags, calibration, subgroup performance, moderator
-capacity, and provider failures before evaluating a candidate against them.
+rule and required medium. The maintainer selected zero labelled violations
+reaching any automatic-approval range as a minimum requirement for the agreed
+evaluation set. A set without labelled violations cannot demonstrate this
+minimum. The report shows this observation without deciding whether the set is
+agreed, representative, or sufficient. The current experiment has a known miss
+and fails the minimum.
+
+Reviewers must also establish and approve measurable limits for false flags,
+calibration, subgroup performance, moderator capacity, and provider failures.
+They must review provider handling and uncertainty before accepting a method.
+Zero known misses alone is not proof of safety or permission to publish.
 
 The scoring contract and method require a recorded acceptance decision. Until
 that decision and the other moderation rollout gates are satisfied, the worker
