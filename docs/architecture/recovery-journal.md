@@ -263,6 +263,13 @@ Before relying on the journal, test with synthetic data and isolated resources:
     commit responses, and failed confirmations. Stop the writer at each boundary
     between authorization, gate protection, journal write, database commit, and
     reconciliation; verify public reads and in-flight responses remain protected.
+    Include concurrent outer page renders and direct API and media requests,
+    a stalled or disconnected client, a queued gate closure, exhausted database
+    connections, a lost database connection, and a terminated reader. Verify the
+    shared lock is released only after the protected response finishes or is
+    stopped, and that reopening waits
+    for every pending decision. Exercise the real pooler and the deployed runtime
+    separately from local provider fakes.
 3. Restore an older archive after later synthetic decisions, reconcile the
     journal, and prove that withdrawn content and held material remain private.
 4. Verify coverage checkpoint handling, old-schema compatibility, retention of
