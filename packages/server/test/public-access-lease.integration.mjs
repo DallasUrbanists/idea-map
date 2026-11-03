@@ -46,6 +46,7 @@ test('public-read lease fails closed and blocks a gate writer until active reade
     const releasing = first.release()
     assert.equal(first.release(), releasing)
     await releasing
+    assert.equal(first.signal.aborted, true)
     await second.release()
     await closing
     await writer.query('UPDATE public.public_access_gate SET is_open = false WHERE singleton = true')

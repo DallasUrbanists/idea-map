@@ -1,19 +1,22 @@
 import type pg from 'pg'
+import { runtimeDatabasePool } from './runtime-database.js'
 
 // Transaction-scoped locks work with transaction pooling. Every guarded reader
 // and removal writer must use this same namespace before this can be relied on.
 const sharedLock = 'SELECT pg_catalog.pg_advisory_xact_lock_shared(726421, 391)'
 
-/**
- * Acquire the database portion of a public-read guard. The caller must stop
- * delivery if the connection fails and hold the lease until delivery finishes.
- * This primitive is not wired to requests and is not a complete access gate.
- */
-export async function acquirePublicAccessLease(pool: pg.Pool): Promise<{
+export type PublicAccessLease = {
   client: pg.PoolClient
   signal: AbortSignal
   release: () => Promise<void>
-}> {
+}
+
+/**
+ * Acquire the database portion of a public-read guard. The caller must stop
+ * delivery if the connection fails and hold the lease until delivery finishes.
+ * The primitive alone is not a complete access gate.
+ */
+export async function acquirePublicAccessLease(pool: pg.Pool): Promise<PublicAccessLease> {
   let client: pg.PoolClient
   try { client = await pool.connect() } catch { throw new Error('Public access unavailable') }
   const controller = new AbortController()
@@ -40,6 +43,9 @@ export async function acquirePublicAccessLease(pool: pg.Pool): Promise<{
         releasePromise ??= (async () => {
           try {
             if (controller.signal.aborted) throw new Error('Public access unavailable')
+            // A disconnected response may leave asynchronous handlers running.
+            // Mark the lease unusable before returning its client to the pool.
+            controller.abort()
             await client.query('COMMIT')
             dispose(false)
           } catch {
@@ -56,4 +62,10 @@ export async function acquirePublicAccessLease(pool: pg.Pool): Promise<{
     try { await client.query('ROLLBACK'); dispose(false) } catch { dispose(true) }
     throw new Error('Public access unavailable')
   }
+}
+
+/** Use the existing bounded web pool for a public-read lease. */
+export async function acquirePublicAccessLeaseForDatabase(databaseUrl: string): Promise<PublicAccessLease> {
+  if (!databaseUrl) throw new Error('Public access unavailable')
+  return acquirePublicAccessLease(runtimeDatabasePool(databaseUrl))
 }

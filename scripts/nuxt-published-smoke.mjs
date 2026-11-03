@@ -1,7 +1,9 @@
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:net'
+import { createServer as createHttpServer, get as httpGet } from 'node:http'
+import { randomUUID } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
-import { test } from 'node:test'
+import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 
@@ -9,9 +11,28 @@ const require = createRequire(new URL('../packages/server/package.json', import.
 const { Client } = require('pg')
 
 const databaseUrl = process.env.TEST_DATABASE_URL
-if (!databaseUrl || !new URL(databaseUrl).pathname.startsWith('/idea_map_test_')) {
-  throw new Error('TEST_DATABASE_URL must point to the disposable seeded idea_map_test_ database')
+if (!databaseUrl || !new URL(databaseUrl).pathname.startsWith('/idea_map_test_') ||
+    !['127.0.0.1', 'localhost'].includes(new URL(databaseUrl).hostname)) {
+  throw new Error('TEST_DATABASE_URL must point to a local disposable seeded idea_map_test_ database')
 }
+let originalGate
+before(async () => {
+  const db = new Client({ connectionString: databaseUrl })
+  await db.connect()
+  try {
+    const result = await db.query('SELECT is_open FROM public.public_access_gate WHERE singleton=true')
+    if (result.rows.length !== 1) throw new Error('Synthetic gate is missing')
+    originalGate = result.rows[0].is_open
+    await db.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true')
+  } finally { await db.end() }
+})
+after(async () => {
+  if (originalGate === undefined) return
+  const db = new Client({ connectionString: databaseUrl })
+  await db.connect()
+  try { await db.query('UPDATE public.public_access_gate SET is_open=$1 WHERE singleton=true', [originalGate]) }
+  finally { await db.end() }
+})
 const approved = '11111111-1111-4111-8111-111111111111'
 const privateIdea = '22222222-2222-4222-8222-222222222222'
 const unapprovedRevision = '33333333-3333-4333-8333-333333333333'
@@ -87,6 +108,20 @@ test('SSR exposes only approved public projection and metadata', async () => {
     assert.match(html, /property="og:title" content="A safer crossing"/)
     assert.match(html, /name="description" content="A synthetic public idea\."/)
     assert.match(html, /name="twitter:title" content="A safer crossing"/)
+    const simultaneous = await Promise.all(Array.from({ length: 3 }, () => fetch(`${base}/suggestion/${approved}`)))
+    assert.ok(simultaneous.every(response => response.status === 200))
+    await Promise.all(simultaneous.map(response => response.arrayBuffer()))
+    const inspection = new Client({ connectionString: databaseUrl })
+    await inspection.connect()
+    try {
+      let active = -1
+      for (let attempt = 0; attempt < 40; attempt++) {
+        active = (await inspection.query("SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname=current_database() AND state='idle in transaction'")).rows[0].count
+        if (active === 0) break
+        await delay(50)
+      }
+      assert.equal(active, 0, 'public response left a transaction open')
+    } finally { await inspection.end() }
     for (const value of ['private-contact@example.invalid', 'private-runtime-sentinel', databaseUrl]) assert.ok(!html.includes(value))
     for (const headers of [{ cookie: '__session=forged' }, { authorization: 'Bearer forged' }, { cookie: 'unrelated=value' }]) {
       const response = await fetch(`${base}/suggestion/${approved}`, { headers })
@@ -115,4 +150,94 @@ test('SSR exposes only approved public projection and metadata', async () => {
       await db.end()
     }
   } finally { server.kill() }
+})
+
+test('closed gate blocks idea pages, APIs, and media while health remains available', async () => {
+  const { base, server } = await startServer({})
+  const db = new Client({ connectionString: databaseUrl })
+  await db.connect()
+  try {
+    await db.query('UPDATE public.public_access_gate SET is_open=false WHERE singleton=true')
+    for (const path of [`/api/ideas/${approved}`, `/suggestion/${approved}`,
+      `/suggestion/%31${approved.slice(1)}`, `/api/media/${approved}`]) {
+      const response = await fetch(base + path, { headers: { 'x-probe-lease': 'forged' } })
+      assert.equal(response.status, 503, path)
+      assert.match(response.headers.get('cache-control'), /no-store/)
+      assert.ok(!(await response.text()).includes('A safer crossing'))
+    }
+    for (const path of [`/%73uggestion/${approved}`, `/%2573uggestion/${approved}`,
+      `/suggestion/%2531${approved.slice(1)}`, `/api/ideas/%31${approved.slice(1)}`]) {
+      const response = await fetch(base + path)
+      assert.notEqual(response.status, 200, path)
+      assert.ok(!(await response.text()).includes('A safer crossing'))
+    }
+    assert.equal((await fetch(`${base}/api/health`)).status, 200)
+  } finally {
+    await db.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true')
+    await db.end()
+    server.kill()
+  }
+})
+
+test('an in-flight media fetch holds the read lease until its client disconnects', async () => {
+  const bytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+  let mediaResponse, markStarted
+  const started = new Promise(resolve => { markStarted = resolve })
+  const fake = createHttpServer((request, response) => {
+    const url = new URL(request.url, 'http://127.0.0.1')
+    if (url.searchParams.get('generation') !== '1' || url.searchParams.get('ifGenerationMatch') !== '1') {
+      response.writeHead(400).end()
+    } else if (url.searchParams.get('alt') === 'media') {
+      mediaResponse = response
+      markStarted()
+    } else {
+      response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ generation: '1', size: String(bytes.length), contentType: 'image/png' }))
+    }
+  })
+  await new Promise((resolve, reject) => fake.once('error', reject).listen(0, '127.0.0.1', resolve))
+  const db = new Client({ connectionString: databaseUrl })
+  const writer = new Client({ connectionString: databaseUrl })
+  const previewId = randomUUID()
+  let server, request, closing
+  try {
+    await db.connect()
+    await writer.connect()
+    await db.query(`INSERT INTO public.media_previews(id,idea_id,revision_id,object_name,generation,content_type,published)
+      VALUES ($1,$2,$3,$4,'1','image/png',true)`, [previewId, approved, 'aaaaaaaa-1111-4111-8111-111111111111', `synthetic/${previewId}`])
+    const launched = await startServer({ NUXT_APPROVED_MEDIA_BUCKET: 'synthetic-approved', NUXT_PENDING_MEDIA_BUCKET: 'synthetic-pending',
+      NUXT_MEDIA_PROVIDER_MODE: 'offline', NUXT_MEDIA_PREVIEW_MAX_BYTES: String(bytes.length), STORAGE_EMULATOR_HOST: `http://127.0.0.1:${fake.address().port}` })
+    server = launched.server
+    request = httpGet(`${launched.base}/api/media/${previewId}`)
+    request.on('error', () => {})
+    await Promise.race([started, delay(4000).then(() => { throw new Error('Synthetic media fetch did not start') })])
+    await writer.query('BEGIN')
+    await writer.query("SET LOCAL lock_timeout = '5s'")
+    const pid = (await writer.query('SELECT pg_backend_pid() AS pid')).rows[0].pid
+    closing = writer.query('SELECT pg_catalog.pg_advisory_xact_lock(726421, 391)')
+    closing.catch(() => {})
+    let waiting = false
+    for (let attempt = 0; attempt < 50; attempt++) {
+      waiting = (await db.query('SELECT EXISTS(SELECT 1 FROM pg_locks WHERE pid=$1 AND NOT granted) AS waiting', [pid])).rows[0].waiting
+      if (waiting) break
+      await delay(20)
+    }
+    assert.equal(waiting, true, 'the gate writer did not wait for the in-flight fetch')
+    request.destroy()
+    await closing
+    mediaResponse.end(bytes)
+    await writer.query('UPDATE public.public_access_gate SET is_open=false WHERE singleton=true')
+    await writer.query('COMMIT')
+    assert.equal((await fetch(`${launched.base}/api/ideas/${approved}`)).status, 503)
+  } finally {
+    request?.destroy()
+    mediaResponse?.destroy()
+    if (closing) await closing.catch(() => {})
+    await writer.query('ROLLBACK').catch(() => {})
+    await db.query('DELETE FROM public.media_previews WHERE id=$1', [previewId]).catch(() => {})
+    await db.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true').catch(() => {})
+    await writer.end().catch(() => {})
+    await db.end().catch(() => {})
+    server?.kill()
+    await new Promise(resolve => fake.close(resolve))
+  }
 })

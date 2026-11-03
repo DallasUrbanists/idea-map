@@ -69,6 +69,7 @@ jobs:
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_escalation_transfers
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_database
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_public_gate
+          docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_public_web
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_worker
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_operations
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_registered_drafts
@@ -96,6 +97,14 @@ jobs:
         run: |
           pnpm --filter @idea-map/server db:migrate
           pnpm --filter @idea-map/server test:public-access-lease
+      - name: Public access web responses
+        env:
+          DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_public_web
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_public_web
+        run: |
+          pnpm --filter @idea-map/server db:migrate
+          docker exec -i "${{ job.services.postgres.id }}" psql -v ON_ERROR_STOP=1 -U idea_map -d idea_map_test_public_web < packages/server/test/ssr-fixture.sql
+          pnpm test:web:published
       - name: Moderation transactions
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_moderation

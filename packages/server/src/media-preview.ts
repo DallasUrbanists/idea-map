@@ -29,30 +29,41 @@ function matchesImage(bytes: Buffer, contentType: string): boolean {
 
 /** Read an authorized generation from the approved bucket, never a pending upload. */
 export async function readMediaPreview(
-  pool: pg.Pool, storage: Storage, bucket: string, previewId: string, maxBytes: number,
+  pool: pg.Pool | pg.PoolClient, storage: Storage, bucket: string, previewId: string, maxBytes: number, signal?: AbortSignal,
 ): Promise<PublicPreview | null> {
   if (!bucket || !Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_MEDIA_PREVIEW_BYTES) throw new Error('Invalid preview configuration')
+  if (signal?.aborted) throw new Error('Preview unavailable')
   const first = await pool.query<{ object_name: string; generation: string; content_type: string }>(query, [previewId])
+  if (signal?.aborted) throw new Error('Preview unavailable')
   const row = first.rows[0]
   if (!row) return null
   if (!/^[1-9][0-9]*$/.test(row.generation) || !['image/jpeg', 'image/png', 'image/webp'].includes(row.content_type)) throw new Error('Invalid preview metadata')
   const file = exactGenerationFile(storage, bucket, row.object_name, row.generation)
   const [metadata] = await file.getMetadata()
+  if (signal?.aborted) throw new Error('Preview unavailable')
   const size = Number(metadata.size)
   if (metadata.generation !== row.generation || !Number.isSafeInteger(size) || size < 1 || size > maxBytes || metadata.contentType !== row.content_type ||
       (metadata.contentEncoding && metadata.contentEncoding !== 'identity')) throw new Error('Invalid preview object')
   const chunks: Buffer[] = []
   let count = 0
-  for await (const chunk of file.createReadStream({ decompress: false })) {
-    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-    count += bytes.length
-    if (count > maxBytes) throw new Error('Preview too large')
-    chunks.push(bytes)
-  }
+  const stream = file.createReadStream({ decompress: false })
+  const abort = () => stream.destroy(new Error('Preview unavailable'))
+  signal?.addEventListener('abort', abort, { once: true })
+  try {
+    if (signal?.aborted) { stream.destroy(); throw new Error('Preview unavailable') }
+    for await (const chunk of stream) {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+      count += bytes.length
+      if (count > maxBytes) throw new Error('Preview too large')
+      chunks.push(bytes)
+    }
+  } finally { signal?.removeEventListener('abort', abort) }
   const body = Buffer.concat(chunks)
   if (count !== size || !matchesImage(body, row.content_type)) throw new Error('Invalid preview content')
+  if (signal?.aborted) throw new Error('Preview unavailable')
   // Recheck after I/O so withdrawal or revision replacement during download fails closed.
   const current = (await pool.query<{ object_name: string; generation: string; content_type: string }>(query, [previewId])).rows[0]
+  if (signal?.aborted) throw new Error('Preview unavailable')
   if (!current || current.object_name !== row.object_name || current.generation !== row.generation || current.content_type !== row.content_type) return null
   return { bytes: body, contentType: row.content_type }
 }
@@ -72,12 +83,12 @@ export function validatePreviewProviderMode(mode: string, emulator: string): voi
 }
 
 /** Use a bounded pool and the explicitly selected storage integration. */
-export async function getMediaPreview(databaseUrl: string, bucket: string, previewId: string, maxBytes: number, mode: string): Promise<PublicPreview | null> {
+export async function getMediaPreview(databaseUrl: string, bucket: string, previewId: string, maxBytes: number, mode: string, client?: pg.PoolClient, signal?: AbortSignal): Promise<PublicPreview | null> {
   const emulator = process.env.STORAGE_EMULATOR_HOST || ''
   validatePreviewProviderMode(mode, emulator)
   const selected = JSON.stringify([mode, emulator])
   if (storageConfig && storageConfig !== selected) throw new Error('Preview provider configuration cannot change without a restart')
   defaultStorage ??= selectProvider(mode, { offline: () => createOfflinePreviewStorage(emulator), provider: () => new Storage() })
   storageConfig = selected
-  return readMediaPreview(runtimeDatabasePool(databaseUrl), defaultStorage, bucket, previewId, maxBytes)
+  return readMediaPreview(client ?? runtimeDatabasePool(databaseUrl), defaultStorage, bucket, previewId, maxBytes, signal)
 }

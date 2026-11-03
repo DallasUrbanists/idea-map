@@ -3,9 +3,9 @@
 Recovery operators need an independent record of removals and legal-hold
 decisions made after a database backup. This design uses the foundation's private
 backup bucket when it is provisioned and keeps PostgreSQL as the application's
-authority. The journal components and database read-lease primitive are not
-wired into public requests or decision mutations. A restored service must remain
-isolated until its decisions can be reconciled and the
+authority. The journal and pending-removal components are not wired into live
+decision mutations. The public request guard remains incomplete. A restored
+service must remain isolated until its decisions can be reconciled and the
 [recovery procedure](../contributor-guides/backup-recovery.md) is satisfied.
 
 The following contents links navigate within this guide:
@@ -175,13 +175,14 @@ and tested. If the pending transaction's outcome cannot be established, an
 independent fail-closed fence must remain in place until authorized reconciliation.
 
 The database schema creates one `public_access_gate` row in the closed state and
-revokes table access from `PUBLIC`. The server package has an unwired read-lease
+revokes table access from `PUBLIC`. The server package has a read-lease
 primitive that holds a shared transaction-scoped advisory lock and refuses a
 missing, closed, or unreadable gate. It reports a lost database connection through
 an abort signal. The caller must hold the lease through delivery and stop the
-response when the signal aborts. This primitive has no reviewed runtime grant,
-does not persist pending decisions or close the gate, and is not used by public
-requests. It is not sufficient to enable the gate or live removal integration.
+response when the signal aborts. The in-progress web guard uses this primitive for
+current idea, suggestion, and media routes, but it lacks reviewed runtime grants,
+bounded draining of stalled responses, and complete coverage of future serving
+paths. It is not sufficient to enable the gate or live removal integration.
 
 An unwired pending-removal transaction verifies the moderator, waits for the
 exclusive transaction lock, closes the gate, and stores the pending decision in
@@ -255,6 +256,12 @@ to the privacy and legal-hold rules. Before deleting a journal record, verify
 that older live, noncurrent, and soft-deleted backups can no longer restore the
 affected decision and that no applicable hold requires the record. Review
 deletion with a separate identity; the writer cannot delete records.
+
+Pending database decisions also contain a private free-text reason and refer to
+the idea and actor. An unresolved decision must not become an indefinite hold on
+that information or prevent the applicable deletion deadline from being met.
+Before live integration, establish timely reconciliation and a reviewed way to
+minimize and dispose of pending data without reopening the gate prematurely.
 
 A hold on a complete database archive can retain unrelated people's data past
 their deletion deadlines. Preserve only the material and evidence covered by an
