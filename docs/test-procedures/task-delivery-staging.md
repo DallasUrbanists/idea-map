@@ -35,7 +35,7 @@ following inputs in a reviewable staging proposal without credentials or private
 | Images | Reviewed immutable web and worker image digests and their matching source revisions |
 | Database | A disposable PostGIS database containing only synthetic data, with a separate restricted worker credential and connection budget |
 | Delivery | A test-only queue, distinct task and repair invoker identities, and a paused hourly scheduler |
-| Review and recovery | Named operator, log access, recovery owner, rollback digest, test window, and exact test-owned cleanup scope |
+| Review and recovery | Named operator, restricted log access and retention, logging cost review, recovery owner, rollback digest, test window, and exact test-owned cleanup scope |
 
 The [Terraform architecture guide](../architecture/terraform.md) describes the
 foundation root and its state requirements. That root manages more than task
@@ -65,6 +65,14 @@ worker; it does not create or configure that worker, its database, web service,
 or storage. Its [example variables](../../infra/task-delivery-staging/synthetic.tfvars.example)
 are deliberately non-live and leave the root disabled. A synthetic name does not
 prove that a resource or project is isolated.
+
+The synthetic queue requests logging for every operation so operators can review
+dispatch and response attempts. [Cloud Tasks logging](https://docs.cloud.google.com/tasks/docs/monitor#use-cloud-logging-with-queues)
+is sampled at zero by default and a full sampling setting does not prove that
+every log was retained or delivered. Before any live plan, operators should
+review log routing, restricted access, retention, exclusions, and cost. Logs can
+contain task and queue identifiers; keep them and provider responses out of
+public evidence. Do not use this synthetic configuration for real submissions.
 
 Before requesting a live plan, prepare a review record containing the exact
 isolated project and region, separate state bucket and prefix, worker service and
@@ -110,6 +118,12 @@ changing those guards, resource removal, permission changes, and cleanup require
 their own reviewed scope and authorization.
 
 ## Record the synthetic evidence
+
+For an authorized hosted test, operators should inspect the synthetic queue's
+`AttemptDispatch` and `AttemptResponse` logs and compare observed attempts and
+responses with the durable job state. Record the outcome and any missing evidence
+without publishing task identifiers or raw logs. A log entry alone does not prove
+the job's database effect or establish that recovery is safe.
 
 Operators should use a controlled clock or documented test hook in the isolated
 database and record the source revision, image digest, test identifiers, observed states,
