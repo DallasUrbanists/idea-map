@@ -168,6 +168,11 @@ For the server-only moderator hold primitive and publication races, run
 set to a fresh disposable PostGIS database. The test uses synthetic moderator
 identities; it does not enable moderator controls or grant live permissions.
 
+For request-changes, separate holds, legal retention, and timed-publication
+races, set `TEST_DATABASE_URL` to a fresh disposable PostGIS database and run
+`pnpm --filter @idea-map/server test:moderator-changes`. This uses synthetic
+identities and does not enable live controls or provider access.
+
 For moderator rejections and publication races, set `TEST_DATABASE_URL` to a
 fresh disposable PostGIS database and run
 `pnpm --filter @idea-map/server test:moderator-decisions`. The test checks
