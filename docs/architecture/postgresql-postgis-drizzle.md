@@ -222,6 +222,24 @@ temporarily unavailable. It may return `stale` only when that job is permanently
 ineligible; a rejected shortcut leaves its separate standard deadline job intact.
 The worker does not expose a way to supply this callback in a request.
 
+An authorized operator can inspect a single durable job with the worker command.
+Build with `pnpm exec tsc --build`, configure `WORKER_PROVIDER_MODE` and
+`WORKER_DATABASE_URL` for the intended environment using an approved read-only
+role, then run:
+
+```sh
+node apps/worker/dist/inspect-job-cli.js --job JOB_UUID
+```
+
+The command reports the job and assessment identities, original receipt and
+assessment deadline, job schedule, dispatch attempts, generation, acknowledgment,
+and lease status. Its read-only transaction cannot prove that a provider task
+exists, that execution succeeded, or that a retry is safe. A missing job returns
+exit status 2; invalid input or unavailable access returns status 1 without
+printing database settings. Provider mode does not call a provider. Offline mode
+accepts only the same local development or disposable database targets as the
+worker.
+
 To investigate an unpublished job, an authorized operator can connect to the
 intended environment's database with `psql` using its approved read-only role.
 Set `job_id` to the known job ID with `\set job_id 'JOB_UUID'` in that session,
