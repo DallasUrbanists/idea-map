@@ -14,6 +14,7 @@ The following contents links navigate within this guide:
 - [Approval history and corrections](#approval-history-and-corrections)
 - [Outbox recovery](#outbox-recovery)
 - [Consent and retention](#consent-and-retention)
+    - [Moderator rejection](#moderator-rejection)
 
 ## Schema and migration boundary
 
