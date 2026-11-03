@@ -48,7 +48,13 @@ actions people take in the application. Each Markdown filename follows
 Authors should explain user-facing prerequisites, steps, results, and recovery
 options without developer commands, source paths, or architecture. Add or update
 guides alongside user-facing feature changes once the interactions can be
-described accurately; the empty directory is retained with `.gitkeep`.
+described accurately.
+
+You can use this guide for escalation ownership:
+
+| Guide | Purpose |
+| --- | --- |
+| [Assign an escalation](user-guides/how-to-assign-an-escalation.md) | Select a moderator, assign or transfer a review, and recover from errors |
 
 ## Architecture
 

@@ -14,6 +14,7 @@ You can use these situations to decide whether this local test covers your chang
 | When this happens... | Use this guide to... |
 | --- | --- |
 | You change moderator holds or change requests. | Verify that a browser can record and resolve those actions through local authentication and database services while the idea stays private. |
+| You change escalation assignment or transfer. | Verify that a selected moderator can own an escalation and that a handoff preserves the active hold. |
 | You change moderator access checks. | Verify that revoking a moderator role clears displayed review content. |
 | You need reproducible reviewer-screen evidence. | Run the synthetic integration test with a fresh disposable database and clean up its services. |
 
