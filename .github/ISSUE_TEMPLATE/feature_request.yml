@@ -1,5 +1,5 @@
 name: Feature request
-description: Propose a focused improvement
+description: You can propose a focused improvement.
 title: "Feature: "
 body:
   - type: textarea
@@ -13,11 +13,11 @@ body:
     id: criteria
     attributes:
       label: Acceptance criteria
-      description: Describe observable behavior and how to verify it.
+      description: You should describe observable behavior and how to verify it.
     validations:
       required: true
   - type: textarea
     id: context
     attributes:
       label: Dependencies and context
-      description: Link related work and note relevant constraints.
+      description: You should link related work and note relevant constraints.
