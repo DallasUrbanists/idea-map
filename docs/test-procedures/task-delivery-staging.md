@@ -94,18 +94,31 @@ place passwords or connection strings in source, command arguments, state,
 shared logs, or test output. Verify the role's allowed reconciliation and
 denied private-data access in the isolated environment before using it.
 
+For a web service using the same synthetic database, apply
+[`staging-web-grants.sql`](../../packages/server/test/staging-web-grants.sql)
+to create a separate, initially disabled `idea_map_staging_web_test` role. It
+grants the columns used by the published-idea query, not the worker's job or
+outbox access. Set its own password securely, then apply
+[`staging-web-enable-login.sql`](../../packages/server/test/staging-web-enable-login.sql).
+Store its pooled URL in a distinct web-only secret. As with the existing web
+test role, these column grants allow direct reads of synthetic revision content
+beyond published rows; the application query applies the publication filter.
+They do not configure web submission, media, or moderator access.
+
 To test the grants locally, use a disposable local PostGIS instance and a
 migrated `idea_map_test_worker` database, set `TEST_DATABASE_URL` to its
 loopback URL, and run from the repository root:
 
 ```sh
 pnpm --filter @idea-map/server test:worker-staging-grants
+pnpm --filter @idea-map/server test:staging-web-grants
 ```
 
-The test uses synthetic jobs and creates a branch-wide role. Most checks roll
-back their transaction; the login check commits the role and removes it after
-testing. The scripts refuse to alter an existing role. A local pass does not
-prove Neon permissions, connection pooling, or hosted delivery.
+The tests use synthetic jobs and ideas and create branch-wide roles. Some checks
+roll back their transaction; the authentication checks commit roles and fixtures
+and remove them after testing. The scripts refuse to alter an existing role. A
+local pass does not prove Neon permissions, connection pooling, or hosted
+delivery.
 
 ## Review the scoped delivery configuration
 
