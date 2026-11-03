@@ -19,6 +19,7 @@ jobs:
       actions: read
     outputs:
       archive_sha256: ${{ steps.archive.outputs.sha256 }}
+      archive_name: ${{ steps.archive.outputs.name }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -41,9 +42,10 @@ jobs:
           set -euo pipefail
           docker save -o images.tar idea-map-web:release idea-map-worker:release
           printf 'sha256=%s\n' "$(sha256sum images.tar | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+          printf 'name=checked-images-%s\n' "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: checked-images-${{ github.run_attempt }}
+          name: ${{ steps.archive.outputs.name }}
           path: images.tar
           retention-days: 1
           if-no-files-found: error
@@ -63,13 +65,17 @@ jobs:
       WIF_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
       BUILDER_SERVICE_ACCOUNT: ${{ vars.GCP_IMAGE_BUILDER_SERVICE_ACCOUNT }}
       ARCHIVE_SHA256: ${{ needs.build.outputs.archive_sha256 }}
+      ARCHIVE_NAME: ${{ needs.build.outputs.archive_name }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+      - name: Validate checked archive name
+        shell: bash
+        run: '[[ "$ARCHIVE_NAME" =~ ^checked-images-[1-9][0-9]*$ ]]'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: checked-images-${{ github.run_attempt }}
+          name: ${{ needs.build.outputs.archive_name }}
       - name: Validate target and load checked images
         shell: bash
         run: |
