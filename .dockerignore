@@ -14,6 +14,7 @@
 **/*.tfplan
 .env
 .env.*
+gha-creds-*.json
 **/.env
 **/.env.*
 !.env.example
