@@ -21,6 +21,7 @@ The following contents links navigate within this guide:
     - [End of each work session](#end-of-each-work-session-1)
 - [Ports and troubleshooting](#ports-and-troubleshooting)
 - [Local synthetic fixtures](#local-synthetic-fixtures)
+- [Offline job delivery scenario](#offline-job-delivery-scenario)
 - [Provider modes](#provider-modes)
 - [Authentication outside the emulator](#authentication-outside-the-emulator)
 - [Document user-facing changes](#document-user-facing-changes)
@@ -315,6 +316,31 @@ fixtures. Inspect and resolve those records before retrying; the command does
 not remove the related records for you. The commands do not remove
 unrelated contacts, emulator accounts, or generated files.
 
+## Offline job delivery scenario
+
+You can run the synthetic delivery and recovery scenarios from the repository
+root after completing the one-time setup. Make the `postgis/postgis:17-3.6`
+image available locally and start Docker; this command does not pull images:
+
+```sh
+pnpm test:offline-job-delivery
+```
+
+The runner creates a uniquely named disposable PostGIS container bound to a
+random loopback port. It migrates two fresh databases and runs the existing
+worker and controlled-clock moderation integration scenarios with fake task
+transport, identity and approval policy. The results show failed dispatch and
+repair, duplicate delivery, original receipt and deadline, assessment changes,
+moderator blocks and recovery; the fake approval does not accept a scoring
+method or enable automatic publication. Email and a complete submission flow
+are outside this scenario.
+
+The runner removes only its own container and its anonymous volumes when it
+finishes. If cleanup fails, it prints that container's name for inspection and
+manual removal; it does not alter another checkout's services or records. An
+abrupt process or machine termination can leave the named container behind.
+The production worker's offline mode remains unavailable for task delivery.
+
 ## Provider modes
 
 Select a mode explicitly for each configured integration. Missing or invalid
@@ -332,7 +358,7 @@ existing `.env` without replacing your settings.
 The repository's local service stack does not start a storage emulator; preview
 requests are unavailable in offline mode until a local fake is supplied. The
 worker's offline mode fails task authentication and delivery rather than claiming
-that work was queued. Local job delivery is tracked separately. The recovery CLI
+that work was queued. Local job delivery is tracked separately. The synthetic scenario above exercises local delivery without changing that mode. The recovery CLI
 requires `WORKER_PROVIDER_MODE=provider` and its existing confirmation and queue
 checks. Streetmix, email, map, Gemini, boundary, and representative application
 workflows require their own integrations; the offline fixture example does not
