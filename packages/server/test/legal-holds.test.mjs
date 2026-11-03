@@ -43,8 +43,16 @@ test('separate authorized legal holds serialize with retention and preserve over
     const disabled = { ...directorVerifier, async getUser() { return { uid: 'director', email: 'director@example.invalid', emailVerified: true, disabled: ++calls > 1 } } }
     assert.deepEqual(await placeLegalHold(url, 'demo-idea-map', 'synthetic-cookie', disabled, input), { state: 'unauthenticated' })
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM legal_holds')).rows[0].n, 0)
+    const missingId = '00000000-0000-0000-0000-000000000001'
+    const missingRelease = { holdId: missingId, reason: 'Synthetic release', legalReviewReference: null }
+    assert.deepEqual(await placeLegalHold(...args, { ...input, ideaId: missingId }), { state: 'not_found' })
+    assert.deepEqual(await releaseLegalHold(...args, missingRelease), { state: 'not_found' })
+    assert.deepEqual(await placeLegalHold(url, 'demo-idea-map', 'synthetic-cookie', verifier('moderator'), { ...input, ideaId: missingId }), { state: 'forbidden' })
+    assert.deepEqual(await releaseLegalHold(url, 'demo-idea-map', 'synthetic-cookie', verifier('moderator'), missingRelease), { state: 'forbidden' })
     assert.deepEqual(await placeLegalHold(...args, input), { state: 'processed' })
-    assert.deepEqual(await placeLegalHold(...args, input), { state: 'processed' })
+    const originalHold = (await pool.query('SELECT * FROM legal_holds')).rows[0]
+    assert.deepEqual(await placeLegalHold(...args, { ...input, reason: 'Retry must preserve reason' }), { state: 'already_held' })
+    assert.deepEqual((await pool.query('SELECT * FROM legal_holds')).rows[0], originalHold)
     assert.deepEqual(await placeLegalHold(...args, { ...input, caseReference: 'synthetic-case-two' }), { state: 'processed' })
     const holds = (await pool.query('SELECT id,case_reference,placed_by,placement_authority_id FROM legal_holds ORDER BY case_reference')).rows
     assert.equal(holds.length, 2)
@@ -63,6 +71,9 @@ test('separate authorized legal holds serialize with retention and preserve over
     assert.deepEqual((await pool.query('SELECT * FROM public.prune_idea_decision_metadata($1)', [idea])).rows[0], { blocked: true, moderation_events_deleted: 0, correction_events_deleted: 0 })
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM approval_corrections WHERE idea_id=$1', [idea])).rows[0].n, 2)
     assert.deepEqual(await releaseLegalHold(...args, { holdId: holds[0].id, reason: 'Synthetic release', legalReviewReference: 'synthetic-review' }), { state: 'processed' })
+    const originalRelease = (await pool.query('SELECT * FROM legal_holds WHERE id=$1', [holds[0].id])).rows[0]
+    assert.deepEqual(await releaseLegalHold(...args, { holdId: holds[0].id, reason: 'Retry must preserve release', legalReviewReference: null }), { state: 'already_released' })
+    assert.deepEqual((await pool.query('SELECT * FROM legal_holds WHERE id=$1', [holds[0].id])).rows[0], originalRelease)
     assert.equal(await check(), false)
     const release = (await pool.query('SELECT released_by,release_authority_id,release_reason,legal_review_reference FROM legal_holds WHERE id=$1', [holds[0].id])).rows[0]
     assert.deepEqual(release, { released_by: director, release_authority_id: assignment, release_reason: 'Synthetic release', legal_review_reference: 'synthetic-review' })
@@ -93,8 +104,10 @@ test('separate authorized legal holds serialize with retention and preserve over
       await limited.query(`SET ROLE "${role}"`)
       await assert.rejects(limited.query("SELECT public.lock_active_legal_hold_authority('firebase:demo-idea-map','director')"), { code: '42501' })
       await assert.rejects(limited.query('SELECT * FROM public.prune_idea_decision_metadata($1)', [idea]), { code: '42501' })
+      await assert.rejects(limited.query("SELECT public.place_legal_hold_outcome('firebase:demo-idea-map','director',$1,'case','reason')", [idea]), { code: '42501' })
+      await assert.rejects(limited.query("SELECT public.release_legal_hold_outcome('firebase:demo-idea-map','director',$1,'reason',NULL)", [holds[0].id]), { code: '42501' })
       await limited.query('RESET ROLE')
-      await pool.query(`GRANT EXECUTE ON FUNCTION public.lock_active_legal_hold_authority(text,text), public.place_legal_hold(text,text,uuid,text,text), public.release_legal_hold(text,text,uuid,text,text) TO "${role}"`)
+      await pool.query(`GRANT EXECUTE ON FUNCTION public.lock_active_legal_hold_authority(text,text), public.place_legal_hold_outcome(text,text,uuid,text,text), public.release_legal_hold_outcome(text,text,uuid,text,text) TO "${role}"`)
       await limited.query(`SET ROLE "${role}"`)
       assert.equal((await limited.query("SELECT public.lock_active_legal_hold_authority('firebase:demo-idea-map','director') AS id")).rows[0].id, director)
       await assert.rejects(limited.query('SELECT * FROM public.prune_idea_decision_metadata($1)', [idea]), { code: '42501' })
@@ -118,6 +131,25 @@ test('separate authorized legal holds serialize with retention and preserve over
     const restrictedHold = (await pool.query("SELECT id FROM legal_holds WHERE case_reference='restricted-runtime'")).rows[0].id
     assert.deepEqual(await releaseLegalHold(restrictedUrl.toString(), 'demo-idea-map', 'synthetic-cookie', directorVerifier,
       { holdId: restrictedHold, reason: 'Synthetic release', legalReviewReference: null }), { state: 'processed' })
+
+    const restrictedArgs = [restrictedUrl.toString(), 'demo-idea-map', 'synthetic-cookie', directorVerifier]
+    assert.deepEqual(await placeLegalHold(...restrictedArgs, { ...input, ideaId: missingId }), { state: 'not_found' })
+    assert.deepEqual(await releaseLegalHold(...restrictedArgs, missingRelease), { state: 'not_found' })
+    assert.deepEqual(await placeLegalHold(...restrictedArgs, { ...input, caseReference: 'synthetic-case-two' }), { state: 'processed' })
+    assert.deepEqual(await placeLegalHold(...restrictedArgs, { ...input, caseReference: 'synthetic-case-two' }), { state: 'already_held' })
+    assert.deepEqual(await releaseLegalHold(...restrictedArgs, { holdId: restrictedHold, reason: 'Retry', legalReviewReference: null }), { state: 'already_released' })
+    calls = 0
+    assert.deepEqual(await placeLegalHold(url, 'demo-idea-map', 'synthetic-cookie', disabled, { ...input, ideaId: missingId }), { state: 'unauthenticated' })
+    calls = 0
+    assert.deepEqual(await releaseLegalHold(url, 'demo-idea-map', 'synthetic-cookie', disabled, { holdId: restrictedHold, reason: 'Retry', legalReviewReference: null }), { state: 'unauthenticated' })
+
+    const concurrentInput = { ...input, caseReference: 'concurrent-retry' }
+    const placements = await Promise.all([placeLegalHold(...restrictedArgs, concurrentInput), placeLegalHold(...restrictedArgs, concurrentInput)])
+    assert.deepEqual(placements.map(result => result.state).sort(), ['already_held', 'processed'])
+    const concurrentHold = (await pool.query("SELECT id FROM legal_holds WHERE case_reference='concurrent-retry'")).rows[0].id
+    const concurrentRelease = { holdId: concurrentHold, reason: 'Concurrent release', legalReviewReference: null }
+    const releases = await Promise.all([releaseLegalHold(...restrictedArgs, concurrentRelease), releaseLegalHold(...restrictedArgs, concurrentRelease)])
+    assert.deepEqual(releases.map(result => result.state).sort(), ['already_released', 'processed'])
 
     const raceIdea = (await pool.query('INSERT INTO ideas(author_contact_id) VALUES ($1) RETURNING id', [contact])).rows[0].id
     const raceRevision = (await pool.query("INSERT INTO idea_revisions(idea_id,version,content) VALUES ($1,1,'{}') RETURNING id", [raceIdea])).rows[0].id

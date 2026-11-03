@@ -350,6 +350,16 @@ registered identity and checks it again before commit while holding the authorit
 lock. The provider and database cannot share a transaction, so an identity
 change can still occur at commit.
 The functions have fixed search paths and no `PUBLIC` execute permission.
+The server returns `processed` only for a newly recorded placement or release,
+`not_found` for a missing target, and `already_held` or `already_released` for
+idempotent retries. Retries preserve the original audit fields. All outcomes
+remain subject to the identity recheck before commit.
+
+Migration `0017` adds outcome-returning SQL functions without changing the
+original UUID/boolean functions or stored records. Server callers require
+separately reviewed execute grants on the new functions; direct table reads
+remain unnecessary. Apply the migration before updating callers. Rolling back
+the server requires no data rollback; preserve the hold records and functions.
 
 Hold placement and the narrow decision-retention primitive lock the idea in the
 same transaction. Retention fails closed for missing ideas, active holds, or a

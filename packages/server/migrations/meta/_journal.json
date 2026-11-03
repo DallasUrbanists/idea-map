@@ -120,6 +120,13 @@
       "when": 1793655250147,
       "tag": "0016_legal_hold_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793660000000,
+      "tag": "0017_legal_hold_outcomes",
+      "breakpoints": true
     }
   ]
 }
