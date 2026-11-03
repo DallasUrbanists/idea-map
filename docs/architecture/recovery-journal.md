@@ -169,6 +169,13 @@ disconnects, and timeouts when choosing the coordination mechanism. The syntheti
 staging cache can continue serving an earlier response, so it is not suitable
 evidence for the immediate removal boundary.
 
+Hosted web traffic uses Neon transaction pooling and a two-client application
+pool. Do not assume a session-level advisory lock remains attached to a backend
+across transactions. Holding a client for an outer render while the nested API
+request needs another client can also exhaust that pool under concurrent load.
+Verify the selected coordination mechanism against the actual pooler and the
+complete render path, including a queued removal and concurrent page requests.
+
 The gate and pending state need a guarded transaction and must cover every
 public read, projection, and media delivery path. A restored older database may
 not contain the later gate or pending decision, so recovery must begin behind an
