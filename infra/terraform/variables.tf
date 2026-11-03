@@ -67,6 +67,24 @@ variable "enable_worker_runtime" {
   type        = bool
   default     = false
 }
+variable "web_database_secret_id" {
+  description = "ID of the existing web-only database URL secret in this project."
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.web_database_secret_id == "" || can(regex("^[a-zA-Z0-9_-]{1,255}$", var.web_database_secret_id))
+    error_message = "Use a Secret Manager secret ID without a project path."
+  }
+}
+variable "web_database_secret_version" {
+  description = "Pinned numeric version of the web database URL secret."
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.web_database_secret_version == "" || can(regex("^[1-9][0-9]*$", var.web_database_secret_version))
+    error_message = "Use an empty value or a numeric secret version, not latest."
+  }
+}
 variable "worker_origin" {
   description = "Exact HTTPS origin of the reviewed worker service, without a trailing slash."
   type        = string

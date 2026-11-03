@@ -66,6 +66,14 @@ avoid silently reverting a release. Operators should review a real Terraform
 plan before every separately authorized apply, and check which revision and
 traffic will remain active when other service configuration changes.
 
+Before a Neon-backed web service is created, prepare a web-only pooled TLS
+database credential and existing Secret Manager version outside Terraform. Set
+both `web_database_secret_id` and the numeric `web_database_secret_version` in
+the reviewed environment configuration. Review the web role, secret access,
+and connection budget separately from the worker's credential. A database
+reference alone does not prove that the service can authenticate or that its
+schema and permissions are correct; verify those in the isolated environment.
+
 The workflow operates on `idea-map-web-dev` and `idea-map-worker-dev` in
 staging and the corresponding `-prod` services in production. It requires one
 explicit current revision with all traffic, request-based CPU, zero minimum

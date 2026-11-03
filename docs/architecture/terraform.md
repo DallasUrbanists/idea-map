@@ -31,6 +31,7 @@ this table:
 | `google_storage_bucket.media` | Separate uploads, approved-media and backup buckets; uniform access, public access prevention, versioning, no forced deletion and `prevent_destroy` | Confirm unique names, retention, backup access and recovery; approved-media access uses the reviewed delivery boundary |
 | `google_cloud_tasks_queue.jobs` | Per-environment queue with bounded dispatch and five attempts | Verify quotas, idempotent handlers, dead-letter/reconciliation behavior and authenticated target before use |
 | `enable_task_delivery` | Opt-in task and repair invokers, worker-only invocation grants, scoped queue access and a paused hourly scheduler | Review service identity, queue inspection access, worker configuration and recovery before a live plan; unpausing is a separate operation |
+| `web_database_secret_id` and `web_database_secret_version` | Opt-in web access to an existing, pinned database URL secret | Review the web role, secret ownership and version, connection budget, and service-only access |
 | `enable_worker_runtime` | Opt-in worker settings and secret access to an existing, pinned database URL secret | Review the exact worker URI, secret ownership and version, queue, invokers, connection budget, and service-only access |
 | `infra/task-delivery-staging` | Separate opt-in synthetic queue, invokers, scoped IAM members, and paused hourly repair for an existing isolated worker | Review its separate state, worker identity and origin, inherited permissions, and resource ownership; never manage the same objects from another root |
 | `infra/neon-cloud-run-test` | Separate authenticated Neon-backed development test service, runtime identity, scoped secret access and one invoker grant | Follow the [test procedure](../policies/neon-cloud-run-test-procedure.md) and confirm the disposable database, secret version, image, inherited access, state prefix and connection budget |
@@ -54,10 +55,15 @@ the resulting Cloud Run service URI; that check can be deferred until apply when
 the URI is not yet known. Operators should obtain the exact URI through an
 authorized staging process before enabling the runtime and inspect the plan.
 
-The worker alone receives the database secret reference and secret-level access.
-Terraform does not create its value or secret versions. Operators should verify
-the selected secret, its content, access, and recovery separately; enabling the
-runtime does not enable automatic publication or unpause the scheduler.
+The web database settings require both an existing `web_database_secret_id`
+and a numeric `web_database_secret_version`; leave both empty to omit the
+reference. The root grants the web runtime access to that secret. When the
+worker runtime is enabled, it must use a different database secret and
+credential; the root grants that secret to the worker runtime. Terraform does
+not create the secret values or versions. Operators should verify each selected
+secret, its content, effective access including inherited grants, and recovery
+separately; enabling the worker runtime does not enable automatic publication or
+unpause the scheduler.
 
 The independent [`infra/ssr-staging`](../../infra/ssr-staging) and
 [`infra/ssr-staging-db`](../../infra/ssr-staging-db) roots manage the synthetic
