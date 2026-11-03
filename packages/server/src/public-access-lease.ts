@@ -2,7 +2,7 @@ import type pg from 'pg'
 
 // Transaction-scoped locks work with transaction pooling. Every guarded reader
 // and removal writer must use this same namespace before this can be relied on.
-const sharedLock = 'SELECT pg_advisory_xact_lock_shared(726421, 391)'
+const sharedLock = 'SELECT pg_catalog.pg_advisory_xact_lock_shared(726421, 391)'
 
 /**
  * Acquire the database portion of a public-read guard. The caller must stop
