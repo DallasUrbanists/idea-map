@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import type pg from 'pg'
 import { normalizeOwnershipEmail } from './verified-ownership.js'
+import { runtimeDatabasePool } from './runtime-database.js'
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const tokenUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -78,4 +79,10 @@ export async function consumeGuestVerification(pool: pg.Pool, token: string, key
     await client.query('COMMIT')
     return true
   } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
+}
+
+/** Use the bounded shared server pool; the caller must keep responses private. */
+export async function verifyGuestEmail(databaseUrl: string, token: string, key: Buffer): Promise<boolean> {
+  if (!databaseUrl) throw new Error('Invalid guest verification configuration')
+  return consumeGuestVerification(runtimeDatabasePool(databaseUrl), token, key)
 }

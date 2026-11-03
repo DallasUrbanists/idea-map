@@ -98,11 +98,15 @@ verifier records can be pruned only under the idea lock when no legal hold appli
 
 This primitive does not send mail, create a guest session, enforce a
 registered-email gate, or authorize ownership or publication. Its authorization
-callback is a trusted server boundary, not a browser claim. Before live use,
+callback is a trusted server boundary, not a browser claim. An isolated
+verification page removes the proof from the URL fragment before loading any
+application plugins. Its default-disabled endpoint accepts a user-triggered
+request and reports only whether that proof was accepted. It
+does not send a link or create a session. Before live use,
 implement and review guest/draft authorization, account lookup and anti-enumeration,
-rate limits, private delivery and fragment-based link handling, key storage and
-rotation, retention scheduling, deletion, and recovery. No route, live grant,
-provider use, or scheduler is enabled by these functions. Rotating the signing
+rate limits, private delivery and link handling, request-body logging controls,
+key storage and rotation, retention scheduling, deletion, and recovery. No live grant, provider
+use, or scheduler is enabled by these functions. Rotating the signing
 key invalidates outstanding proofs and requires a recovery process. Verification
 records reference the idea; a future authorized deletion must invalidate and
 remove applicable proofs under the same idea lock and legal-hold checks without

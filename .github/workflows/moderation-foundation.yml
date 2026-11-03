@@ -215,6 +215,16 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_moderator_screen
         run: CHROME_PATH="$(command -v google-chrome || command -v chromium)" pnpm test:moderation-ui-integration
+      - name: Prepare guest verification page test database
+        run: docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_guest_page
+      - name: Migrate guest verification page test database
+        env:
+          DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_guest_page
+        run: pnpm --filter @idea-map/server db:migrate
+      - name: Verify guest page end to end
+        env:
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_guest_page
+        run: CHROME_PATH="$(command -v google-chrome || command -v chromium)" pnpm test:guest-verification-ui
       - name: Prepare ownership test database
         run: docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_ownership_emulator
       - name: Migrate ownership test database

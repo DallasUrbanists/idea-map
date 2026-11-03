@@ -49,7 +49,11 @@ actions people take in the application. Each Markdown filename follows
 Authors should explain user-facing prerequisites, steps, results, and recovery
 options without developer commands, source paths, or architecture. Add or update
 guides alongside user-facing feature changes once the interactions can be
-described accurately; the empty directory is retained with `.gitkeep`.
+described accurately.
+
+| Guide | Purpose |
+| --- | --- |
+| [Verify your guest email](user-guides/how-to-verify-your-guest-email.md) | Confirm a submission email using an existing link and understand results and recovery limits |
 
 ## Architecture
 
