@@ -108,8 +108,9 @@ separate synthetic rehearsal or provider fake for local tests.
 | `BACKUP_PROJECT_NUMBER` | Decimal project number that owns that bucket. |
 | `BACKUP_DATABASE_URL` | Secret direct Neon PostgreSQL URL with `sslmode=verify-full` and `sslrootcert=system`. |
 
-Specify the database, host, port, user, and password in the URL's main
-connection fields. The exporter rejects query parameters that override those
+Specify the database, one unescaped DNS or IP host, port, user, and password in
+the URL's main connection fields. The exporter rejects encoded hosts, Unix
+socket paths, host lists, pooled endpoints, and query parameters that override those
 fields and the `ssl` compatibility alias, which libpq can translate into a
 weaker SSL mode. With the required system trust setting, libpq rejects that
 weaker mode rather than connecting. The exporter also rejects duplicate TLS

@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
+import { isIP } from 'node:net'
 import { resolve } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { finished, pipeline } from 'node:stream/promises'
@@ -34,8 +35,12 @@ export function backupConfiguration(env) {
   }
   let url
   try { url = new URL(env.BACKUP_DATABASE_URL) } catch { throw new Error('Invalid backup configuration') }
+  const host = url.hostname
+  const dnsName = /^(?=.{1,254}$)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.?$/i.test(host) &&
+    host.replace(/\.$/, '').split('.').every(label => label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label))
+  const ipv6 = host.startsWith('[') && host.endsWith(']') && isIP(host.slice(1, -1)) === 6
   if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.hostname || !url.pathname || url.pathname === '/' ||
-      url.hostname.includes('-pooler.') || url.searchParams.get('sslmode') !== 'verify-full' ||
+      (!dnsName && !ipv6) || host.toLowerCase().includes('-pooler.') || url.searchParams.get('sslmode') !== 'verify-full' ||
       url.searchParams.get('sslrootcert') !== 'system' ||
       ['host', 'hostaddr', 'port', 'user', 'password', 'dbname', 'service', 'ssl', 'requiressl', 'sslkeylogfile'].some(key => url.searchParams.has(key)) ||
       ['sslmode', 'sslrootcert'].some(key => url.searchParams.getAll(key).length !== 1) ||

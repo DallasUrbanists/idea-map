@@ -14,11 +14,17 @@ const metadata = { name: env.BACKUP_BUCKET, projectNumber: env.BACKUP_PROJECT_NU
 test('backup configuration requires direct verified TLS and a hosted production job', () => {
   assert.equal(backupConfiguration(env).environment, 'dev')
   assert.equal(backupConfiguration({ ...env, BACKUP_DATABASE_URL: `${env.BACKUP_DATABASE_URL}&gssencmode=disable` }).environment, 'dev')
+  assert.equal(backupConfiguration({ ...env, BACKUP_DATABASE_URL: 'postgres://test@[::1]/db?sslmode=verify-full&sslrootcert=system' }).environment, 'dev')
   for (const change of [
     { BACKUP_ENVIRONMENT: 'v1' }, { BACKUP_BUCKET: 'gs://wrong' }, { BACKUP_PROJECT_NUMBER: 'bad' },
     { STORAGE_EMULATOR_HOST: '' }, { STORAGE_EMULATOR_HOST: 'http://127.0.0.1:8080' },
     { BACKUP_ENVIRONMENT: 'prod' }, { BACKUP_DATABASE_URL: 'postgres://example.invalid/db' },
     { BACKUP_DATABASE_URL: 'postgres://example-pooler.neon.tech/db?sslmode=verify-full&sslrootcert=system' },
+    { BACKUP_DATABASE_URL: 'postgres://EXAMPLE-POOLER.NEON.TECH/db?sslmode=verify-full&sslrootcert=system' },
+    { BACKUP_DATABASE_URL: 'postgres://example%2dpooler.neon.tech/db?sslmode=verify-full&sslrootcert=system' },
+    { BACKUP_DATABASE_URL: 'postgres://example-pooler%2eneon.tech/db?sslmode=verify-full&sslrootcert=system' },
+    { BACKUP_DATABASE_URL: 'postgres://%2Ftmp/db?sslmode=verify-full&sslrootcert=system' },
+    { BACKUP_DATABASE_URL: 'postgres://example.invalid,other.invalid/db?sslmode=verify-full&sslrootcert=system' },
     { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&sslmode=disable' },
     { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&host=other.invalid' },
     { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&ssl=true' },
