@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { Readable, Writable } from 'node:stream'
 import { test } from 'node:test'
 import pg from 'pg'
-import { acquirePublicAccessLease } from '../dist/public-access-lease.js'
+import { acquirePublicAccessLease, publicAccessLeaseClient } from '../dist/public-access-lease.js'
 import { prepareAndJournalRemoval, preparePendingRemoval } from '../dist/pending-removal.js'
 import { decodeRecoveryRecord, encodeRecoveryIntent } from '../dist/recovery-journal-record.js'
 import { pendingRemovalDatabasePool, runtimeDatabasePool } from '../dist/runtime-database.js'
@@ -262,7 +262,7 @@ test('a lost database connection aborts the lease and prevents successful releas
   try {
     await pool.query('UPDATE public.public_access_gate SET is_open = true WHERE singleton = true')
     lease = await acquirePublicAccessLease(pool)
-    const pid = (await lease.client.query('SELECT pg_backend_pid() AS pid')).rows[0].pid
+    const pid = (await publicAccessLeaseClient(lease).query('SELECT pg_backend_pid() AS pid')).rows[0].pid
     const aborted = once(lease.signal, 'abort')
     assert.equal((await pool.query('SELECT pg_terminate_backend($1) AS terminated', [pid])).rows[0].terminated, true)
     let timer

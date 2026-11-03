@@ -11,9 +11,17 @@ const accessStillValid = `SELECT (SELECT is_open FROM public.public_access_gate 
 ) AS closing`
 
 export type PublicAccessLease = {
-  client: pg.PoolClient
-  signal: AbortSignal
-  release: () => Promise<void>
+  readonly signal: AbortSignal
+  readonly release: () => Promise<void>
+}
+
+const activeLeases = new WeakMap<PublicAccessLease, pg.PoolClient>()
+
+/** Keep the underlying connection private and reject inactive leases. */
+export function publicAccessLeaseClient(value: PublicAccessLease | undefined): pg.PoolClient {
+  const client = value && activeLeases.get(value)
+  if (!value || !client || value.signal.aborted) throw new Error('Public access unavailable')
+  return client
 }
 
 /**
@@ -51,8 +59,7 @@ export async function acquirePublicAccessLease(pool: pg.Pool): Promise<PublicAcc
     }, 250)
     timer.unref()
     controller.signal.addEventListener('abort', () => clearInterval(timer), { once: true })
-    return {
-      client,
+    const lease: PublicAccessLease = {
       signal: controller.signal,
       release: () => {
         releasePromise ??= (async () => {
@@ -72,6 +79,9 @@ export async function acquirePublicAccessLease(pool: pg.Pool): Promise<PublicAcc
         return releasePromise
       },
     }
+    activeLeases.set(lease, client)
+    controller.signal.addEventListener('abort', () => activeLeases.delete(lease), { once: true })
+    return Object.freeze(lease)
   } catch {
     controller.abort()
     try { await client.query('ROLLBACK'); dispose(false) } catch { dispose(true) }

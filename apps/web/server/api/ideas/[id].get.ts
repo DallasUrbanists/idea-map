@@ -1,4 +1,4 @@
-import { readPublishedIdea, type PublicAccessLease } from '@idea-map/server'
+import { readGuardedPublishedIdea, type PublicAccessLease } from '@idea-map/server'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id') ?? ''
@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
   const lease = event.context.publicAccessLease as PublicAccessLease | undefined
   if (!databaseUrl || !lease || lease.signal.aborted) throw createError({ statusCode: 503, statusMessage: 'Idea service unavailable' })
   try {
-    const idea = await readPublishedIdea(databaseUrl, id, lease.client)
+    const idea = await readGuardedPublishedIdea(id, lease)
     if (idea) return idea
   } catch {
     throw createError({ statusCode: 503, statusMessage: 'Idea service unavailable' })

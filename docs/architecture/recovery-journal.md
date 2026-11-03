@@ -211,6 +211,13 @@ response when the signal aborts. The in-progress web guard uses this primitive f
 current idea, suggestion, and media routes. A reader periodically checks the gate
 and for a waiting exclusive advisory lock, and aborts its response when the gate
 is closed or a lock is waiting.
+The server package's public content entry points require a lease issued by the
+read guard and refuse forged, released, or aborted leases. The public lease does
+not expose its underlying database connection. Projection reads
+check the lease again after the database query, and preview reads also propagate
+its abort signal through storage I/O. Internal query helpers and direct database
+access are not guarded by this API boundary; runtime grants and every public
+serving path still require review.
 Pending removals use a reserved one-client pool so occupied public readers cannot
 prevent the writer from closing the gate. This adds to the documented connection budget.
 The guard still lacks reviewed runtime grants, measured drain timing, and complete
