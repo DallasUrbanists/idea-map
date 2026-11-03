@@ -24,7 +24,7 @@
   "scripts": {
     "db:migrate": "drizzle-kit migrate",
     "db:generate": "drizzle-kit generate",
-    "test:registered-drafts": "tsc --build && node --test test/registered-drafts.test.mjs",
+    "test:registered-drafts": "tsc --build && node --test test/registered-drafts.test.mjs test/registered-submissions.test.mjs",
     "test:resend": "tsc --build && node --test test/resend.test.mjs",
     "test:media": "tsc --build && node --test test/media-upload.test.mjs",
     "test:outbox": "tsc --build && node --test test/outbox.test.mjs",
