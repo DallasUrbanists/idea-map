@@ -145,6 +145,15 @@ outcome require review. Before integrating the journal, verify the ID associatio
 through the live mutation path. Do not match a release to a placement solely by
 idea and case or apply it automatically.
 
+The hold ID alone is not enough to recreate a database hold. The hold also refers
+to an idea, a person, and a legal-authority assignment, and records its placement
+time. An older archive may lack any of those rows or the assignment that was valid
+at placement. The current version-two confirmation does not capture the committed
+assignment ID or placement time. Preserve and verify the necessary authorization
+and referenced records through a reviewed recovery design; do not synthesize an
+assignment or substitute a new hold ID to make a restore pass. Keep the target
+isolated when the original evidence or its relationships cannot be established.
+
 On restore, an operator verifies coverage and reads the relevant complete
 journal before public reads or side effects resume. Apply removals and hold
 placements conservatively and idempotently; do not release a hold or republish
