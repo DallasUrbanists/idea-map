@@ -321,7 +321,8 @@ The moderator's current identity is rechecked before commit while the database
 assignment remains locked. The external provider and database do not share a
 transaction, so this limits but cannot eliminate identity changes at commit.
 
-This primitive does not expose moderator controls or grant database permissions.
+The database function requires a separately reviewed execute grant. The action
+endpoint exposes it only behind a default-disabled setting and grants no access.
 Do not enable it for live data until review access, reason handling, privacy,
 90-day audit retention, legal holds, deletion, and recovery are implemented and
 reviewed. Do not put contacts, raw content, or provider payloads in a reason.
@@ -389,6 +390,15 @@ implemented. It does not expose private media, review controls, a queue, or
 notifications. Complete those paths, privacy and access controls, and rollout
 review before enabling it. Responses and errors use `private, no-store`.
 
+The separately default-disabled action endpoint accepts manual approval,
+rejection, request-changes, resolve-changes, hold, and hold-release operations. It requires the
+configured browser origin, JSON and a non-simple request header, a verified
+session and current moderator assignment; it rejects extra fields and method
+overrides. It grants no database permissions. Escalations, removals,
+private media, reviewer interfaces, rate limiting, privacy-safe retention and
+projection delivery remain separate work. Do not enable this endpoint until
+those requirements and the scoped grants are reviewed.
+
 ### Manual moderator approval
 
 An authorized moderator can also manually approve the exact current revision
@@ -438,6 +448,23 @@ moderator or author interface. Before live use, complete privacy-safe deletion,
 legal-hold lifecycle, role administration, notification, recovery, and rollout
 review. These records refer to revisions and assessments, so deletion must honor
 those dependencies rather than silently discard evidence.
+
+The default-disabled action endpoint requires an `operationKey` for
+`request-changes` and `place-hold`: 1–128 ASCII letters, digits, underscores, or
+hyphens. Generate one key per moderator decision and reuse it for retries.
+Receipts are scoped to the internal moderator and action type. A canonical
+payload hash and outcome commit with the block; the same key and payload replay the outcome,
+even after resolution, release, or metadata pruning. Another payload with that key
+returns `409`. Every replay still checks the current session and assignment.
+
+Migrations `0032_change_request_operations` and `0033_hold_placement_operations`
+add private durable receipts and the separately permissioned
+`request_moderator_changes_once` and `place_moderator_hold_once` functions. Apply
+them before running the updated server. Keep actions disabled during
+mixed-version rollout or rollback: older servers lack the key requirement. Preserve receipts on
+rollback; deleting them makes old retries unsafe. Receipts retain only actor,
+key, hash, and outcome, with no automatic expiry. Privacy-safe receipt deletion
+remains part of the required review before enabling live controls.
 
 ### Moderator escalations
 

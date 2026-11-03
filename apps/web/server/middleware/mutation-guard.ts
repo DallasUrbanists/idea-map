@@ -11,12 +11,13 @@ export default defineEventHandler((event) => {
   const sessionPost = method === 'POST' && event.path.split('?')[0] === '/api/session'
   const webhookPost = method === 'POST' && event.path.split('?')[0] === '/api/webhooks/resend'
   const ownershipPost = method === 'POST' && event.path.split('?')[0] === '/api/ownership/claim' && useRuntimeConfig(event).ownershipClaimsEnabled === true
+  const moderationPost = method === 'POST' && event.path.split('?')[0] === '/api/moderation/actions' && useRuntimeConfig(event).moderationActionsEnabled === true
   const healthGet = method === 'GET' && event.path.split('?')[0] === '/api/health'
   if (useRuntimeConfig(event).stagingWebhookOnly && !webhookPost && !healthGet) {
     setResponseHeader(event, 'Cache-Control', 'private, no-store')
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
-  if (((method !== 'GET' && method !== 'HEAD') && !sessionPost && !webhookPost && !ownershipPost) || hasMethodOverride) {
+  if (((method !== 'GET' && method !== 'HEAD') && !sessionPost && !webhookPost && !ownershipPost && !moderationPost) || hasMethodOverride) {
     setResponseHeader(event, 'Cache-Control', 'private, no-store')
     throw createError({ statusCode: 403, statusMessage: 'Mutations unavailable' })
   }
