@@ -231,6 +231,7 @@ For the worker integration check, migrate a different disposable database,
 set `TEST_DATABASE_URL`, and run `pnpm --filter @idea-map/worker test:integration`.
 The worker integration test also checks recovery with fake queue responses,
 including inaccessible queues, timeouts, concurrent recovery, and active leases.
+It checks aggregate backlog and email-event snapshots using synthetic records.
 These tests use synthetic assessments and injected authentication and policy;
 they do not validate live provider permissions or authorize publication.
 
