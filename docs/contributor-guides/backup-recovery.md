@@ -370,4 +370,11 @@ Include replacement infrastructure, access, permissions, migration,
 reconciliation, and validation in the elapsed time. The release operator should
 follow the [Cloud Run rollback procedure](cloud-run-release.md#roll-back-or-recover-an-interrupted-operation)
 for an authorized code rollback and check database compatibility before routing
-traffic. A local restore result does not establish either production objective.
+traffic. Database compatibility alone is not enough: a previous web revision
+may not enforce the public access gate, and a previous writer may bypass the
+recovery journal. Before routing traffic or resuming jobs, verify that every
+serving and mutation revision enforces the reviewed recovery boundaries. If it
+does not, keep public access and affected writers independently fenced until an
+authorized recovery process restores those protections. The release workflow's
+revision and health checks do not establish journal coverage or gate enforcement.
+A local restore result does not establish either production objective.
