@@ -332,3 +332,50 @@ publication and preserve hold records for review.
 Releasing a hold does not itself rearm an exhausted delivery; an authorized
 operator must inspect and recover the durable job using the
 [outbox recovery procedure](#outbox-recovery).
+
+### Legal holds and decision metadata
+
+Legal-hold authority is separate from moderator assignments. The database
+records the Executive Director or a delegate, the non-sensitive authorization
+reference, the grantor, and any revocation. A delegate grant must be attributed
+to an active Executive Director assignment. Initial authority provisioning and
+all permission changes require separate authorized operator review; the
+migrations create no live assignments or grants.
+
+A legal-hold record covers one idea and one case. Multiple cases can protect the
+same idea independently. Placement and release record the actor, authority,
+time, non-sensitive reason and case reference; release can also record a legal
+review reference. The authorized operator must determine whether legal review
+is required and record its reference before release. The server verifies the
+registered identity and checks it again before commit while holding the authority
+lock. The provider and database cannot share a transaction, so an identity
+change can still occur at commit.
+The functions have fixed search paths and no `PUBLIC` execute permission.
+The server returns `processed` only for a newly recorded placement or release,
+`not_found` for a missing target, and `already_held` or `already_released` for
+idempotent retries. Retries preserve the original audit fields. All outcomes
+remain subject to the identity recheck before commit.
+
+Migration `0017` adds outcome-returning SQL functions without changing the
+original UUID/boolean functions or stored records. Server callers require
+separately reviewed execute grants on the new functions; direct table reads
+remain unnecessary. Apply the migration before updating callers. Rolling back
+the server requires no data rollback; preserve the hold records and functions.
+
+Hold placement and the narrow decision-retention primitive lock the idea in the
+same transaction. Retention fails closed for missing ideas, active holds, or a
+transaction isolation level other than READ COMMITTED. Once permitted, it deletes
+only approval/rejection moderation events and approval-correction metadata older
+than 90 days; durable approval records remain. It does not remove content,
+non-decision events, legal-hold records, accounts, uploads, or backups, and it
+is not scheduled or granted to a live role. Any future retention or deletion
+writer must take the same idea lock and recheck all applicable holds before its
+own changes. An unrecorded hold request must be handled by the operator process
+before retention runs.
+
+These primitives do not provide a legal-hold review interface, delegation
+administration, complete hold scope, deletion, backup expiry, or restore safety.
+The current append-only hold and authority records also prevent deletion of
+referenced ideas and users. Their retention and privacy-safe deletion lifecycle
+must be decided and implemented before live use. Do not grant live access or
+schedule retention based on these tests alone.

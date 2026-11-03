@@ -32,6 +32,24 @@ export const moderatorAssignments = pgTable('moderator_assignments', {
   check('moderator_assignments_grant_reason', sql`length(trim(${table.grantReason})) > 0 AND octet_length(${table.grantReason}) <= 1000`),
   check('moderator_assignments_revoke_fields', sql`(${table.revokedAt} IS NULL AND ${table.revokedBy} IS NULL AND ${table.revokeReason} IS NULL) OR (${table.revokedAt} IS NOT NULL AND ${table.revokedBy} IS NOT NULL AND ${table.revokeReason} IS NOT NULL AND length(trim(${table.revokeReason})) > 0 AND octet_length(${table.revokeReason}) <= 1000)`),
 ])
+// Legal-hold authority is distinct from moderation and granted only by a reviewed operator process.
+export const legalHoldAssignments = pgTable('legal_hold_assignments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  authority: text('authority').notNull(),
+  authorizationReference: text('authorization_reference').notNull(),
+  grantedBy: uuid('granted_by').notNull().references(() => users.id),
+  grantedAt: createdAt(),
+  revokedBy: uuid('revoked_by').references(() => users.id),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  revokeReason: text('revoke_reason'),
+}, table => [
+  uniqueIndex('legal_hold_assignments_active_user_key').on(table.userId).where(sql`${table.revokedAt} IS NULL`),
+  uniqueIndex('legal_hold_assignments_active_director_key').on(table.authority).where(sql`${table.authority} = 'executive_director' AND ${table.revokedAt} IS NULL`),
+  check('legal_hold_assignments_authority', sql`${table.authority} IN ('executive_director','delegate')`),
+  check('legal_hold_assignments_reference', sql`length(trim(${table.authorizationReference})) > 0 AND octet_length(${table.authorizationReference}) <= 300`),
+  check('legal_hold_assignments_revocation', sql`(${table.revokedAt} IS NULL AND ${table.revokedBy} IS NULL AND ${table.revokeReason} IS NULL) OR (${table.revokedAt} IS NOT NULL AND ${table.revokedBy} IS NOT NULL AND ${table.revokeReason} IS NOT NULL AND length(trim(${table.revokeReason})) > 0 AND octet_length(${table.revokeReason}) <= 1000)`),
+])
 export const contacts = pgTable('contacts', {
   id: uuid('id').primaryKey().defaultRandom(),
   normalizedEmail: text('normalized_email').notNull(),
@@ -46,6 +64,26 @@ export const ideas = pgTable('ideas', {
   location: geographyPoint('location'),
   createdAt: createdAt(),
 }, table => [index('ideas_owner_idx').on(table.ownerId), index('ideas_author_contact_idx').on(table.authorContactId), index('ideas_location_gist_idx').using('gist', table.location), uniqueIndex('ideas_id_author_contact_key').on(table.id, table.authorContactId)])
+// One record covers one idea and one documented case; different cases may overlap.
+export const legalHolds = pgTable('legal_holds', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ideaId: uuid('idea_id').notNull().references(() => ideas.id),
+  caseReference: text('case_reference').notNull(),
+  reason: text('reason').notNull(),
+  placedBy: uuid('placed_by').notNull().references(() => users.id),
+  placementAuthorityId: uuid('placement_authority_id').notNull().references(() => legalHoldAssignments.id),
+  placedAt: createdAt(),
+  releasedBy: uuid('released_by').references(() => users.id),
+  releaseAuthorityId: uuid('release_authority_id').references(() => legalHoldAssignments.id),
+  releasedAt: timestamp('released_at', { withTimezone: true }),
+  releaseReason: text('release_reason'),
+  legalReviewReference: text('legal_review_reference'),
+}, table => [
+  uniqueIndex('legal_holds_active_case_idea_key').on(table.ideaId, table.caseReference).where(sql`${table.releasedAt} IS NULL`),
+  check('legal_holds_case_reference', sql`length(trim(${table.caseReference})) > 0 AND octet_length(${table.caseReference}) <= 300`),
+  check('legal_holds_reason', sql`length(trim(${table.reason})) > 0 AND octet_length(${table.reason}) <= 1000`),
+  check('legal_holds_release', sql`(${table.releasedAt} IS NULL AND ${table.releasedBy} IS NULL AND ${table.releaseAuthorityId} IS NULL AND ${table.releaseReason} IS NULL AND ${table.legalReviewReference} IS NULL) OR (${table.releasedAt} IS NOT NULL AND ${table.releasedBy} IS NOT NULL AND ${table.releaseAuthorityId} IS NOT NULL AND ${table.releaseReason} IS NOT NULL AND length(trim(${table.releaseReason})) > 0 AND octet_length(${table.releaseReason}) <= 1000 AND (${table.legalReviewReference} IS NULL OR (length(trim(${table.legalReviewReference})) > 0 AND octet_length(${table.legalReviewReference}) <= 300)))`),
+])
 // A claim is evidence of an ownership transfer, not proof that a caller owns
 // an email address. The server must verify that evidence before inserting it.
 export const ownershipClaims = pgTable('ownership_claims', {
