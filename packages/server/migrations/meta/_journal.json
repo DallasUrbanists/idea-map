@@ -127,6 +127,41 @@
       "when": 1793660000000,
       "tag": "0017_legal_hold_outcomes",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793660001000,
+      "tag": "0018_moderation_assessment_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793660002000,
+      "tag": "0019_moderator_rejection",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793660003000,
+      "tag": "0020_moderator_change_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793660004000,
+      "tag": "0021_moderator_change_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1793660005000,
+      "tag": "0022_change_request_retention",
+      "breakpoints": true
     }
   ]
 }

@@ -48,7 +48,7 @@ export async function verifyRegisteredSession(projectId: string, cookie: string,
 
 /** Verify a current registered identity, then hold its database role lock through the action. */
 export async function withVerifiedModerator<T>(databaseUrl: string, projectId: string, cookie: string,
-  verifier: RegisteredSessionVerifier, action: (client: pg.PoolClient, userId: string) => Promise<T>): Promise<ModeratorAccess<T>> {
+  verifier: RegisteredSessionVerifier, action: (client: pg.PoolClient, userId: string, subject: string) => Promise<T>): Promise<ModeratorAccess<T>> {
   if (!databaseUrl) throw new Error('Invalid moderator configuration')
   const session = await verifyRegisteredSession(projectId, cookie, verifier)
   if (session.state !== 'verified') return session
@@ -60,7 +60,7 @@ export async function withVerifiedModerator<T>(databaseUrl: string, projectId: s
       'SELECT public.lock_active_moderator($1, $2) AS user_id', [`firebase:${projectId}`, session.uid])
     const userId = result.rows[0]?.user_id
     if (!userId) { await client.query('ROLLBACK'); return { state: 'forbidden' } }
-    const value = await action(client, userId)
+    const value = await action(client, userId, session.uid)
     // A review action may wait on database locks. Recheck the provider while
     // the database assignment is still locked, before committing any action.
     let timer: ReturnType<typeof setTimeout> | undefined

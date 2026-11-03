@@ -54,6 +54,8 @@ jobs:
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_ownership
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_holds
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_legal_holds
+          docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderator_decisions
+          docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderator_changes
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_database
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_worker
       - name: Outbox transactions
@@ -92,6 +94,14 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_legal_holds
         run: pnpm --filter @idea-map/server test:legal-holds
+      - name: Moderator decision races
+        env:
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_moderator_decisions
+        run: pnpm --filter @idea-map/server test:moderator-decisions
+      - name: Request-changes races
+        env:
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_moderator_changes
+        run: pnpm --filter @idea-map/server test:moderator-changes
       - name: Migrate worker test database
         env:
           DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_worker
