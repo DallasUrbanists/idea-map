@@ -354,6 +354,11 @@ You should use the [design system](../design/design-system.md) for component and
 accessibility guidance. The catalog shows what each component does; its stories
 and user journeys show the behavior you can check.
 
+For foundational controls, run `pnpm --filter @idea-map/web test:controls` after
+installing Playwright Chromium. The [controls guide](../design/controls.md#review-the-specimens)
+describes keyboard, SSR, axe, responsive, and screenshot checks; its isolated
+harness needs no database or Firebase services.
+
 ## Dialog checks
 
 You should check dialog server-side rendering (SSR), keyboard/focus behavior,

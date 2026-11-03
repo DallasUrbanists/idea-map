@@ -15,6 +15,7 @@
     "vue-router": "5.4.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@playwright/test": "1.64.1",
     "@storybook/vue3-vite": "10.6.5",
     "@vitejs/plugin-vue": "6.0.10",
@@ -29,6 +30,7 @@
     "build:storybook": "storybook build",
     "build": "nuxt build",
     "typecheck": "nuxt typecheck",
-    "preview": "nuxt preview"
+    "preview": "nuxt preview",
+    "test:controls": "nuxt prepare && node --test ../../scripts/controls-ssr.mjs && playwright test --config tests/controls/playwright.config.mjs"
   }
 }

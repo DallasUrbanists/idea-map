@@ -26,6 +26,7 @@ The following contents links navigate within this guide:
 - [Margins, padding, and edge alignment](#margins-padding-and-edge-alignment)
     - [Choose spacing by relationship](#choose-spacing-by-relationship)
     - [Let content touch an edge](#let-content-touch-an-edge)
+- [Foundational controls](#foundational-controls)
 - [Dialog wrapper contract](#dialog-wrapper-contract)
 - [Component discovery and verification](#component-discovery-and-verification)
 
@@ -543,6 +544,13 @@ full-width row background and inset row text.
   <div class="edge-row">Full-width row background, inset text</div>
 </article>
 ```
+
+## Foundational controls
+
+The [controls guide](controls.md) documents buttons, labeled fields, native
+selects, toggles, status messages, and progress. You can inspect their disabled,
+loading, validation, and recovery states under **Controls / Foundations** in
+Storybook. The guide includes typed contracts and focused verification steps.
 
 ## Dialog wrapper contract
 

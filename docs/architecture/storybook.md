@@ -25,6 +25,15 @@ layout, maps and media, and product patterns so other contributors can find
 them. Document props, events, slots, and meaningful examples before creating
 another overlapping component.
 
+The selected production catalog address is
+[storybook.mapmy.town](https://storybook.mapmy.town/), separate from the
+[production application](https://mapmy.town/). This documented destination does
+not confirm deployment; local Storybook is the component validation path.
+Existing `ideam.app` staging configuration remains unchanged.
+
+The [controls guide](../design/controls.md) describes the **Controls / Foundations**
+stories and their typed APIs, including validation and asynchronous recovery.
+
 ## Validation boundary
 
 Stories demonstrate component contracts and accessibility behavior. Component
