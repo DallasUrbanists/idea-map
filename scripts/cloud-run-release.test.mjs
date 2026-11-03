@@ -38,7 +38,8 @@ function fakeCloud(options = {}) {
         return { metadata: { name: args[3], generation: 1, labels: { 'serving.knative.dev/service': service } },
           spec: { serviceAccountName: (isTarget ? options.revisionIdentity : options.servingIdentity) ??
               `${service}@${project}.iam.gserviceaccount.com`,
-            containers: [{ image: revisionImage }] },
+            containers: [{ image: revisionImage, command: isTarget ? options.revisionCommand : options.servingCommand,
+              args: isTarget ? options.revisionArgs : options.servingArgs }] },
           status: { observedGeneration: isTarget ? 1 : (options.servingObservedGeneration ?? 1),
             imageDigest: (isTarget ? options.revisionDigest : options.servingDigest) ?? revisionImage,
             conditions: [{ type: 'Ready', status: (isTarget ? options.ready : options.servingReady) ?? 'True' }] } }
@@ -156,6 +157,15 @@ test('rejects a wrong or unhealthy revision before routing', () => {
     { revisionIdentity: 'wrong@synthetic-dev.iam.gserviceaccount.com' }]) {
     const fake = fakeCloud({ serviceReady: 'False', ...options })
     assert.throws(() => release({ ...config, operation: 'promote' }, fake.run))
+    assert.equal(fake.commands.some(args => args[2] === 'update-traffic'), false)
+  }
+})
+
+test('never releases or rolls back to the temporary worker bootstrap process', () => {
+  for (const options of [{ servingCommand: ['node', '-e', 'bootstrap'] },
+    { revisionCommand: ['node', '-e', 'bootstrap'] }, { revisionArgs: ['bootstrap'] }]) {
+    const fake = fakeCloud(options)
+    assert.throws(() => release({ ...config, operation: 'rollback' }, fake.run), /Revision identity, image, or health metadata/)
     assert.equal(fake.commands.some(args => args[2] === 'update-traffic'), false)
   }
 })

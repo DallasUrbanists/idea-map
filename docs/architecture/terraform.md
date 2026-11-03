@@ -32,6 +32,7 @@ this table:
 | `google_cloud_tasks_queue.jobs` | Per-environment queue with bounded dispatch and five attempts | Verify quotas, idempotent handlers, dead-letter/reconciliation behavior and authenticated target before use |
 | `enable_task_delivery` | Opt-in task and repair invokers, worker-only invocation grants, scoped queue access and a paused hourly scheduler | Review service identity, queue inspection access, worker configuration and recovery before a live plan; unpausing is a separate operation |
 | `enable_worker_runtime` | Opt-in worker settings and secret access to an existing, pinned database URL secret | Review the exact worker URI, secret ownership and version, queue, invokers, connection budget, and service-only access |
+| `enable_worker_bootstrap` | Dev-only temporary worker process that returns HTTP 503 until its generated URI is known | Use only for a reviewed initial bootstrap; it is not the worker and cannot deliver tasks |
 | `infra/task-delivery-staging` | Separate opt-in synthetic queue, invokers, scoped IAM members, and paused hourly repair for an existing isolated worker | Review its separate state, worker identity and origin, inherited permissions, and resource ownership; never manage the same objects from another root |
 | `infra/neon-cloud-run-test` | Separate authenticated Neon-backed development test service, runtime identity, scoped secret access and one invoker grant | Follow the [test procedure](../policies/neon-cloud-run-test-procedure.md) and confirm the disposable database, secret version, image, inherited access, state prefix and connection budget |
 | `infra/resend-staging` | Separate staging webhook service, runtime identity, database, and scoped secrets | Follow the [staging media procedure](../policies/media-staging-procedure.md#configure-the-delivery-webhook) and review public ingress, runtime grants, pinned versions, and state ownership |
@@ -58,6 +59,15 @@ The worker alone receives the database secret reference and secret-level access.
 Terraform does not create its value or secret versions. Operators should verify
 the selected secret, its content, access, and recovery separately; enabling the
 runtime does not enable automatic publication or unpause the scheduler.
+
+For an initial dev bootstrap, `enable_worker_bootstrap` starts a temporary
+process from the worker image that returns 503 for every request. Terraform
+rejects this option outside dev or alongside task delivery or worker runtime.
+Once its generated URI is known, an operator can review a
+second plan with bootstrap disabled and the real worker runtime enabled. The
+release workflow rejects worker revisions with command or argument overrides,
+so the temporary process cannot be promoted or selected for rollback. The
+bootstrap option does not prepare the database or authorize a live apply.
 
 The independent [`infra/ssr-staging`](../../infra/ssr-staging) and
 [`infra/ssr-staging-db`](../../infra/ssr-staging-db) roots manage the synthetic

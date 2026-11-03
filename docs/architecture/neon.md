@@ -57,8 +57,8 @@ nearby region alone does not tell you how long an application request takes.
 The web process keeps a pool of at most two clients for each distinct database
 URL. With one URL and one process per instance, the configured two web instances
 therefore use at most four clients in ordinary single-revision operation. The
-worker has a one-instance limit but has no database pool configured here; any
-worker database client must have its own explicit limit and be included in the
+worker has a one-instance limit and a pool of at most one client per instance.
+Include that pool and overlapping or replacement worker revisions in the
 budget before use. Request concurrency is not a database connection limit.
 
 Operators should calculate capacity separately for each Neon compute and include
@@ -105,8 +105,9 @@ compute, including the long-lived development and disposable test databases:
 The web allowances are application-to-pooler clients; the remaining rows reserve
 PostgreSQL backends. Budget each client as if it needs a backend, including the
 additional retained idle allowance, and count each connection only once. The
-worker has no database connection configured; reduce another allowance before
-adding one. Neon documents separate pools for each role and database, each with
+worker pool is not separately allocated in this table; recalculate the other
+allowances, retained backend connections, and headroom before connecting it.
+Neon documents separate pools for each role and database, each with
 a `default_pool_size` of 90% of `max_connections`; that per-pool setting does
 not reserve slots and does not protect the compute from combined pools. Confirm
 the actual pooler limits in the target environment before using this allocation.

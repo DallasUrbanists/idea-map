@@ -66,6 +66,13 @@ avoid silently reverting a release. Operators should review a real Terraform
 plan before every separately authorized apply, and check which revision and
 traffic will remain active when other service configuration changes.
 
+If the worker's generated URI is not yet known, the
+[Terraform guide](../architecture/terraform.md#resource-definitions) describes
+an opt-in, dev-only bootstrap process that returns 503. Replace it with the
+configured worker through a separately reviewed Terraform plan before using
+the release workflow. A bootstrap revision is not a recovery target: the
+workflow rejects worker revisions with overridden commands or arguments.
+
 The workflow operates on `idea-map-web-dev` and `idea-map-worker-dev` in
 staging and the corresponding `-prod` services in production. It requires one
 explicit current revision with all traffic, request-based CPU, zero minimum

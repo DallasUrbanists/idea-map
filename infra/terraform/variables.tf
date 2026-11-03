@@ -67,6 +67,11 @@ variable "enable_worker_runtime" {
   type        = bool
   default     = false
 }
+variable "enable_worker_bootstrap" {
+  description = "Temporarily start a non-operational internal worker to discover its generated URI in dev."
+  type        = bool
+  default     = false
+}
 variable "worker_origin" {
   description = "Exact HTTPS origin of the reviewed worker service, without a trailing slash."
   type        = string
