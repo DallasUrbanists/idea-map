@@ -17,7 +17,7 @@
     "test:preview": "node --test scripts/media-preview.integration.mjs",
     "test:preview:provider": "node --test scripts/media-preview.provider.integration.mjs",
     "test:web:published": "node --test scripts/nuxt-published-smoke.mjs",
-    "test:auth": "node --test scripts/session-emulator.integration.mjs scripts/auth-browser.integration.mjs",
+    "test:auth": "node --test scripts/session-emulator.integration.mjs scripts/auth-browser.integration.mjs scripts/auth-cleanup-emulator.integration.mjs",
     "dev": "tsc --build && pnpm --filter @idea-map/web dev --dotenv ../../.env --host 127.0.0.1",
     "dev:storybook": "pnpm --filter @idea-map/web storybook --no-open",
     "dev:services": "node scripts/dev-services.mjs start",
@@ -29,7 +29,10 @@
     "dev:db:migrate:container": "node scripts/dev-services.mjs migrate",
     "dev:stop": "node scripts/dev-services.mjs stop",
     "changeset": "changeset",
-    "release:status": "changeset status"
+    "release:status": "changeset status",
+    "dev:fixtures:seed": "node scripts/local-fixtures.mjs seed",
+    "dev:fixtures:clean": "node scripts/local-fixtures.mjs clean",
+    "test:fixtures": "node --test scripts/local-fixtures.integration.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "3.0.3",

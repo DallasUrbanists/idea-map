@@ -3,6 +3,8 @@ import { createServer } from 'node:net'
 import { setTimeout as delay } from 'node:timers/promises'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
+import { trackAuthTestAccounts } from './auth-emulator-accounts.mjs'
 
 // Run after building, with a disposable demo-idea-map Auth emulator on 9099.
 test('session endpoint verifies emulator credentials and enforces CSRF and cookie policy', async () => {
@@ -14,6 +16,7 @@ test('session endpoint verifies emulator credentials and enforces CSRF and cooki
   const server = spawn(process.execPath, ['apps/web/.output/server/index.mjs'], {
     env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), NUXT_SESSION_ORIGIN: base, NUXT_FIREBASE_PROJECT_ID: 'demo-idea-map', FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099' }, stdio: 'ignore',
   })
+  const accounts = trackAuthTestAccounts()
   try {
     let ready = false
     for (let i = 0; i < 80; i++) {
@@ -22,10 +25,11 @@ test('session endpoint verifies emulator credentials and enforces CSRF and cooki
     }
     assert.ok(ready)
     const signup = await fetch('http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake-key', {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: `test-${Date.now()}@example.test`, password: 'test-password', returnSecureToken: true }),
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: `test-${randomUUID()}@example.test`, password: 'test-password', returnSecureToken: true }),
     })
     assert.equal(signup.status, 200)
     const { idToken } = await signup.json()
+    accounts.add('registered', idToken)
     const headers = { origin: base, 'content-type': 'application/json', 'x-idea-map-session': 'IdeaMapSession' }
     const request = (body, extra = {}) => fetch(`${base}/api/session`, { method: 'POST', headers: { ...headers, ...extra }, body: JSON.stringify(body) })
     assert.equal((await request({ action: 'login', idToken }, { origin: 'https://evil.example' })).status, 403)
@@ -34,7 +38,28 @@ test('session endpoint verifies emulator credentials and enforces CSRF and cooki
     assert.equal((await request({ action: 'login', idToken: 'x'.repeat(33000) })).status, 413)
     const anonymous = await fetch('http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake-key', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ returnSecureToken: true }) })
     assert.equal(anonymous.status, 200)
-    assert.equal((await request({ action: 'login', idToken: (await anonymous.json()).idToken })).status, 401)
+    const anonymousToken = (await anonymous.json()).idToken
+    accounts.add('anonymous', anonymousToken)
+    assert.equal((await request({ action: 'login', idToken: anonymousToken })).status, 401)
+    // This synthetic credential exercises server-session verification only; it
+    // does not exercise the browser's Google popup or a real Google provider.
+    const jwtPart = value => Buffer.from(JSON.stringify(value)).toString('base64url')
+    const googleCredential = `${jwtPart({ alg: 'none', typ: 'JWT' })}.${jwtPart({ sub: randomUUID(), email: `google-${randomUUID()}@example.test`, email_verified: true })}.`
+    const google = await fetch('http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=fake-key', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+        postBody: new URLSearchParams({ id_token: googleCredential, providerId: 'google.com' }).toString(),
+        requestUri: 'http://localhost', returnSecureToken: true,
+      }),
+    })
+    assert.equal(google.status, 200)
+    const googleAccount = await google.json()
+    accounts.add('google', googleAccount.idToken)
+    assert.equal(googleAccount.providerId, 'google.com')
+    assert.equal(googleAccount.isNewUser, true)
+    const googleLogin = await request({ action: 'login', idToken: googleAccount.idToken })
+    assert.equal(googleLogin.status, 200)
+    const googleCookie = googleLogin.headers.get('set-cookie').split(';')[0]
+    assert.deepEqual(await (await fetch(base + '/api/session', { headers: { cookie: googleCookie } })).json(), { registered: true, emailVerified: true })
     const login = await request({ action: 'login', idToken })
     assert.equal(login.status, 200)
     const cookie = login.headers.get('set-cookie')
@@ -49,5 +74,8 @@ test('session endpoint verifies emulator credentials and enforces CSRF and cooki
     assert.equal(logout.status, 200)
     assert.match(logout.headers.get('set-cookie'), /Max-Age=0/i)
     assert.equal((await fetch(`${base}/api/health`, { method: 'POST' })).status, 403)
-  } finally { server.kill() }
+  } finally {
+    server.kill()
+    await accounts.cleanup()
+  }
 })
