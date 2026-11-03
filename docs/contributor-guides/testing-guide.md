@@ -226,6 +226,13 @@ For the server-only moderator hold primitive and publication races, run
 set to a fresh disposable PostGIS database. The test uses synthetic moderator
 identities; it does not enable moderator controls or grant live permissions.
 
+To exercise the legal-hold and narrow decision-retention primitives, set
+`TEST_DATABASE_URL` to a fresh disposable PostGIS database and run
+`pnpm --filter @idea-map/server test:legal-holds`. The test uses synthetic
+Executive Director, delegate, and moderator identities and checks restricted
+roles, overlapping holds, retention races, and trust-record preservation. It
+does not authorize live grants or establish complete deletion behavior.
+
 To exercise the built webhook endpoint against a disposable local database, set
 `TEST_DATABASE_URL` to a migrated `idea_map_test_` database on `127.0.0.1`, run
 `pnpm build`, and then run `pnpm test:webhook`. The test uses a synthetic webhook
