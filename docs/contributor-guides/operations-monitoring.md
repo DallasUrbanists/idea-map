@@ -15,9 +15,9 @@ The following contents links navigate within this guide:
 ## When to use this guide
 
 Operators can inspect aggregate dispatch backlog, overdue work, email delivery
-events, and provider queue age without printing job or message details. These
-snapshots are point-in-time diagnostics; they do not configure monitoring or
-alerts. Use isolated resources and synthetic data for testing.
+events, public-access gate state, and provider queue age without printing job or
+message details. These snapshots are point-in-time diagnostics; they do not
+configure monitoring or alerts. Use isolated resources and synthetic data for testing.
 
 ## Prepare the snapshot
 
@@ -29,7 +29,8 @@ Use an already-authorized, read-only database identity with `SELECT` on only
 the columns needed by the snapshot: `jobs.id`, `jobs.state`,
 `jobs.scheduled_at`; `outbox.job_id`, `outbox.published_at`,
 `outbox.dispatch_attempts`, `outbox.created_at`; and
-`email_delivery_events.event_type`, `email_delivery_events.created_at`. It also
+`email_delivery_events.event_type`, `email_delivery_events.created_at`; and
+`public_access_gate.singleton`, `public_access_gate.is_open`. It also
 needs schema usage. These grants allow direct access to those individual column
 values, including job IDs and timing, so restrict the identity and credentials.
 Access to a hosted or production database requires separate authorization.
@@ -66,6 +67,11 @@ events received during the preceding 24 hours. They count events, not unique
 messages, and depend on the webhook receiving and storing provider events. Zero
 does not prove delivery or webhook health. Compare provider evidence and
 investigate gaps separately.
+
+`public_access_open` is the database gate state. `false` indicates that public
+idea and media requests should be blocked; `null` means the gate row is missing.
+An open row does not prove journal coverage, effective routing, or successful
+responses. The process health endpoint does not check the gate.
 
 This snapshot does not measure availability, provider queue age, disk or
 storage growth, backup freshness, or alert delivery. It does not run on a
@@ -126,8 +132,9 @@ unique messages, and a zero count does not verify delivery or webhook health.
 
 Optionally set `enable_operations_alert` and the existing
 `monitoring_notification_channels` to prepare notifications for threshold
-breaches or a collection error. The job logs only signal names and collection
-status, not task IDs, message details, or aggregate values. For investigation,
+breaches, a closed public-access gate, or a collection error. A missing gate is
+an invalid assessment and reports collection failure. The job logs only signal
+names and collection status, not task IDs, message details, or aggregate values. For investigation,
 use the point-in-time commands above. The alert rate is limited, and repeated
 events do not guarantee repeated notifications. A failure before the program
 starts, a paused or missed trigger, missing log data, and an unavailable

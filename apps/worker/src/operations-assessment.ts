@@ -1,4 +1,5 @@
 type DatabaseSnapshot = {
+  public_access_open: boolean
   backlog: { unpublished: number, oldest_seconds: number | null }
   overdue: { count: number, oldest_seconds: number | null }
   email: { failed: number, bounced: number, suppressed: number, delayed: number, complained: number }
@@ -18,6 +19,7 @@ export function assessOperations(database: DatabaseSnapshot, queue: QueueSnapsho
   if (!database?.backlog || !database.overdue || !database.email || !queue || !thresholds ||
       ![thresholds.backlogSeconds, thresholds.overdueSeconds, thresholds.queueSeconds, thresholds.emailEvents]
         .every(value => Number.isSafeInteger(value) && value > 0) ||
+      typeof database.public_access_open !== 'boolean' ||
       !count(database.backlog.unpublished) || !age(database.backlog.oldest_seconds, database.backlog.unpublished) ||
       !count(database.overdue.count) || !age(database.overdue.oldest_seconds, database.overdue.count) ||
       !count(queue.count) || !age(queue.oldest_seconds, queue.count) || !count(queue.due) || queue.due > queue.count ||
@@ -26,6 +28,7 @@ export function assessOperations(database: DatabaseSnapshot, queue: QueueSnapsho
     throw new Error('Operations aggregates are invalid')
   }
   const alerts: string[] = []
+  if (!database.public_access_open) alerts.push('public_access_closed')
   if (database.backlog.oldest_seconds !== null && database.backlog.oldest_seconds >= thresholds.backlogSeconds) alerts.push('outbox_age')
   if (database.overdue.oldest_seconds !== null && database.overdue.oldest_seconds >= thresholds.overdueSeconds) alerts.push('overdue_age')
   if (queue.oldest_seconds !== null && queue.oldest_seconds >= thresholds.queueSeconds) alerts.push('queue_age')

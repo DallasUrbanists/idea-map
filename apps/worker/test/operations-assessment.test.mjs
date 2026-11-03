@@ -6,7 +6,7 @@ import { assessOperations, operationsEvents } from '../dist/operations-assessmen
 import { collectOperations } from '../dist/operations-monitor.js'
 
 const limits = { backlogSeconds: 60, overdueSeconds: 120, queueSeconds: 300, emailEvents: 2 }
-const emptyDatabase = () => ({ backlog: { unpublished: 0, oldest_seconds: null }, overdue: { count: 0, oldest_seconds: null },
+const emptyDatabase = () => ({ public_access_open: true, backlog: { unpublished: 0, oldest_seconds: null }, overdue: { count: 0, oldest_seconds: null },
   email: { failed: 0, bounced: 0, suppressed: 0, delayed: 0, complained: 0 } })
 const emptyQueue = () => ({ count: 0, oldest_seconds: null, due: 0, oldest_due_seconds: null })
 
@@ -14,6 +14,9 @@ test('assessment identifies each breached threshold without emitting sensitive d
   const database = emptyDatabase()
   const queue = emptyQueue()
   assert.deepEqual(assessOperations(database, queue, limits), [])
+  database.public_access_open = false
+  assert.deepEqual(assessOperations(database, queue, limits), ['public_access_closed'])
+  database.public_access_open = true
   database.backlog = { unpublished: 1, oldest_seconds: 60 }
   database.overdue = { count: 1, oldest_seconds: 120 }
   database.email.bounced = 2
@@ -32,6 +35,7 @@ test('assessment refuses partial, inconsistent, or invalid observations and thre
   assert.throws(() => assessOperations(database, { ...queue, count: 1 }, limits))
   assert.throws(() => assessOperations(database, { ...queue, due: 1, oldest_due_seconds: 1 }, limits))
   assert.throws(() => assessOperations({ ...database, email: { ...database.email, failed: -1 } }, queue, limits))
+  assert.throws(() => assessOperations({ ...database, public_access_open: null }, queue, limits))
   assert.throws(() => assessOperations({ ...database, backlog: { unpublished: 1, oldest_seconds: NaN } }, queue, limits))
   assert.throws(() => assessOperations(database, queue, { ...limits, queueSeconds: 0 }))
   assert.throws(() => assessOperations(database, queue, { backlogSeconds: 1 }))

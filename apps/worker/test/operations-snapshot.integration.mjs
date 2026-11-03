@@ -53,6 +53,20 @@ test('snapshot reports private aggregate backlog, overdue jobs and recent failur
   }
 })
 
+test('snapshot distinguishes an open, closed, and missing public-access gate', async () => {
+  const pool = new pg.Pool({ connectionString: url, max: 1 })
+  try {
+    assert.equal((await readOperationsSnapshot(pool)).public_access_open, false)
+    await pool.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true')
+    assert.equal((await readOperationsSnapshot(pool)).public_access_open, true)
+    await pool.query('DELETE FROM public.public_access_gate WHERE singleton=true')
+    assert.equal((await readOperationsSnapshot(pool)).public_access_open, null)
+  } finally {
+    await pool.query('INSERT INTO public.public_access_gate(singleton,is_open) VALUES (true,false) ON CONFLICT (singleton) DO UPDATE SET is_open=false')
+    await pool.end()
+  }
+})
+
 test('an outbox row committed after the observation time has age zero', async () => {
   const pool = new pg.Pool({ connectionString: url, max: 2 })
   const marker = `snapshot-race-${randomUUID()}`
@@ -101,15 +115,18 @@ test('the snapshot works with column-scoped read-only access', async () => {
     await pool.query(`GRANT SELECT (id, state, scheduled_at) ON public.jobs TO "${role}"`)
     await pool.query(`GRANT SELECT (job_id, published_at, dispatch_attempts, created_at) ON public.outbox TO "${role}"`)
     await pool.query(`GRANT SELECT (event_type, created_at) ON public.email_delivery_events TO "${role}"`)
+    await pool.query(`GRANT SELECT (singleton, is_open) ON public.public_access_gate TO "${role}"`)
     client = await pool.connect()
     await client.query(`SET ROLE "${role}"`)
     const scopedPool = { async connect() { return { query: client.query.bind(client), release() {} } } }
     const snapshot = await readOperationsSnapshot(scopedPool)
     assert.equal(snapshot.backlog.unpublished, 0)
+    assert.equal(snapshot.public_access_open, false)
     await assert.rejects(client.query('SELECT idempotency_key FROM public.jobs'), { code: '42501' })
     await assert.rejects(client.query('SELECT email_id FROM public.email_delivery_events'), { code: '42501' })
     await assert.rejects(client.query('SELECT * FROM public.contacts'), { code: '42501' })
     await assert.rejects(client.query('UPDATE public.outbox SET published_at=now()'), { code: '42501' })
+    await assert.rejects(client.query('UPDATE public.public_access_gate SET is_open=true'), { code: '42501' })
   } finally {
     if (client) { await client.query('RESET ROLE'); client.release() }
     if (created) {

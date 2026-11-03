@@ -31,7 +31,8 @@ export async function readOperationsSnapshot(pool: pg.Pool) {
         WHERE e.created_at > s.observed_at - interval '24 hours' AND e.created_at <= s.observed_at
       )
       SELECT s.observed_at, row_to_json(backlog) AS backlog,
-        row_to_json(overdue) AS overdue, row_to_json(email) AS email
+        row_to_json(overdue) AS overdue, row_to_json(email) AS email,
+        (SELECT is_open FROM public.public_access_gate WHERE singleton = true) AS public_access_open
       FROM snapshot s CROSS JOIN backlog CROSS JOIN overdue CROSS JOIN email
     `)
     await client.query('COMMIT')
