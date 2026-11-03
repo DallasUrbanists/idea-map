@@ -6,7 +6,8 @@ import { Readable } from 'node:stream'
 import { test } from 'node:test'
 import { exportEncryptedBackup } from '../ops/export-encrypted-backup.mjs'
 import { inspectBackupRetention } from '../ops/inspect-backup-retention.mjs'
-import { writeRecoveryJournalRecord } from '../../../packages/server/dist/recovery-journal-storage.js'
+import { readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../../../packages/server/dist/recovery-journal-storage.js'
+import { encodeRecoveryConfirmation } from '../../../packages/server/dist/recovery-journal-record.js'
 
 const require = createRequire(import.meta.url)
 const { Storage } = require('@google-cloud/storage')
@@ -33,6 +34,7 @@ test('storage client sends create-only archives, completion metadata, and journa
   const objects = new Map()
   const payloads = new Map()
   const errors = []
+  let omitStoredEncoding = false
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, 'http://127.0.0.1')
@@ -48,6 +50,18 @@ test('storage client sends create-only archives, completion metadata, and journa
       if (request.method === 'GET' && url.pathname === `/storage/v1/b/${target.bucket}/o`) {
         response.end(JSON.stringify({ items: url.searchParams.get('softDeleted') === 'true' ? [] :
           [...objects.values()].filter(object => object.name.startsWith(url.searchParams.get('prefix'))) }))
+        return
+      }
+      if (request.method === 'GET' && url.pathname.startsWith(`/storage/v1/b/${target.bucket}/o/`) && url.searchParams.get('alt') === 'media') {
+        const name = decodeURIComponent(url.pathname.slice(`/storage/v1/b/${target.bucket}/o/`.length))
+        const object = objects.get(name)
+        if (!object || url.searchParams.get('generation') !== object.generation || url.searchParams.get('ifGenerationMatch') !== object.generation) throw new Error('Unexpected journal generation')
+        const data = payloads.get(name)
+        response.setHeader('content-type', 'application/octet-stream')
+        response.setHeader('content-length', data.length)
+        if (!omitStoredEncoding) response.setHeader('x-goog-stored-content-encoding', 'identity')
+        response.setHeader('x-goog-hash', `crc32c=${object.crc32c}`)
+        response.end(data)
         return
       }
       if (request.method !== 'POST' || url.pathname !== `/upload/storage/v1/b/${target.bucket}/o` ||
@@ -106,11 +120,19 @@ test('storage client sends create-only archives, completion metadata, and journa
     assert.deepEqual(inventory.candidates, [])
     assert.equal(inventory.latestDailyAgeSeconds, 120)
     const recordId = '11111111-1111-4111-8111-111111111111'
-    const record = Buffer.from('{"synthetic":"private decision"}')
+    const record = Buffer.from(encodeRecoveryConfirmation(recordId, 'dev', '2026-11-02T10:01:00.000Z'))
     await writeRecoveryJournalRecord(storage, target, recordId, record)
     const recordName = `idea-map-v2/dev/recovery-journal/${recordId}.json`
     assert.deepEqual(payloads.get(recordName), record)
     assert.equal(objects.get(recordName).metadata, undefined)
+    assert.deepEqual(Buffer.from(await readRecoveryJournalRecord(storage, target, recordId, objects.get(recordName).generation)), record)
+    const checksum = objects.get(recordName).crc32c
+    objects.get(recordName).crc32c = checksum === 'AAAAAA==' ? 'AQAAAA==' : 'AAAAAA=='
+    await assert.rejects(readRecoveryJournalRecord(storage, target, recordId, objects.get(recordName).generation), /could not be verified/)
+    objects.get(recordName).crc32c = checksum
+    omitStoredEncoding = true
+    await assert.rejects(readRecoveryJournalRecord(storage, target, recordId, objects.get(recordName).generation), /could not be verified/)
+    omitStoredEncoding = false
     await assert.rejects(writeRecoveryJournalRecord(storage, target, recordId, Buffer.from('{"synthetic":"different"}')),
       /Journal write outcome is uncertain/)
     assert.deepEqual(payloads.get(recordName), record)

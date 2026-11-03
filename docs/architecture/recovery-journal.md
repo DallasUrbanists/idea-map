@@ -35,8 +35,8 @@ not be able to change backup archives or completion records. Review inherited
 grants and deny policies as well as the explicitly scoped grants.
 
 The server package contains an encoder and decoder for version-one intent and
-commit confirmation records, a create-only transport for private JSON, and an
-unverified recovery summary. The
+commit confirmation records, a create-only transport for private JSON, a reader
+for a specifically identified object generation, and an unverified recovery summary. The
 encoder checks required fields and sizes but cannot verify authority, legal
 meaning, or whether a reason or reference is non-sensitive; its caller must
 establish those facts. The decoder rejects unknown versions, extra fields,
@@ -49,7 +49,7 @@ in removal and hold-placement intents, flags unconfirmed operations and all hold
 releases for authorized review, and reports confirmations without intents. It
 never establishes inventory coverage, removes a hold, changes a database, or
 authorizes public access. Its output contains private identifiers and must not
-be written to public logs. These components do not read existing records, guard
+be written to public logs. These components do not discover records, guard
 mutation paths, capture held material, establish coverage, or reconcile a
 restore. They are not connected to live removal or hold operations and are not
 sufficient to enable them.
@@ -100,6 +100,13 @@ database commit response can also be lost after commit. Do not write a negative
 confirmation based only on an exception. Reconciliation must account for both
 cases and keep uncertain material private.
 
+The generation-specific reader bounds the record size and read time, rejects
+unknown encodings or unavailable checksums, and validates the record format and
+environment. It requires a separately authorized reader and a known object ID
+and generation. A checksum detects accidental corruption, not an unauthorized
+replacement, and a successful read does not verify who wrote the record, discover
+other records, or prove inventory coverage.
+
 The checkpoint needs a coordinated boundary, not merely a timestamp. Suspend
 all covered mutations, drain in-flight transactions and journal writes, verify
 the current decision state and writer restrictions, and record the checkpoint
@@ -135,6 +142,16 @@ Preserve the authorized pending decision and mark the journal coverage gap; do
 not report the removal or recovery as complete merely because the gate closed.
 Only an authorized recovery process can reopen public access after verifying
 the removal, journal continuity, and all other pending decisions.
+
+Closing the gate only after a failed journal call is insufficient: the process
+can stop after an authorized decision or an ambiguous write and before it closes
+the gate. The removal protocol needs a durable protective boundary that survives
+that interruption and prevents public access whenever the decision is pending.
+It must also coordinate requests already in flight. Whether the existing access
+paths can provide that boundary without interrupting ordinary successful removals
+remains unverified; do not enable the integration until the complete ordering is
+implemented and tested. A timeout, process termination, or lost database commit
+response must not silently reopen access or discard the pending decision.
 
 The gate and pending state need a guarded transaction and must cover every
 public read, projection, and media delivery path. A restored older database may
@@ -187,7 +204,9 @@ Before relying on the journal, test with synthetic data and isolated resources:
     conditions, no update or delete, and denial of backup-writer journal access.
 2. Exercise all removal and hold paths, retries, direct database bypass attempts,
     concurrent decisions, failed or ambiguous storage writes, rollbacks, lost
-    commit responses, and failed confirmations.
+    commit responses, and failed confirmations. Stop the writer at each boundary
+    between authorization, gate protection, journal write, database commit, and
+    reconciliation; verify public reads and in-flight responses remain protected.
 3. Restore an older archive after later synthetic decisions, reconcile the
     journal, and prove that withdrawn content and held material remain private.
 4. Verify coverage checkpoint handling, old-schema compatibility, retention of

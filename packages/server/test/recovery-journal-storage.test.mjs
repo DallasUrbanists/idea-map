@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
-import { Writable } from 'node:stream'
+import { Readable, Writable } from 'node:stream'
 import { after, test } from 'node:test'
-import { writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
+import { readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
+import { encodeRecoveryConfirmation } from '../dist/recovery-journal-record.js'
 
 const target = { environment: 'dev', bucket: 'synthetic-private-backups' }
 const id = '11111111-1111-4111-8111-111111111111'
@@ -73,4 +74,50 @@ test('journal storage refuses an environment-directed storage emulator', async (
     if (previous === undefined) delete process.env.STORAGE_EMULATOR_HOST
     else process.env.STORAGE_EMULATOR_HOST = previous
   }
+})
+
+test('journal reader selects an exact generation and validates bounded canonical bytes', async () => {
+  const body = encodeRecoveryConfirmation(id, 'dev', '2026-11-03T12:00:00.000Z')
+  const entries = []
+  const storage = { bucket(bucket) { return { file(path, options) {
+    const file = { interceptors: [], createReadStream(readOptions) {
+      entries.push({ bucket, path, options, readOptions, request: file.interceptors[0].request({ uri: '/synthetic', qs: {} }) })
+      const stream = Readable.from([body])
+      process.nextTick(() => stream.emit('response', { toJSON: () => ({ headers: {
+        'x-goog-stored-content-encoding': 'identity', 'x-goog-hash': 'crc32c=AAAAAA==',
+      } }) }))
+      return stream
+    } }
+    return file
+  } } } }
+  const generation = '90071992547409931234'
+  assert.deepEqual(await readRecoveryJournalRecord(storage, target, id, generation), body)
+  assert.equal(entries[0].path, `idea-map-v2/dev/recovery-journal/${id}.json`)
+  assert.equal(entries[0].request.qs.generation, generation)
+  assert.equal(entries[0].request.qs.ifGenerationMatch, generation)
+  assert.equal(entries[0].readOptions.validation, 'crc32c')
+  assert.equal(entries[0].readOptions.decompress, false)
+})
+
+test('journal reader fails closed on invalid references, records, provider errors, and timeouts', async () => {
+  const storage = (chunks, withHeaders = true) => ({ bucket: () => ({ file: () => ({ interceptors: [], createReadStream: () => {
+    const stream = Readable.from(chunks)
+    if (withHeaders) process.nextTick(() => stream.emit('response', { toJSON: () => ({ headers: {
+      'x-goog-stored-content-encoding': 'identity', 'x-goog-hash': 'crc32c=AAAAAA==',
+    } }) }))
+    return stream
+  } }) }) })
+  await assert.rejects(readRecoveryJournalRecord(storage([]), target, id, '0'), /Invalid journal record reference/)
+  await assert.rejects(readRecoveryJournalRecord(storage([]), target, id, 42), /Invalid journal record reference/)
+  for (const chunks of [[Buffer.alloc(16_385)], [Buffer.from('{"private":"incompatible"}')],
+    [encodeRecoveryConfirmation(id, 'prod', '2026-11-03T12:00:00.000Z')]]) {
+    await assert.rejects(readRecoveryJournalRecord(storage(chunks), target, id, '1'), /could not be verified/)
+  }
+  await assert.rejects(readRecoveryJournalRecord(storage([encodeRecoveryConfirmation(id, 'dev', '2026-11-03T12:00:00.000Z')], false), target, id, '1'), /could not be verified/)
+  const failing = { bucket: () => ({ file: () => ({ interceptors: [], createReadStream: () =>
+    new Readable({ read() { this.destroy(new Error('synthetic sensitive provider error')) } }) }) }) }
+  await assert.rejects(readRecoveryJournalRecord(failing, target, id, '1'), error =>
+    error.message === 'Journal record could not be verified' && !error.message.includes('sensitive'))
+  const hanging = { bucket: () => ({ file: () => ({ interceptors: [], createReadStream: () => new Readable({ read() {} }) }) }) }
+  await assert.rejects(readRecoveryJournalRecord(hanging, target, id, '1', 20), /could not be verified/)
 })
