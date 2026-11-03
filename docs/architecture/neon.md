@@ -55,8 +55,10 @@ nearby region alone does not tell you how long an application request takes.
 ## Connection budget
 
 The web process keeps a pool of at most two clients for each distinct database
-URL. With one URL and one process per instance, the configured two web instances
-therefore use at most four clients in ordinary single-revision operation. The
+URL and can open one additional reserved client for pending removals. The
+reservation allows a removal to queue even when public readers occupy the main
+pool. With one URL and one process per instance, the configured two web instances
+therefore use at most six clients in ordinary single-revision operation. The
 worker has a one-instance limit and a pool of at most one client per instance.
 Include that pool and overlapping or replacement worker revisions in the
 budget before use. Request concurrency is not a database connection limit.
@@ -94,12 +96,12 @@ compute, including the long-lived development and disposable test databases:
 
 | Allowance | Client or backend connections |
 | --- | ---: |
-| Web pools, two revisions at two instances with two clients each | 8 |
-| Additional web surge, four instances with two clients each | 8 |
+| Web pools, two revisions at two instances with three clients each | 12 |
+| Additional web surge, four instances with three clients each | 12 |
 | Retained idle pooler backends beyond live web demand | 16 |
 | Other development roles and services | 12 |
 | Direct migration, monitoring, and recovery clients | 8 |
-| Unallocated headroom | 56 |
+| Unallocated headroom | 48 |
 | Total ordinary PostgreSQL slots | 108 |
 
 The web allowances are application-to-pooler clients; the remaining rows reserve

@@ -48,11 +48,12 @@ export async function verifyRegisteredSession(projectId: string, cookie: string,
 
 /** Verify a current registered identity, then hold its database role lock through the action. */
 export async function withVerifiedModerator<T>(databaseUrl: string, projectId: string, cookie: string,
-  verifier: RegisteredSessionVerifier, action: (client: pg.PoolClient, userId: string, subject: string) => Promise<T>): Promise<ModeratorAccess<T>> {
+  verifier: RegisteredSessionVerifier, action: (client: pg.PoolClient, userId: string, subject: string) => Promise<T>,
+  poolOverride?: pg.Pool): Promise<ModeratorAccess<T>> {
   if (!databaseUrl) throw new Error('Invalid moderator configuration')
   const session = await verifyRegisteredSession(projectId, cookie, verifier)
   if (session.state !== 'verified') return session
-  const client = await runtimeDatabasePool(databaseUrl).connect()
+  const client = await (poolOverride ?? runtimeDatabasePool(databaseUrl)).connect()
   try {
     // Review actions recheck the current revision after waiting for its lock.
     await client.query('BEGIN ISOLATION LEVEL READ COMMITTED')

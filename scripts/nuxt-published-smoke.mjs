@@ -179,7 +179,7 @@ test('closed gate blocks idea pages, APIs, and media while health remains availa
   }
 })
 
-test('an in-flight media fetch holds the read lease until its client disconnects', async () => {
+test('a waiting gate closure aborts an in-flight synthetic media fetch', async () => {
   const bytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
   let mediaResponse, markStarted
   const started = new Promise(resolve => { markStarted = resolve })
@@ -208,7 +208,7 @@ test('an in-flight media fetch holds the read lease until its client disconnects
       NUXT_MEDIA_PROVIDER_MODE: 'offline', NUXT_MEDIA_PREVIEW_MAX_BYTES: String(bytes.length), STORAGE_EMULATOR_HOST: `http://127.0.0.1:${fake.address().port}` })
     server = launched.server
     request = httpGet(`${launched.base}/api/media/${previewId}`)
-    request.on('error', () => {})
+    const disconnected = new Promise(resolve => request.once('error', resolve))
     await Promise.race([started, delay(4000).then(() => { throw new Error('Synthetic media fetch did not start') })])
     await writer.query('BEGIN')
     await writer.query("SET LOCAL lock_timeout = '5s'")
@@ -222,8 +222,8 @@ test('an in-flight media fetch holds the read lease until its client disconnects
       await delay(20)
     }
     assert.equal(waiting, true, 'the gate writer did not wait for the in-flight fetch')
-    request.destroy()
     await closing
+    await Promise.race([disconnected, delay(2000).then(() => { throw new Error('Synthetic client did not disconnect') })])
     mediaResponse.end(bytes)
     await writer.query('UPDATE public.public_access_gate SET is_open=false WHERE singleton=true')
     await writer.query('COMMIT')

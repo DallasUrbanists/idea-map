@@ -180,9 +180,16 @@ primitive that holds a shared transaction-scoped advisory lock and refuses a
 missing, closed, or unreadable gate. It reports a lost database connection through
 an abort signal. The caller must hold the lease through delivery and stop the
 response when the signal aborts. The in-progress web guard uses this primitive for
-current idea, suggestion, and media routes, but it lacks reviewed runtime grants,
-bounded draining of stalled responses, and complete coverage of future serving
-paths. It is not sufficient to enable the gate or live removal integration.
+current idea, suggestion, and media routes. A reader periodically checks for a
+waiting gate-closing advisory lock and aborts its response when one is present.
+Pending removals use a reserved one-client pool so occupied public readers cannot
+prevent the writer from queuing. This adds to the documented connection budget.
+The guard still lacks reviewed runtime grants, measured drain timing, and complete
+coverage of future serving paths. It is not sufficient to enable live removals.
+The check runs while each protected response is active and shares its database
+client with that response's queries. A long-running query or delayed connection
+can delay detection. Measure query volume and worst-case drain time under load;
+the polling interval alone is not an immediate-removal guarantee.
 
 An unwired pending-removal transaction verifies the moderator, waits for the
 exclusive transaction lock, closes the gate, and stores the pending decision in
@@ -208,7 +215,7 @@ disconnects, and timeouts when choosing the coordination mechanism. The syntheti
 staging cache can continue serving an earlier response, so it is not suitable
 evidence for the immediate removal boundary.
 
-Hosted web traffic uses Neon transaction pooling and a two-client application
+Hosted web traffic uses Neon transaction pooling and a two-client public-read
 pool. Do not assume a session-level advisory lock remains attached to a backend
 across transactions. Holding a client for an outer render while the nested API
 request needs another client can also exhaust that pool under concurrent load.

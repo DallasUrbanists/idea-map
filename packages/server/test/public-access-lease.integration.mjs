@@ -7,7 +7,7 @@ import pg from 'pg'
 import { acquirePublicAccessLease } from '../dist/public-access-lease.js'
 import { preparePendingRemoval } from '../dist/pending-removal.js'
 import { decodeRecoveryRecord, encodeRecoveryIntent } from '../dist/recovery-journal-record.js'
-import { runtimeDatabasePool } from '../dist/runtime-database.js'
+import { pendingRemovalDatabasePool, runtimeDatabasePool } from '../dist/runtime-database.js'
 import { readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
 
 const url = new URL(process.env.TEST_DATABASE_URL ?? 'postgres://invalid.invalid/invalid')
@@ -15,7 +15,15 @@ if (!['127.0.0.1', 'localhost'].includes(url.hostname) || url.pathname !== '/ide
   throw new Error('TEST_DATABASE_URL must name the local disposable public-gate test database')
 }
 
-test('public-read lease fails closed and blocks a gate writer until active readers finish', async () => {
+async function waitForAborts(...signals) {
+  let timer
+  try {
+    await Promise.race([Promise.all(signals.map(signal => signal.aborted ? Promise.resolve() : once(signal, 'abort'))),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Read leases did not abort')), 3000) })])
+  } finally { clearTimeout(timer) }
+}
+
+test('public-read leases fail closed and drain when a gate writer is waiting', async () => {
   await assert.rejects(acquirePublicAccessLease({ connect: async () => { throw new Error('synthetic sensitive connection details') } }),
     error => error.message === 'Public access unavailable' && !error.message.includes('sensitive'))
   const pool = new pg.Pool({ connectionString: url.toString(), max: 6, connectionTimeoutMillis: 2000 })
@@ -26,6 +34,11 @@ test('public-read lease fails closed and blocks a gate writer until active reade
     assert.equal((await pool.query("SELECT has_table_privilege('public', 'public.public_access_gate', 'SELECT') AS allowed")).rows[0].allowed, false)
     await assert.rejects(acquirePublicAccessLease(pool), /Public access unavailable/)
     await pool.query('UPDATE public.public_access_gate SET is_open = true WHERE singleton = true')
+    const completed = await acquirePublicAccessLease(pool)
+    const releasing = completed.release()
+    assert.equal(completed.release(), releasing)
+    await releasing
+    assert.equal(completed.signal.aborted, true)
     first = await acquirePublicAccessLease(pool)
     second = await acquirePublicAccessLease(pool)
     writer = await pool.connect()
@@ -43,16 +56,14 @@ test('public-read lease fails closed and blocks a gate writer until active reade
     assert.equal(waiting, true)
     late = acquirePublicAccessLease(pool)
     late.catch(() => {})
-    const releasing = first.release()
-    assert.equal(first.release(), releasing)
-    await releasing
-    assert.equal(first.signal.aborted, true)
-    await second.release()
+    await waitForAborts(first.signal, second.signal)
+    await assert.rejects(first.release(), /Public access unavailable/)
+    await assert.rejects(second.release(), /Public access unavailable/)
     await closing
     await writer.query('UPDATE public.public_access_gate SET is_open = false WHERE singleton = true')
     await writer.query('COMMIT')
     await assert.rejects(late, /Public access unavailable/)
-    await first.release() // Cleanup is idempotent.
+    await assert.rejects(first.release(), /Public access unavailable/) // Cleanup is idempotent.
     await pool.query('DELETE FROM public.public_access_gate WHERE singleton = true')
     await assert.rejects(acquirePublicAccessLease(pool), /Public access unavailable/)
   } finally {
@@ -67,7 +78,7 @@ test('public-read lease fails closed and blocks a gate writer until active reade
 
 test('authorized pending removal closes the gate atomically and retries without duplicating the decision', async () => {
   const pool = new pg.Pool({ connectionString: url.toString(), max: 6, connectionTimeoutMillis: 2000 })
-  let reader, pendingOperationId, secondOperationId, restrictedUrl, restrictedPool, roleCreated = false
+  let reader, otherReader, pendingOperationId, secondOperationId, restrictedUrl, restrictedPool, roleCreated = false
   const concurrentOperations = []
   const role = `gate_runtime_${randomUUID().replaceAll('-', '')}`
   try {
@@ -90,7 +101,8 @@ test('authorized pending removal closes the gate atomically and retries without 
     assert.deepEqual(await prepare(verifier, { approvedRevisionId: randomUUID() }), { state: 'authorized', value: 'stale' })
     assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, true)
     assert.equal((await pool.query('SELECT count(*)::int AS count FROM public.public_access_pending_decisions')).rows[0].count, 0)
-    reader = await acquirePublicAccessLease(pool)
+    reader = await acquirePublicAccessLease(runtimeDatabasePool(url.toString()))
+    otherReader = await acquirePublicAccessLease(runtimeDatabasePool(url.toString()))
     const closing = prepare()
     closing.catch(() => {})
     let waiting = false
@@ -100,7 +112,9 @@ test('authorized pending removal closes the gate atomically and retries without 
       await new Promise(resolve => setTimeout(resolve, 20))
     }
     assert.equal(waiting, true)
-    await reader.release()
+    await waitForAborts(reader.signal, otherReader.signal)
+    await assert.rejects(reader.release(), /Public access unavailable/)
+    await assert.rejects(otherReader.release(), /Public access unavailable/)
     const prepared = await closing
     assert.equal(prepared.state, 'authorized')
     assert.equal(prepared.value.state, 'pending')
@@ -198,8 +212,10 @@ test('authorized pending removal closes the gate atomically and retries without 
     assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
   } finally {
     await reader?.release().catch(() => {})
+    await otherReader?.release().catch(() => {})
     await runtimeDatabasePool(url.toString()).end()
-    if (restrictedUrl) await runtimeDatabasePool(restrictedUrl.toString()).end()
+    await pendingRemovalDatabasePool(url.toString()).end()
+    if (restrictedUrl) await pendingRemovalDatabasePool(restrictedUrl.toString()).end()
     if (restrictedPool) await restrictedPool.end()
     if (pendingOperationId) await pool.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id = $1', [pendingOperationId])
     if (secondOperationId) await pool.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id = $1', [secondOperationId])
@@ -232,5 +248,46 @@ test('a lost database connection aborts the lease and prevents successful releas
     await lease?.release().catch(() => {})
     await pool.query('UPDATE public.public_access_gate SET is_open = false WHERE singleton = true')
     await pool.end()
+  }
+})
+
+test('a limited read role detects a waiting closer without permission to update the gate', async () => {
+  const admin = new pg.Pool({ connectionString: url.toString(), max: 3, connectionTimeoutMillis: 2000 })
+  const role = `gate_reader_${randomUUID().replaceAll('-', '')}`
+  let roleCreated = false, restricted, lease, writer, closing
+  try {
+    await admin.query(`CREATE ROLE "${role}" LOGIN PASSWORD 'synthetic-only'`)
+    roleCreated = true
+    await admin.query(`GRANT USAGE ON SCHEMA public TO "${role}"`)
+    await admin.query(`GRANT SELECT (singleton, is_open) ON public.public_access_gate TO "${role}"`)
+    await admin.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true')
+    const restrictedUrl = new URL(url)
+    restrictedUrl.username = role
+    restrictedUrl.password = 'synthetic-only'
+    restricted = new pg.Pool({ connectionString: restrictedUrl.toString(), max: 1 })
+    await assert.rejects(restricted.query('UPDATE public.public_access_gate SET is_open=false'), { code: '42501' })
+    lease = await acquirePublicAccessLease(restricted)
+    writer = await admin.connect()
+    await writer.query('BEGIN')
+    await writer.query("SET LOCAL lock_timeout = '5s'")
+    closing = writer.query('SELECT pg_catalog.pg_advisory_xact_lock(726421, 391)')
+    closing.catch(() => {})
+    await waitForAborts(lease.signal)
+    await assert.rejects(lease.release(), /Public access unavailable/)
+    await closing
+    await writer.query('UPDATE public.public_access_gate SET is_open=false WHERE singleton=true')
+    await writer.query('COMMIT')
+  } finally {
+    await lease?.release().catch(() => {})
+    if (closing) await closing.catch(() => {})
+    if (writer) { await writer.query('ROLLBACK').catch(() => {}); writer.release() }
+    if (restricted) await restricted.end()
+    await admin.query('UPDATE public.public_access_gate SET is_open=false WHERE singleton=true')
+    if (roleCreated) {
+      await admin.query(`REVOKE SELECT (singleton, is_open) ON public.public_access_gate FROM "${role}"`)
+      await admin.query(`REVOKE USAGE ON SCHEMA public FROM "${role}"`)
+      await admin.query(`DROP ROLE "${role}"`)
+    }
+    await admin.end()
   }
 })

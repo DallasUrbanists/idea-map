@@ -1,5 +1,6 @@
 import { decodeRecoveryRecord, encodeRecoveryIntent } from './recovery-journal-record.js'
 import { withVerifiedModerator, type ModeratorAccess, type RegisteredSessionVerifier } from './moderator-authorization.js'
+import { pendingRemovalDatabasePool } from './runtime-database.js'
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const uuid4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
@@ -17,7 +18,7 @@ export async function preparePendingRemoval(databaseUrl: string, projectId: stri
     operationId: string, recordId: string, ideaId: string, approvedRevisionId: string,
     classification: 'violation' | 'other', reason: string,
   }): Promise<ModeratorAccess<PendingResult>> {
-  if (!['dev', 'prod'].includes(environment) || !input || typeof input !== 'object' ||
+  if (!databaseUrl || !['dev', 'prod'].includes(environment) || !input || typeof input !== 'object' ||
       typeof input.operationId !== 'string' || !uuid4.test(input.operationId) ||
       typeof input.recordId !== 'string' || !uuid4.test(input.recordId) ||
       typeof input.ideaId !== 'string' || !uuid.test(input.ideaId) ||
@@ -50,7 +51,7 @@ export async function preparePendingRemoval(databaseUrl: string, projectId: stri
           record.actorId !== actor || record.decision.kind !== 'removal' || record.decision.classification !== input.classification ||
           record.decision.reason !== journalReason) throw new Error('Pending removal is ambiguous')
       return { state: 'pending' as const, recordId: row.persisted_record_id, payload }
-    })
+    }, pendingRemovalDatabasePool(databaseUrl))
   } catch {
     throw new Error('Pending removal unavailable')
   }

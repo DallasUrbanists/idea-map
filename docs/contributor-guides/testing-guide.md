@@ -247,9 +247,10 @@ held-evidence capture, public-access gating, or recovery reconciliation.
 For the separate read-lease primitive, migrate an otherwise empty local
 `idea_map_test_public_gate` database, set `TEST_DATABASE_URL` to its loopback
 connection, and run `pnpm --filter @idea-map/server test:public-access-lease`.
-The test changes the gate and terminates one test connection, so use only that
-disposable database. It checks lock ordering, a closed or missing gate, and a
-lost connection, plus authorization, retry, and rollback of a pending removal.
+The test changes the gate, creates and removes synthetic roles, and terminates one
+test connection, so use only that disposable database. It checks lock ordering,
+a closed or missing gate, a limited reader, and a lost connection, plus
+authorization, retry, and rollback of a pending removal.
 It also uses fake journal writer and reader interfaces to check that an ambiguous
 write, rejected retry, and matching read leave the gate closed. It does not
 exercise public responses, completed removals, Cloud Storage permissions, or the
@@ -416,7 +417,7 @@ setup. This published-page check verifies that both an idea and its displayed
 revision are approved before the page shows the title and description. It also
 checks the default and staging-only HTML cache headers, credential-bearing
 requests, concurrent page renders, closed-gate responses, an in-flight synthetic
-media fetch followed by a client disconnect, and the origin response after a
+media fetch aborted by a waiting gate closure, and the origin response after a
 synthetic withdrawal. The [Hosting cache guide](../architecture/hosting-cache.md)
 describes provider checks and their limitations.
 
