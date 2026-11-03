@@ -104,7 +104,8 @@ permission, attribution, modification, and redistribution records for copied
 assets and data. Visible attribution and shipped license and `NOTICE` texts must
 accompany material where its terms require them; a filename or package metadata
 alone does not establish permission. Project software licensing does not cover
-third-party content or marks.
+third-party content or marks. The [reuse rights guide](../contributor-guides/reuse-rights-guide.md)
+explains how to review an input and carry its obligations into a release.
 
 ## Platform guides
 
