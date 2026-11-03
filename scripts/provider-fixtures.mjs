@@ -1,14 +1,6 @@
 import { createHash } from 'node:crypto'
 
-/** Select a supplied adapter deliberately; missing or failing providers never fall back. */
-export function selectFixtureProvider(mode, factories) {
-  if (mode !== 'offline' && mode !== 'provider') throw new Error('Choose provider mode: offline or provider')
-  const factory = factories[mode]
-  if (typeof factory !== 'function') throw new Error(`${mode} adapter is not available for this integration`)
-  const adapter = factory()
-  if (adapter == null) throw new Error(`${mode} adapter is not available for this integration`)
-  return adapter
-}
+export { selectProvider as selectFixtureProvider } from '../packages/server/dist/provider-mode.js'
 
 /** In-memory adapters for the existing Streetmix, Resend and Cloud Tasks boundaries. */
 export function createOfflineProviderFixtures() {

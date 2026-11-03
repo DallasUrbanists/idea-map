@@ -43,7 +43,11 @@ does not send real email.
 
 The tools container uses `firebase:9099` for server Auth calls; the browser uses
 `http://127.0.0.1:9099`. Emulator settings must be absent in hosted
-environments. The local emulator loses account and document records on shutdown.
+environments. The local emulator loses account and document records on shutdown. Server and
+browser authentication modes must be selected explicitly. Offline mode requires
+the demo project and emulator; hosted mode rejects emulator configuration. The
+[development guide](../contributor-guides/development-guide.md#provider-modes)
+describes the separate networked emulator-popup opt-in.
 
 ## Real-time projections
 

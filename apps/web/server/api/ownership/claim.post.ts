@@ -33,7 +33,7 @@ export default defineEventHandler(async event => {
   if (!config.databaseUrl || !config.firebaseProjectId) throw createError({ statusCode: 503, statusMessage: 'Ownership unavailable' })
   let result: 'unauthenticated' | 'forbidden' | 'processed'
   try {
-    const verifier = firebaseAdmin(config.firebaseProjectId)
+    const verifier = firebaseAdmin(config.firebaseProjectId, config.authProviderMode)
     if (verifier.app.options.projectId !== config.firebaseProjectId) throw new Error('Firebase project mismatch')
     result = await claimVerifiedOwnership(config.databaseUrl, config.firebaseProjectId, cookie, verifier, (body as { ideaId: string }).ideaId)
   } catch { throw createError({ statusCode: 503, statusMessage: 'Ownership unavailable' }) }

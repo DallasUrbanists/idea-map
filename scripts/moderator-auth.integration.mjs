@@ -42,7 +42,7 @@ test('moderator status verifies emulator sessions and current database roles', {
     runtimeUrl.searchParams.set('options', `-c role=${role}`)
     server = spawn(process.execPath, ['apps/web/.output/server/index.mjs'], {
       env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), NUXT_SESSION_ORIGIN: base,
-        NUXT_FIREBASE_PROJECT_ID: project, NUXT_DATABASE_URL: runtimeUrl.toString() }, stdio: 'ignore',
+        NUXT_AUTH_PROVIDER_MODE: 'offline', NUXT_FIREBASE_PROJECT_ID: project, NUXT_DATABASE_URL: runtimeUrl.toString() }, stdio: 'ignore',
     })
     exited = new Promise(resolve => server.once('exit', resolve))
     let ready = false

@@ -15,12 +15,14 @@ export default defineNuxtConfig({
     approvedMediaBucket: '',
     pendingMediaBucket: '',
     mediaPreviewMaxBytes: 0,
+    mediaProviderMode: '',
     // Canonical browser origin; never infer this from request headers.
     sessionOrigin: '',
     firebaseProjectId: '',
+    authProviderMode: '',
     ownershipClaimsEnabled: false,
     // Shared caching is restricted to the isolated synthetic staging service.
     stagingHtmlCache: false,
-    public: { siteName: 'Idea Map', firebaseApiKey: '', firebaseAuthDomain: '', firebaseProjectId: '', firebaseAuthEmulator: '' },
+    public: { siteName: 'Idea Map', firebaseApiKey: '', firebaseAuthDomain: '', firebaseProjectId: '', firebaseAuthEmulator: '', authProviderMode: '' },
   },
 })

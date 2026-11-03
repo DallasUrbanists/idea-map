@@ -258,7 +258,8 @@ still arrive; recently deleted task names can remain reserved. Operators must
 establish that replay is safe and that execution is idempotent before proceeding.
 
 From the repository root, the operator should build the worker with
-`pnpm exec tsc --build`, configure `WORKER_DATABASE_URL` and `CLOUD_TASKS_QUEUE`
+`pnpm exec tsc --build`, configure `WORKER_PROVIDER_MODE=provider`,
+`WORKER_DATABASE_URL`, and `CLOUD_TASKS_QUEUE`
 through the approved environment, and use short-lived application-default
 credentials with queue inspection access. The operator should then run:
 

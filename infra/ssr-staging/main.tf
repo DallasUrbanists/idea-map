@@ -75,6 +75,14 @@ resource "google_cloud_run_v2_service" "web" {
         value = var.session_origin
       }
       env {
+        name  = "NUXT_AUTH_PROVIDER_MODE"
+        value = "provider"
+      }
+      env {
+        name  = "NUXT_PUBLIC_AUTH_PROVIDER_MODE"
+        value = "provider"
+      }
+      env {
         name  = "NUXT_FIREBASE_PROJECT_ID"
         value = var.project_id
       }

@@ -492,7 +492,9 @@ The log-based verification and reset behavior is documented in
 ### Google sign-in and keyboard access
 
 You should verify the emulator Google flow, keyboard access, and narrow-screen
-layout:
+layout. Set `NUXT_PUBLIC_AUTH_PROVIDER_MODE=emulator-popup` in the local `.env`
+and restart the app first. This explicitly allows the popup support script from
+`apis.google.com`. Restore `offline` and restart after the check.
 
 1. Sign out and click **Continue with Google**.
 2. In the emulator popup, choose **Add new account** and enter a synthetic
@@ -522,7 +524,7 @@ You can run the automated server and browser checks during the same session:
     pnpm test:auth
     ```
 
-4. Confirm all three tests pass.
+4. Confirm all five tests pass.
 5. Run the other applicable checks in the
     [everyday checks section](#everyday-checks).
 
@@ -533,12 +535,12 @@ emulator; it does not clear other accounts. If a response cannot be captured or
 cleanup fails, a test account may remain until the emulator is stopped, and the
 test reports the failure. The cleanup integration check verifies that an unrelated
 emulator account remains available. The server check uses a synthetic Google
-credential; the browser check separately exercises the Google popup. Neither validates a real
-Google provider. The Auth emulator CI job installs the pinned Playwright
-browser and runs all three checks against disposable local services. Playwright's
+credential; the browser check separately exercises the Google popup. Neither
+validates a real Google provider. The Auth emulator CI job installs the pinned
+Playwright browser and runs all five checks against disposable local services. Playwright's
 clock advances the renewal and retry timers. The tests set up demo credentials
-automatically. You do not need shell variable assignments, and the tests do not read credentials from your
-`.env`.
+automatically. You do not need shell variable assignments, and the tests do not
+read credentials from your `.env`.
 
 ### Finish authentication testing
 

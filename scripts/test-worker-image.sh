@@ -13,6 +13,7 @@ trap cleanup EXIT
 [[ "$(docker image inspect --format '{{.Config.User}}' "$image")" == 'node' ]]
 docker run --rm --entrypoint node "$image" --input-type=module -e "import('@idea-map/server').then(() => {})"
 worker_id=$(docker run -d --publish 127.0.0.1::8080 \
+  -e WORKER_PROVIDER_MODE=provider \
   -e WORKER_ORIGIN=https://worker.invalid \
   -e TASK_INVOKER_EMAIL=task@synthetic.invalid.gserviceaccount.com \
   -e REPAIR_INVOKER_EMAIL=repair@synthetic.invalid.gserviceaccount.com \

@@ -170,6 +170,7 @@ database_secret_id      = "idea-map-ssr-database-url"
 database_secret_version = "1"
 ```
 
+The staging configuration explicitly selects hosted authentication provider mode.
 Operators should replace `IMAGE_DIGEST` with the recorded digest and
 `STAGING_FIREBASE_API_KEY` with the staging web app's public API key from Firebase
 project settings. Do not put database passwords, account credentials, or other

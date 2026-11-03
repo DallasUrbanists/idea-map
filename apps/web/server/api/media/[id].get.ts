@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 503, statusMessage: 'Preview unavailable' })
   }
   try {
-    const preview = await getMediaPreview(config.databaseUrl, config.approvedMediaBucket, id, maxBytes)
+    const preview = await getMediaPreview(config.databaseUrl, config.approvedMediaBucket, id, maxBytes, config.mediaProviderMode)
     if (!preview) throw createError({ statusCode: 404, statusMessage: 'Not found' })
     setResponseHeader(event, 'Content-Type', preview.contentType)
     return preview.bytes

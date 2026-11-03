@@ -14,7 +14,7 @@ test('session endpoint verifies emulator credentials and enforces CSRF and cooki
   await new Promise(resolve => probe.close(resolve))
   const base = `http://127.0.0.1:${port}`
   const server = spawn(process.execPath, ['apps/web/.output/server/index.mjs'], {
-    env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), NUXT_SESSION_ORIGIN: base, NUXT_FIREBASE_PROJECT_ID: 'demo-idea-map', FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099' }, stdio: 'ignore',
+    env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), NUXT_SESSION_ORIGIN: base, NUXT_AUTH_PROVIDER_MODE: 'offline', NUXT_PUBLIC_AUTH_PROVIDER_MODE: 'offline', NUXT_FIREBASE_PROJECT_ID: 'demo-idea-map', FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099' }, stdio: 'ignore',
   })
   const accounts = trackAuthTestAccounts()
   try {
@@ -77,5 +77,33 @@ test('session endpoint verifies emulator credentials and enforces CSRF and cooki
   } finally {
     server.kill()
     await accounts.cleanup()
+  }
+})
+
+test('invalid authentication mode fails closed before creating a session', async () => {
+  for (const settings of [
+    { NUXT_AUTH_PROVIDER_MODE: '', FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099' },
+    { NUXT_AUTH_PROVIDER_MODE: 'offline', FIREBASE_AUTH_EMULATOR_HOST: '' },
+    { NUXT_AUTH_PROVIDER_MODE: 'provider', FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099' },
+    { NUXT_AUTH_PROVIDER_MODE: 'offline', FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099', NUXT_FIREBASE_PROJECT_ID: '' },
+  ]) {
+    const probe = createServer()
+    await new Promise((resolve, reject) => probe.once('error', reject).listen(0, '127.0.0.1', resolve))
+    const port = probe.address().port
+    await new Promise(resolve => probe.close(resolve))
+    const base = `http://127.0.0.1:${port}`
+    const server = spawn(process.execPath, ['apps/web/.output/server/index.mjs'], { stdio: 'ignore', env: {
+      ...process.env, HOST: '127.0.0.1', PORT: String(port), NUXT_SESSION_ORIGIN: base, NUXT_FIREBASE_PROJECT_ID: 'demo-idea-map', ...settings,
+    } })
+    try {
+      let ready = false
+      for (let i = 0; i < 80; i++) { try { await fetch(`${base}/api/health`); ready = true; break } catch { await delay(250) } }
+      assert.ok(ready)
+      const response = await fetch(`${base}/api/session`, { method: 'POST', headers: { origin: base,
+        'content-type': 'application/json', 'x-idea-map-session': 'IdeaMapSession' },
+        body: JSON.stringify({ action: 'login', idToken: 'synthetic' }) })
+      assert.equal(response.status, 503)
+      assert.equal((await fetch(`${base}/api/session`, { headers: { cookie: '__session=synthetic' } })).status, 503)
+    } finally { server.kill() }
   }
 })

@@ -2,10 +2,13 @@ import { Storage } from '@google-cloud/storage'
 import pg from 'pg'
 import { exactGenerationFile } from './storage-generation.js'
 import { runtimeDatabasePool } from './runtime-database.js'
+import { selectProvider } from './provider-mode.js'
+import { createOfflinePreviewStorage, validateLocalPreviewEndpoint } from './offline-preview-storage.js'
 
 export interface PublicPreview { readonly bytes: Buffer; readonly contentType: string }
 export const MAX_MEDIA_PREVIEW_BYTES = 16 * 1024 * 1024
 let defaultStorage: Storage | undefined
+let storageConfig: string | undefined
 
 const query = `
   SELECT preview.object_name, preview.generation, preview.content_type
@@ -54,8 +57,27 @@ export async function readMediaPreview(
   return { bytes: body, contentType: row.content_type }
 }
 
-/** Use a bounded shared database pool and application-default storage credentials. */
-export async function getMediaPreview(databaseUrl: string, bucket: string, previewId: string, maxBytes: number): Promise<PublicPreview | null> {
-  defaultStorage ??= new Storage()
+/** Validate the storage boundary before constructing an SDK client. */
+export function validatePreviewProviderMode(mode: string, emulator: string): void {
+  selectProvider(mode, {
+    offline: () => {
+      validateLocalPreviewEndpoint(emulator)
+      return true
+    },
+    provider: () => {
+      if (emulator) throw new Error('Provider previews cannot use a storage emulator')
+      return true
+    },
+  })
+}
+
+/** Use a bounded pool and the explicitly selected storage integration. */
+export async function getMediaPreview(databaseUrl: string, bucket: string, previewId: string, maxBytes: number, mode: string): Promise<PublicPreview | null> {
+  const emulator = process.env.STORAGE_EMULATOR_HOST || ''
+  validatePreviewProviderMode(mode, emulator)
+  const selected = JSON.stringify([mode, emulator])
+  if (storageConfig && storageConfig !== selected) throw new Error('Preview provider configuration cannot change without a restart')
+  defaultStorage ??= selectProvider(mode, { offline: () => createOfflinePreviewStorage(emulator), provider: () => new Storage() })
+  storageConfig = selected
   return readMediaPreview(runtimeDatabasePool(databaseUrl), defaultStorage, bucket, previewId, maxBytes)
 }

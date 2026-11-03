@@ -40,7 +40,8 @@ async function run(action: 'login' | 'register' | 'google' | 'reset' | 'verify' 
       <input id="password" v-model="password" :disabled="!ready || !client" type="password" autocomplete="current-password" required>
       <button :disabled="!ready || busy || !client">Sign in</button>
       <button type="button" :disabled="!ready || busy || !client" @click="run('register')">Create account</button>
-      <button type="button" :disabled="!ready || busy || !client" @click="run('google')">Continue with Google</button>
+      <button type="button" :disabled="!ready || busy || !client || !client.googleAvailable" @click="run('google')">Continue with Google</button>
+      <p v-if="client && !client.googleAvailable">Google sign-in is unavailable.</p>
       <button type="button" :disabled="!ready || busy || !client || !email" @click="run('reset')">Reset password</button>
     </form>
   </main>

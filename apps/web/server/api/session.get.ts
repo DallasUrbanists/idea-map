@@ -1,13 +1,18 @@
-import { getCookie, setResponseHeader } from 'h3'
+import { createError, getCookie, setResponseHeader } from 'h3'
 import { firebaseAdmin } from '../utils/firebase-admin'
 
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'private, no-store')
   const cookie = getCookie(event, '__session')
-  const projectId = useRuntimeConfig(event).firebaseProjectId
-  if (!cookie || !projectId) return { registered: false }
+  const config = useRuntimeConfig(event)
+  const projectId = config.firebaseProjectId
+  if (!cookie) return { registered: false }
+  if (!projectId) throw createError({ statusCode: 503, statusMessage: 'Authentication unavailable' })
+  let auth
+  try { auth = firebaseAdmin(projectId, config.authProviderMode) }
+  catch { throw createError({ statusCode: 503, statusMessage: 'Authentication unavailable' }) }
   try {
-    const identity = await firebaseAdmin(projectId).verifySessionCookie(cookie, true)
+    const identity = await auth.verifySessionCookie(cookie, true)
     const provider = identity.firebase?.sign_in_provider
     if (!identity.uid || !provider || provider === 'anonymous') return { registered: false }
     return { registered: true, emailVerified: identity.email_verified === true }

@@ -5,7 +5,7 @@ export default defineNuxtPlugin<{ browserAuth: Awaited<ReturnType<typeof createB
   const signedIn = useState<string | null>('auth-email', () => null)
   const authError = useState<string>('auth-error', () => '')
   try {
-    const client = await createBrowserAuth({ apiKey: config.public.firebaseApiKey, authDomain: config.public.firebaseAuthDomain, projectId: config.public.firebaseProjectId, emulator: config.public.firebaseAuthEmulator })
+    const client = await createBrowserAuth({ apiKey: config.public.firebaseApiKey, authDomain: config.public.firebaseAuthDomain, projectId: config.public.firebaseProjectId, emulator: config.public.firebaseAuthEmulator, mode: config.public.authProviderMode })
     client.observe((value, error) => { signedIn.value = value; authError.value = error || '' })
     return { provide: { browserAuth: client } }
   } catch {
