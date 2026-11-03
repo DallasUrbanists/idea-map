@@ -292,7 +292,7 @@ The test uses synthetic emulator accounts and a storage fake. It checks the
 application's Firebase verifier, session revocation and private database records,
 then deletes its emulator accounts. It does not validate a hosted provider,
 enable a submission endpoint or accept an assessment. The moderation foundation
-workflow runs this test against separate disposable emulator and database services.
+workflow runs this test with a disposable Auth emulator and its own database.
 
 For the server-only moderator hold primitive and publication races, run
 `pnpm --filter @idea-map/server test:moderator-holds` with `TEST_DATABASE_URL`
