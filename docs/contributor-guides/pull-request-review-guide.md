@@ -47,6 +47,16 @@ You should review the complete change, including the surrounding code:
 - Check that code respects the
     [workspace boundaries](../architecture/architecture-overview.md#workspace-boundaries)
     and uses existing package exports, components, and design tokens.
+- For changes to services, integrations, infrastructure, or operating procedures,
+    trace the existing implementation and relevant architecture decisions. Check
+    related work in progress for overlapping responsibilities.
+- Check resource and state ownership, environment boundaries, and whether the
+    change reuses an existing capability or explains why isolation is needed.
+    Confirm that separate resources are not described as configuring the original
+    service, and that ownership, compatibility, and recovery remain clear.
+- Flag conflicts with established decisions or undocumented duplicate ownership.
+    For an intentional architecture change, review the rationale and updated
+    guidance alongside the implementation rather than assuming the old design.
 - Look for clear names, understandable control flow, and comments that explain
     reasons or constraints instead of repeating the code.
 - Inspect dependency and lockfile changes, generated migration SQL, journals,
