@@ -152,10 +152,13 @@ export async function freezeRegisteredDraft(context: Context, id: string, revisi
       return asset.slot !== i || asset.id !== prior.id || asset.object_name !== prior.object_name || asset.generation !== prior.generation || asset.digest !== prior.digest || !asset.generation || !asset.digest
     })) return { state: 'incomplete' }
     const content = draft.content
-    const canonical = JSON.stringify({ version: 1, draftId: id, revision, text: { title: content.title, description: content.description },
+    const canonical = JSON.stringify({ version: 1, draftId: draft.id, revision, text: { title: content.title, description: content.description },
       media: locked.rows.map((asset, i) => ({ slot: i, caption: content.captions[i], objectName: asset.object_name, generation: asset.generation, digest: asset.digest })) })
-    if (draft.frozen_manifest !== null) return draft.frozen_manifest === canonical
-      ? { state: 'ok', value: { canonical } } : { state: 'incomplete' }
+    if (draft.frozen_manifest !== null) {
+      if (draft.frozen_manifest !== canonical) return { state: 'incomplete' }
+      if (!await current(context, identity)) throw new Error('Identity changed during draft operation')
+      return { state: 'ok', value: { canonical } }
+    }
     await client.query('UPDATE registered_drafts SET frozen_manifest=$2 WHERE id=$1', [id, canonical])
     if (!await current(context, identity)) throw new Error('Identity changed during draft operation')
     return { state: 'ok', value: { canonical } }

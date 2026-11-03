@@ -20,8 +20,11 @@ test('registered owner freezes an exact inventory; guest, stale, missing and con
   const verify = async (name, generation) => storage.get(`${name}:${generation}`) ?? null
   try {
     assert.equal((await createRegisteredDraft(guest, randomUUID(), text([]))).state, 'unauthenticated')
-    const key = randomUUID()
-    const [created, same] = await Promise.all([createRegisteredDraft(owner, key, text(['Caption'])), createRegisteredDraft(owner, key, text(['Caption']))])
+    let key; let created; let same
+    do {
+      key = randomUUID()
+      ;[created, same] = await Promise.all([createRegisteredDraft(owner, key, text(['Caption'])), createRegisteredDraft(owner, key, text(['Caption']))])
+    } while (created.value.id === created.value.id.toUpperCase())
     assert.deepEqual(created, same)
     await assert.rejects(createRegisteredDraft(owner, key, text(['Different'])), /creation identity conflicts/)
     assert.equal(created.state, 'ok'); const { id, revision } = created.value
@@ -40,9 +43,9 @@ test('registered owner freezes an exact inventory; guest, stale, missing and con
     storage.delete(`${asset.objectName}:5`)
     assert.equal((await freezeRegisteredDraft(owner, id, revision, verify)).state, 'incomplete')
     storage.set(`${asset.objectName}:5`, { generation: '5', digest: 'a'.repeat(64) })
-    const frozen = await freezeRegisteredDraft(owner, id, revision, verify)
+    const frozen = await freezeRegisteredDraft(owner, id.toUpperCase(), revision, verify)
     assert.equal(frozen.state, 'ok'); const manifest = JSON.parse(frozen.value.canonical)
-    assert.equal(manifest.revision, revision); assert.equal(manifest.media[0].generation, '5'); assert.equal(manifest.media[0].caption, 'Caption')
+    assert.equal(manifest.draftId, id); assert.equal(manifest.revision, revision); assert.equal(manifest.media[0].generation, '5'); assert.equal(manifest.media[0].caption, 'Caption')
     assert.deepEqual(await freezeRegisteredDraft(owner, id, revision, verify), frozen)
     storage.delete(`${asset.objectName}:5`)
     assert.equal((await freezeRegisteredDraft(owner, id, revision, verify)).state, 'incomplete')
@@ -64,8 +67,11 @@ test('registered owner freezes an exact inventory; guest, stale, missing and con
     await pool.query('UPDATE registered_drafts SET expected_media=0 WHERE id=$1', [inconsistent.value.id])
     assert.equal((await freezeRegisteredDraft(owner, inconsistent.value.id, 1, verify)).state, 'incomplete')
     assert.equal((await pool.query('SELECT frozen_manifest FROM registered_drafts WHERE id=$1', [inconsistent.value.id])).rows[0].frozen_manifest, null)
-    const empty = await createRegisteredDraft(owner, randomUUID(), text([]))
-    assert.deepEqual(JSON.parse((await freezeRegisteredDraft(owner, empty.value.id, 1, verify)).value.canonical).media, [])
+    let empty
+    do { empty = await createRegisteredDraft(owner, randomUUID(), text([])) } while (empty.value.id === empty.value.id.toUpperCase())
+    const emptyFrozen = await freezeRegisteredDraft(owner, empty.value.id, 1, verify)
+    assert.deepEqual(JSON.parse(emptyFrozen.value.canonical).media, [])
+    assert.deepEqual(await freezeRegisteredDraft(owner, empty.value.id.toUpperCase(), 1, verify), emptyFrozen)
     await assert.rejects(pool.query('UPDATE registered_draft_media SET generation=\'7\', digest=NULL WHERE id=$1', [asset.id]), { code: '23514' })
   } finally { await pool.end() }
 })
@@ -111,5 +117,33 @@ test('identity rechecks and revision races roll back or reject stale storage evi
     assert.equal((await pendingFreeze).state, 'stale')
     assert.equal((await pool.query('SELECT frozen_manifest FROM registered_drafts WHERE id=$1', [freezing.value.id])).rows[0].frozen_manifest, null)
 
+  } finally { await pool.end() }
+})
+
+test('a revoked identity cannot retrieve a frozen manifest after delayed storage verification', async () => {
+  const pool = new pg.Pool({ connectionString: url })
+  let disabled = false
+  const owner = { ...context('revoked-retry'), verifier: {
+    async verifySessionCookie() { return { uid: 'revoked-retry', email: 'revoked-retry@example.invalid', email_verified: true, firebase: { sign_in_provider: 'password' } } },
+    async getUser() { return { uid: 'revoked-retry', email: 'revoked-retry@example.invalid', emailVerified: true, disabled } },
+  } }
+  try {
+    const draft = await createRegisteredDraft(owner, randomUUID(), text(['Private caption']))
+    const asset = await allocateRegisteredDraftMedia(owner, draft.value.id, 1, 0)
+    const good = async () => ({ generation: '15', digest: 'f'.repeat(64) })
+    assert.equal((await finalizeRegisteredDraftMedia(owner, draft.value.id, 1, asset.value.id, '15', good)).state, 'ok')
+    assert.equal((await freezeRegisteredDraft(owner, draft.value.id, 1, good)).state, 'ok')
+    const snapshot = async () => (await pool.query(`SELECT row_to_json(d) draft, row_to_json(m) media FROM registered_drafts d
+      JOIN registered_draft_media m ON m.draft_id=d.id WHERE d.id=$1`, [draft.value.id])).rows[0]
+    const before = await snapshot()
+    let release; let signal
+    const entered = new Promise(resolve => { signal = resolve })
+    const wait = new Promise(resolve => { release = resolve })
+    const retry = freezeRegisteredDraft(owner, draft.value.id, 1, async () => { signal(); await wait; return good() })
+    await entered
+    disabled = true
+    release()
+    await assert.rejects(retry, error => error.message === 'Identity changed during draft operation' && !error.message.includes('Private caption'))
+    assert.deepEqual(await snapshot(), before)
   } finally { await pool.end() }
 })
