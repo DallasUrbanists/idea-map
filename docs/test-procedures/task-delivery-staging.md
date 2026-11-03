@@ -9,6 +9,7 @@ The following contents links navigate within this procedure:
 
 - [When to use this guide](#when-to-use-this-guide)
 - [Prepare the review](#prepare-the-review)
+- [Review the scoped delivery configuration](#review-the-scoped-delivery-configuration)
 - [Record the synthetic evidence](#record-the-synthetic-evidence)
 - [Finish the test](#finish-the-test)
 
@@ -54,6 +55,59 @@ real assessment data before the rollout gates are accepted. See the
 [Google Cloud task guide](../architecture/google-cloud.md#tasks-and-reconciliation)
 for runtime settings and the [recovery procedure](../architecture/postgresql-postgis-drizzle.md#outbox-recovery)
 for the provider checks required before rearming a delivery.
+
+## Review the scoped delivery configuration
+
+The independent [`infra/task-delivery-staging`](../../infra/task-delivery-staging)
+root manages only a synthetic queue, task and repair identities, their scoped IAM
+members, and a paused hourly scheduler. It reads an already existing isolated
+worker; it does not create or configure that worker, its database, web service,
+or storage. Its [example variables](../../infra/task-delivery-staging/synthetic.tfvars.example)
+are deliberately non-live and leave the root disabled. A synthetic name does not
+prove that a resource or project is isolated.
+
+Before requesting a live plan, prepare a review record containing the exact
+isolated project and region, separate state bucket and prefix, worker service and
+origin, worker runtime identity and reviewed image digest, pinned test-only
+database secret version, queue and invoker names, operator and recovery owner,
+and cleanup exclusions. Confirm that no other Terraform root manages these
+same resources or IAM members. The worker must already have the reviewed queue,
+invoker, origin, and database settings; this root does not change them. Review
+inherited IAM and ingress separately. The configuration checks the selected
+worker's URI, runtime identity, internal ingress, and IAM setting, but it does
+not prove inherited permissions or provider reachability are safe.
+
+From the repository root, reviewers can validate the configuration without a
+cloud account or live state:
+
+```sh
+terraform fmt -check -recursive infra/task-delivery-staging
+terraform -chdir=infra/task-delivery-staging init -backend=false -lockfile=readonly
+terraform -chdir=infra/task-delivery-staging validate
+terraform -chdir=infra/task-delivery-staging test
+```
+
+The tests use a mocked provider and synthetic values. Initialization may fetch
+the pinned provider; it does not configure a remote backend or provision
+resources.
+
+After separate explicit authorization for staging access, an operator can
+first inspect a plan with delivery disabled. A plan with
+`enable_isolated_staging = true` must still be reviewed, and applying it needs
+separate explicit authorization. Confirm distinct task and repair invokers, bounded
+queue retries, queue-scoped worker access, exact OIDC audience, and a paused
+scheduler. The worker's real execution path remains disabled. Cloud Tasks and
+Scheduler reachability, duplicate-name retention, retry schedule behavior,
+identity permissions, and cache effects require actual isolated staging evidence;
+mocked tests cannot establish them.
+
+For rollback after separately authorized testing, pause the scheduler, stop new
+enqueues, record outstanding tasks and durable job states, and preserve the
+reviewed state and synthetic evidence. Restore a reviewed prior worker image
+and settings only under separate authorization. The queue, scheduler, and
+invoker accounts have `prevent_destroy` guards. Do not use a blanket destroy;
+changing those guards, resource removal, permission changes, and cleanup require
+their own reviewed scope and authorization.
 
 ## Record the synthetic evidence
 

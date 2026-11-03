@@ -1,0 +1,33 @@
+name: Task delivery staging configuration
+
+on:
+  pull_request:
+    paths:
+      - 'infra/task-delivery-staging/**'
+      - '.github/workflows/task-delivery-staging.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'infra/task-delivery-staging/**'
+      - '.github/workflows/task-delivery-staging.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  mocked-terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.5
+      - name: Format
+        run: terraform fmt -check -recursive infra/task-delivery-staging
+      - name: Initialize without remote state
+        run: terraform -chdir=infra/task-delivery-staging init -backend=false -lockfile=readonly
+      - name: Validate
+        run: terraform -chdir=infra/task-delivery-staging validate
+      - name: Test with mocked provider
+        run: terraform -chdir=infra/task-delivery-staging test
