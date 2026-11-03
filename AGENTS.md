@@ -83,11 +83,11 @@ and add or update the matching how-to guide in the same change.
 
 ## Validate and hand off
 
-Before submitting a pull request, inspect its description and commit messages
-for issue-closing references. Use closing syntax only when the issue's acceptance
-criteria are complete; when it must remain open, avoid that syntax entirely,
-even in negated wording, and use a relationship such as `Related to #N; issue
-remains open` instead.
+Before submitting a pull request, agents must inspect its description and commit
+messages for issue-closing references. Use closing syntax only when the issue's
+acceptance criteria are complete; when it must remain open, avoid that syntax
+entirely, even in negated wording, and use a relationship such as `Related to #N;
+issue remains open` instead.
 
 Agents must follow the [pull-request review guide](docs/contributor-guides/pull-request-review-guide.md)
 when reviewing pull requests. For their own changes, complete these checks:
