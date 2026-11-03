@@ -70,6 +70,23 @@ export const ideas = pgTable('ideas', {
   location: geographyPoint('location'),
   createdAt: createdAt(),
 }, table => [index('ideas_owner_idx').on(table.ownerId), index('ideas_author_contact_idx').on(table.authorContactId), index('ideas_location_gist_idx').using('gist', table.location), uniqueIndex('ideas_id_author_contact_key').on(table.id, table.authorContactId)])
+// Pending decisions keep exact journal bytes for retry and remain private.
+// An unresolved decision holds the public gate closed until reconciliation.
+export const publicAccessPendingDecisions = pgTable('public_access_pending_decisions', {
+  operationId: uuid('operation_id').primaryKey(),
+  recordId: uuid('record_id').notNull(),
+  ideaId: uuid('idea_id').notNull().references(() => ideas.id),
+  actorId: uuid('actor_id').notNull().references(() => users.id),
+  approvedRevisionId: uuid('approved_revision_id'),
+  removalReason: text('removal_reason'),
+  intent: text('intent').notNull(),
+  createdAt: createdAt(),
+}, table => [
+  uniqueIndex('public_access_pending_record_key').on(table.recordId),
+  foreignKey({ columns: [table.ideaId, table.approvedRevisionId], foreignColumns: [ideaRevisions.ideaId, ideaRevisions.id] }),
+  check('public_access_pending_intent_size', sql`octet_length(${table.intent}) between 1 and 16384`),
+  check('public_access_pending_removal_fields', sql`(${table.approvedRevisionId} IS NULL AND ${table.removalReason} IS NULL) OR (${table.approvedRevisionId} IS NOT NULL AND ${table.removalReason} IS NOT NULL AND length(trim(${table.removalReason})) > 0 AND octet_length(${table.removalReason}) <= 1000)`),
+])
 // One record covers one idea and one documented case; different cases may overlap.
 export const legalHolds = pgTable('legal_holds', {
   id: uuid('id').primaryKey().defaultRandom(),

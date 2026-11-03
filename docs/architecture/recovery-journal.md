@@ -183,6 +183,22 @@ response when the signal aborts. This primitive has no reviewed runtime grant,
 does not persist pending decisions or close the gate, and is not used by public
 requests. It is not sufficient to enable the gate or live removal integration.
 
+An unwired pending-removal transaction verifies the moderator, waits for the
+exclusive transaction lock, closes the gate, and stores the pending decision in
+the same database transaction through a restricted database function. It keeps
+the moderator's free-text reason in the private database and uses a non-sensitive
+reason in the journal intent. An older backup and the intent alone cannot recover
+the original free-text reason if the current database is lost; that metadata needs
+separate authorized reconciliation. The transaction does not write the journal
+or remove content. After a known commit, a successful call returns the original
+record ID and canonical intent bytes for the journal writer. A retry of the same
+operation returns the stored bytes, including the original timestamp; keep those
+private and do not infer success from a failed or uncertain call.
+Granting a web identity general gate updates would also let it reopen the gate;
+verify narrowly scoped grants and inherited permissions before integrating the
+transaction. Direct or older removal entry points must not be able to bypass the
+pending-decision protocol.
+
 The suggestion page renders an idea fetched from the idea API. Guarding only the
 inner API response is insufficient: the outer HTML response can continue after
 that fetch finishes. The gate must cover the outer delivery as well as API and

@@ -249,8 +249,9 @@ For the separate read-lease primitive, migrate an otherwise empty local
 connection, and run `pnpm --filter @idea-map/server test:public-access-lease`.
 The test changes the gate and terminates one test connection, so use only that
 disposable database. It checks lock ordering, a closed or missing gate, and a
-lost connection; it does not exercise public responses, decision mutations, or
-the hosted Neon pooler.
+lost connection, plus authorization, retry, and rollback of a pending removal.
+It does not exercise public responses, completed removals, journal writes, or the
+hosted Neon pooler.
 For the controlled-time delivery check, migrate another empty local disposable
 database, set `TEST_DATABASE_URL`, and run
 `pnpm --filter @idea-map/worker test:delivery`. This combines the adopted review

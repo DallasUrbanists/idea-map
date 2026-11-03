@@ -232,6 +232,13 @@
       "when": 1793740600082,
       "tag": "0032_brief_riptide",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793741531178,
+      "tag": "0033_charming_hellfire_club",
+      "breakpoints": true
     }
   ]
 }
