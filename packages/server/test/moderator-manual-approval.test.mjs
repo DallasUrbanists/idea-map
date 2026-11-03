@@ -40,7 +40,7 @@ test('manual approval requires current moderator and revision, respects blocks, 
     const hold = (await pool.query('SELECT id FROM moderator_holds WHERE revision_id=$1', [first.revision])).rows[0].id
     assert.deepEqual(await approveModerationRevision(...args, input), { state: 'authorized', value: 'blocked' })
     await releaseModeratorHold(...args, { ...input, holdId: hold, reason: 'synthetic release' })
-    await requestModeratorChanges(...args, { ...input, reason: 'synthetic changes' })
+    await requestModeratorChanges(...args, { ...input, operationKey: 'manual-approval-changes', reason: 'synthetic changes' })
     assert.deepEqual(await approveModerationRevision(...args, input), { state: 'authorized', value: 'blocked' })
     const requestId = (await pool.query('SELECT id FROM moderator_change_requests WHERE idea_id=$1', [first.idea])).rows[0].id
     await resolveModeratorChanges(...args, { ...input, requestId, reason: 'synthetic resolution' })

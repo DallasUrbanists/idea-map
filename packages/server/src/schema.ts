@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { boolean, check, customType, date, foreignKey, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import { boolean, check, customType, date, foreignKey, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 
 // Contact details and moderation records are private; access control belongs to
 // server-side authorization and must not rely on these table definitions.
@@ -317,3 +317,12 @@ export const mediaPreviews = pgTable('media_previews', {
   check('media_previews_generation_format', sql`${table.generation} ~ '^[1-9][0-9]*$'`),
   check('media_previews_content_type', sql`${table.contentType} IN ('image/jpeg', 'image/png', 'image/webp')`),
 ])
+
+// Durable request-changes receipts survive resolved-request pruning.
+export const moderatorChangeOperations = pgTable('moderator_change_operations', {
+  actorId: uuid('actor_id').notNull().references(() => users.id),
+  operationKey: text('operation_key').notNull(),
+  fingerprint: text('fingerprint').notNull(),
+  outcome: text('outcome'),
+}, table => [primaryKey({ columns: [table.actorId, table.operationKey] }),
+  check('moderator_change_operations_operation_key_check', sql`${table.operationKey} ~ '^[A-Za-z0-9_-]{1,128}$'`)])
