@@ -24,7 +24,7 @@ test('concurrent web database operations share the two-client limit', async () =
     held.push(await pool.connect())
     operations = Promise.all([
       readPublishedIdea(url, randomUUID()),
-      getMediaPreview(url, 'synthetic-approved', randomUUID(), 1024),
+      getMediaPreview(url, 'synthetic-approved', randomUUID(), 1024, 'provider'),
       deliveryEventStore(url).insert(event),
     ])
     void operations.catch(() => {})

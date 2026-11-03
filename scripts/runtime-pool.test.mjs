@@ -18,7 +18,7 @@ test('published reads, previews and delivery events share the two-client pool fo
   const url = 'postgres://example.invalid/pool-test'
   const results = await Promise.all([
     readPublishedIdea(url, 'idea'),
-    getMediaPreview(url, 'synthetic-approved', 'preview', 1024),
+    getMediaPreview(url, 'synthetic-approved', 'preview', 1024, 'provider'),
     deliveryEventStore(url).insert({ eventId: 'event', emailId: 'email', type: 'email.sent', occurredAt: '2026-01-01T00:00:00Z' }),
   ])
   assert.deepEqual(results, [{ title: 'Title', description: 'Description' }, null, 'inserted'])

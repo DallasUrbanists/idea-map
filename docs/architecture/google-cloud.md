@@ -56,11 +56,14 @@ and the distinct invoker assigned to each route; Cloud Run IAM and ingress also
 restrict invocation. The `GET /healthz` route reports process liveness without
 exposing job data. Failed or early execution returns a retryable response.
 
-The worker uses `WORKER_ORIGIN`, `TASK_INVOKER_EMAIL`, `REPAIR_INVOKER_EMAIL`,
-`CLOUD_TASKS_QUEUE`, and a server-only `WORKER_DATABASE_URL`. The worker pool has
+The worker requires `WORKER_PROVIDER_MODE` and uses `WORKER_ORIGIN`,
+`TASK_INVOKER_EMAIL`, `REPAIR_INVOKER_EMAIL`, `CLOUD_TASKS_QUEUE`, and a
+server-only `WORKER_DATABASE_URL`. The worker pool has
 one connection and must be included in the Neon connection budget before use.
 The [Terraform runtime option](terraform.md#resource-definitions) supplies
 these settings and a pinned database-secret reference when explicitly enabled.
+Provider mode must be explicitly selected; offline mode binds to loopback and
+refuses authentication and delivery until local job integration is available.
 Repair handles at most 20 records per request with a five-second dispatch timeout
 and logs only aggregate counts. The worker entry point currently rejects task
 execution because automatic moderation requires the accepted scoring contract,
@@ -159,7 +162,8 @@ the returned generation, object size, and image signature, and returns
 supports generated JPEG, PNG, and WebP previews; it does not publish previews or
 authorize original uploads.
 The endpoint requires a database URL, distinct
-`NUXT_APPROVED_MEDIA_BUCKET` and `NUXT_PENDING_MEDIA_BUCKET` settings, and a
+`NUXT_APPROVED_MEDIA_BUCKET` and `NUXT_PENDING_MEDIA_BUCKET` settings, an explicit
+`NUXT_MEDIA_PROVIDER_MODE`, and a
 positive `NUXT_MEDIA_PREVIEW_MAX_BYTES` no greater than 16 MiB. That ceiling
 protects server memory; the publishing workflow uses reviewed product
 limits and must ensure the approved bucket contains only validated previews.

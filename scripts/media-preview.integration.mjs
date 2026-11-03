@@ -37,7 +37,7 @@ test('public preview route serves only the approved generation and stops after w
   const server = spawn(process.execPath, ['apps/web/.output/server/index.mjs'], { stdio: 'ignore', env: {
     ...process.env, HOST: '127.0.0.1', PORT: String(port), NUXT_DATABASE_URL: url,
     NUXT_APPROVED_MEDIA_BUCKET: 'synthetic-approved', NUXT_PENDING_MEDIA_BUCKET: 'synthetic-pending',
-    NUXT_MEDIA_PREVIEW_MAX_BYTES: '1024', STORAGE_EMULATOR_HOST: `http://127.0.0.1:${fakeStorage.address().port}`,
+    NUXT_MEDIA_PROVIDER_MODE: 'offline', NUXT_MEDIA_PREVIEW_MAX_BYTES: '1024', STORAGE_EMULATOR_HOST: `http://127.0.0.1:${fakeStorage.address().port}`,
   } })
   const base = `http://127.0.0.1:${port}`
   const db = new Client({ connectionString: url })

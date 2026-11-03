@@ -21,6 +21,7 @@ The following contents links navigate within this guide:
     - [End of each work session](#end-of-each-work-session-1)
 - [Ports and troubleshooting](#ports-and-troubleshooting)
 - [Local synthetic fixtures](#local-synthetic-fixtures)
+- [Provider modes](#provider-modes)
 - [Authentication outside the emulator](#authentication-outside-the-emulator)
 - [Document user-facing changes](#document-user-facing-changes)
 - [Prepare and review a pull request](#prepare-and-review-a-pull-request)
@@ -314,6 +315,43 @@ fixtures. Inspect and resolve those records before retrying; the command does
 not remove the related records for you. The commands do not remove
 unrelated contacts, emulator accounts, or generated files.
 
+## Provider modes
+
+Select a mode explicitly for each configured integration. Missing or invalid
+modes fail rather than selecting another provider. The local `.env.example`
+uses offline authentication and media modes; copy the missing settings into an
+existing `.env` without replacing your settings.
+
+| Setting | Offline behavior | Provider behavior |
+| --- | --- | --- |
+| `NUXT_AUTH_PROVIDER_MODE` | `offline` requires a demo project and local Auth emulator. | `provider` requires a hosted project and no emulator setting. |
+| `NUXT_PUBLIC_AUTH_PROVIDER_MODE` | `offline` uses the Auth emulator for email/password and disables Google sign-in. | `provider` uses the configured hosted Firebase project. |
+| `NUXT_MEDIA_PROVIDER_MODE` | `offline` requires a loopback `STORAGE_EMULATOR_HOST`; preview storage does not follow redirects. | `provider` uses Cloud Storage and rejects a storage emulator setting. |
+| `WORKER_PROVIDER_MODE` | `offline` requires a local development or disposable test database and binds to loopback. Task authentication and delivery are unavailable. | `provider` uses Google token verification and the configured Cloud Tasks queue. |
+
+The repository's local service stack does not start a storage emulator; preview
+requests are unavailable in offline mode until a local fake is supplied. The
+worker's offline mode fails task authentication and delivery rather than claiming
+that work was queued. Local job delivery is tracked separately. The recovery CLI
+requires `WORKER_PROVIDER_MODE=provider` and its existing confirmation and queue
+checks. Streetmix, email, map, Gemini, boundary, and representative application
+workflows require their own integrations; the offline fixture example does not
+configure them.
+
+For the separate Google Auth emulator popup check, explicitly set
+`NUXT_PUBLIC_AUTH_PROVIDER_MODE=emulator-popup` and restart the app. This mode
+uses the local demo emulator but loads Google's popup support from
+`apis.google.com`; it needs network access and is not fully offline. Restore
+`offline` and restart afterward. The automated popup test selects this mode
+itself. The server remains in `offline` mode for the emulator.
+
+When deploying a compatible hosted image, configure both authentication modes
+as `provider` and set `NUXT_MEDIA_PROVIDER_MODE=provider` if previews are
+used. The worker Terraform runtime supplies `WORKER_PROVIDER_MODE=provider`.
+Set these values with the image update; missing modes make the relevant
+integration unavailable. Existing images ignore the new settings. If validation
+fails, roll back to the previous reviewed image and configuration.
+
 ## Authentication outside the emulator
 
 Hosted authentication uses these settings instead of local emulator settings.
@@ -327,7 +365,7 @@ For a hosted environment, the settings need to meet these requirements:
 | Server credentials | Application Default Credentials supply server access; service-account keys never belong in browser configuration or source control. |
 | Public configuration | Browser settings contain public identifiers only. |
 | Sign-in providers | Email/password and Google providers are enabled in the intended Firebase project. |
-| Emulator settings | Emulator connection settings are absent. |
+| Emulator settings | Emulator connection settings are absent and both authentication modes are `provider`. |
 
 The [API policy](../policies/api-policy.md#sessions) defines cookie behavior,
 token verification, renewal, origin checks, and per-route authorization.

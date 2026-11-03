@@ -42,7 +42,7 @@ test('local public preview endpoint reads only approved staging object generatio
     const serverEnvironment = {
       ...process.env, HOST: '127.0.0.1', PORT: String(port), NUXT_DATABASE_URL: url,
       NUXT_APPROVED_MEDIA_BUCKET: bucketName, NUXT_PENDING_MEDIA_BUCKET: 'dallasurbanists-idea-map-dev-media-uploads',
-      NUXT_MEDIA_PREVIEW_MAX_BYTES: '1048576', GOOGLE_CLOUD_PROJECT: 'dallasurbanists-idea-map-dev',
+      NUXT_MEDIA_PROVIDER_MODE: 'provider', NUXT_MEDIA_PREVIEW_MAX_BYTES: '1048576', GOOGLE_CLOUD_PROJECT: 'dallasurbanists-idea-map-dev',
     }
     delete serverEnvironment.STORAGE_EMULATOR_HOST
     server = spawn(process.execPath, ['apps/web/.output/server/index.mjs'], { stdio: 'ignore', env: serverEnvironment })

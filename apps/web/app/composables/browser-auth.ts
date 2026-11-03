@@ -1,17 +1,24 @@
 import { getApps, initializeApp } from 'firebase/app'
+import { validateBrowserAuthMode } from '../../shared/auth-provider.mjs'
 import { browserLocalPersistence, connectAuthEmulator, createUserWithEmailAndPassword, getAuth, GoogleAuthProvider, onAuthStateChanged, sendEmailVerification, sendPasswordResetEmail, setPersistence, signInWithEmailAndPassword, signInWithPopup, signOut, type User } from 'firebase/auth'
 
 const emulatorConnected = new WeakSet<object>()
+let activeConfig: string | undefined
 const RENEW_SESSION_MS = 50 * 60 * 1000
 const RETRY_SESSION_MS = 60 * 1000
 
 // Called only from the browser. Public Firebase settings are identifiers, not secrets.
-export async function createBrowserAuth(config: { apiKey: string, authDomain: string, projectId: string, emulator: string }) {
+export async function createBrowserAuth(config: { apiKey: string, authDomain: string, projectId: string, emulator: string, mode: string }) {
+  validateBrowserAuthMode(config.mode, config.projectId, config.emulator)
+  const selected = JSON.stringify(config)
+  if (activeConfig && activeConfig !== selected) throw new Error('Authentication configuration cannot change without a reload')
   if (!config.apiKey || !config.authDomain || !config.projectId) throw new Error('Authentication is not configured')
-  const app = getApps().find(candidate => candidate.name === 'idea-map-web') || initializeApp({ apiKey: config.apiKey, authDomain: config.authDomain, projectId: config.projectId }, 'idea-map-web')
+  const existing = getApps().find(candidate => candidate.name === 'idea-map-web')
+  if (existing && !activeConfig) throw new Error('Authentication must be initialized with a known configuration')
+  const app = existing || initializeApp({ apiKey: config.apiKey, authDomain: config.authDomain, projectId: config.projectId }, 'idea-map-web')
   const auth = getAuth(app)
+  activeConfig = selected
   if (config.emulator && !emulatorConnected.has(auth)) {
-    if (!config.projectId.startsWith('demo-') || !/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(config.emulator)) throw new Error('Invalid emulator configuration')
     connectAuthEmulator(auth, config.emulator, { disableWarnings: true })
     emulatorConnected.add(auth)
   }
@@ -27,6 +34,7 @@ export async function createBrowserAuth(config: { apiKey: string, authDomain: st
   }
   return {
     auth,
+    googleAvailable: config.mode !== 'offline',
     observe(callback: (email: string | null, error?: string) => void) {
       let stopped = false
       let timer: ReturnType<typeof setTimeout> | undefined
@@ -81,7 +89,10 @@ export async function createBrowserAuth(config: { apiKey: string, authDomain: st
     },
     async register(email: string, password: string) { const result = await createUserWithEmailAndPassword(auth, email, password); await sendEmailVerification(result.user) },
     async login(email: string, password: string) { await signInWithEmailAndPassword(auth, email, password) },
-    async google() { await signInWithPopup(auth, new GoogleAuthProvider()) },
+    async google() {
+      if (config.mode === 'offline') throw new Error('Google sign-in is unavailable offline')
+      await signInWithPopup(auth, new GoogleAuthProvider())
+    },
     async reset(email: string) { await sendPasswordResetEmail(auth, email) },
     async verify() { if (auth.currentUser) await sendEmailVerification(auth.currentUser) },
     async logout() { await signOut(auth); await session({ action: 'logout' }) },

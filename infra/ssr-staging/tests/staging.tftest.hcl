@@ -21,6 +21,10 @@ run "isolated_web_configuration" {
     error_message = "The staging service should have bounded scaling and deletion protection."
   }
   assert {
+    condition     = alltrue([for name in ["NUXT_AUTH_PROVIDER_MODE", "NUXT_PUBLIC_AUTH_PROVIDER_MODE"] : anytrue([for env in google_cloud_run_v2_service.web.template[0].containers[0].env : env.name == name && try(env.value, "") == "provider"])])
+    error_message = "Staging authentication must explicitly select its hosted provider."
+  }
+  assert {
     condition     = anytrue([for env in google_cloud_run_v2_service.web.template[0].containers[0].env : env.name == "NUXT_STAGING_HTML_CACHE" && env.value == "true"])
     error_message = "Only the isolated staging service should enable the synthetic HTML cache."
   }

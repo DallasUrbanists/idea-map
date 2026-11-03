@@ -15,7 +15,7 @@ test('registration, verification claims, session renewal/retry, reset, and devic
   const port = probe.address().port
   await new Promise(resolve => probe.close(resolve))
   const base = `http://127.0.0.1:${port}`
-  const server = spawn(process.execPath, ['apps/web/.output/server/index.mjs'], { env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), NUXT_SESSION_ORIGIN: base, NUXT_FIREBASE_PROJECT_ID: 'demo-idea-map', FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099', NUXT_PUBLIC_FIREBASE_API_KEY: 'fake-key', NUXT_PUBLIC_FIREBASE_AUTH_DOMAIN: 'localhost', NUXT_PUBLIC_FIREBASE_PROJECT_ID: 'demo-idea-map', NUXT_PUBLIC_FIREBASE_AUTH_EMULATOR: 'http://127.0.0.1:9099' }, stdio: 'ignore' })
+  const server = spawn(process.execPath, ['apps/web/.output/server/index.mjs'], { env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), NUXT_SESSION_ORIGIN: base, NUXT_AUTH_PROVIDER_MODE: 'offline', NUXT_PUBLIC_AUTH_PROVIDER_MODE: 'emulator-popup', NUXT_FIREBASE_PROJECT_ID: 'demo-idea-map', FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099', NUXT_PUBLIC_FIREBASE_API_KEY: 'fake-key', NUXT_PUBLIC_FIREBASE_AUTH_DOMAIN: 'localhost', NUXT_PUBLIC_FIREBASE_PROJECT_ID: 'demo-idea-map', NUXT_PUBLIC_FIREBASE_AUTH_EMULATOR: 'http://127.0.0.1:9099' }, stdio: 'ignore' })
   let browser
   const accounts = trackAuthTestAccounts()
   const email = `browser-${randomUUID()}@example.test`
@@ -128,5 +128,52 @@ test('registration, verification claims, session renewal/retry, reset, and devic
     } finally {
       try { await browser?.close() } finally { server.kill() }
     }
+  }
+})
+
+test('offline browser authentication uses the emulator and disables the networked Google popup', async () => {
+  const probe = createServer()
+  await new Promise((resolve, reject) => probe.once('error', reject).listen(0, '127.0.0.1', resolve))
+  const port = probe.address().port
+  await new Promise(resolve => probe.close(resolve))
+  const base = `http://127.0.0.1:${port}`
+  const server = spawn(process.execPath, ['apps/web/.output/server/index.mjs'], { env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), NUXT_SESSION_ORIGIN: base,
+    NUXT_AUTH_PROVIDER_MODE: 'offline', NUXT_PUBLIC_AUTH_PROVIDER_MODE: 'offline', NUXT_FIREBASE_PROJECT_ID: 'demo-idea-map',
+    FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099', NUXT_PUBLIC_FIREBASE_API_KEY: 'fake-key', NUXT_PUBLIC_FIREBASE_AUTH_DOMAIN: 'localhost',
+    NUXT_PUBLIC_FIREBASE_PROJECT_ID: 'demo-idea-map', NUXT_PUBLIC_FIREBASE_AUTH_EMULATOR: 'http://127.0.0.1:9099' }, stdio: 'ignore' })
+  const accounts = trackAuthTestAccounts()
+  const email = `offline-${randomUUID()}@example.test`
+  const responses = [], remoteRequests = []
+  let browser
+  try {
+    let ready = false
+    for (let i = 0; i < 80; i++) { try { await fetch(`${base}/api/health`); ready = true; break } catch { await delay(250) } }
+    assert.ok(ready)
+    browser = await chromium.launch({ headless: true })
+    const page = await browser.newPage()
+    page.on('request', request => {
+      const url = new URL(request.url())
+      if (['http:', 'https:'].includes(url.protocol) && !['127.0.0.1', 'localhost'].includes(url.hostname)) remoteRequests.push(url.origin)
+    })
+    page.on('response', response => {
+      if (!response.ok() || !response.url().startsWith('http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?')) return
+      responses.push(response.json().then(body => { if (body.email === email) accounts.add(email, body.idToken) }).then(() => null, () => 'capture failed'))
+    })
+    await page.goto(`${base}/account`)
+    await page.waitForFunction(() => !document.querySelector('#email')?.disabled)
+    assert.equal(await page.getByRole('button', { name: 'Continue with Google' }).isDisabled(), true)
+    await page.locator('#email').fill(email)
+    await page.locator('#password').fill('example-password')
+    await page.getByRole('button', { name: 'Create account' }).click()
+    await page.getByText(`Signed in as ${email}`).waitFor({ timeout: 15000 })
+    assert.ok((await Promise.all(responses)).every(result => result === null))
+    assert.equal(accounts.size, 1)
+    assert.deepEqual(remoteRequests, [])
+  } finally {
+    try {
+      const captured = await Promise.all(responses)
+      await accounts.cleanup()
+      if (captured.some(Boolean)) throw new Error('Could not capture an Auth emulator response for cleanup')
+    } finally { try { await browser?.close() } finally { server.kill() } }
   }
 })

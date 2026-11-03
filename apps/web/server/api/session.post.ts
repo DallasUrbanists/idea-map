@@ -34,8 +34,11 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Invalid request' })
   }
   if (!config.firebaseProjectId) throw createError({ statusCode: 503, statusMessage: 'Authentication unavailable' })
+  let provider
+  try { provider = firebaseAdmin(config.firebaseProjectId, config.authProviderMode) }
+  catch { throw createError({ statusCode: 503, statusMessage: 'Authentication unavailable' }) }
   try {
-    const cookie = await issueSession({ idToken: body.idToken, provider: firebaseAdmin(config.firebaseProjectId) })
+    const cookie = await issueSession({ idToken: body.idToken, provider })
     setCookie(event, '__session', cookie, { ...cookieOptions, maxAge: SESSION_LIFETIME_MS / 1000 })
     return { ok: true }
   } catch {

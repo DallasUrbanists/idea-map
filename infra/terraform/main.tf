@@ -46,6 +46,7 @@ resource "google_cloud_run_v2_service" "runtime" {
       }
       dynamic "env" {
         for_each = each.key == "worker" && var.enable_worker_runtime && var.enable_task_delivery ? {
+          WORKER_PROVIDER_MODE = "provider"
           WORKER_ORIGIN        = var.worker_origin
           TASK_INVOKER_EMAIL   = google_service_account.task_invoker[0].email
           REPAIR_INVOKER_EMAIL = google_service_account.repair_invoker[0].email
