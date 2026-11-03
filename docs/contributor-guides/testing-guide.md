@@ -168,6 +168,17 @@ For the server-only moderator hold primitive and publication races, run
 set to a fresh disposable PostGIS database. The test uses synthetic moderator
 identities; it does not enable moderator controls or grant live permissions.
 
+For a combined synthetic moderation and recovery scenario under a controlled
+database clock, set `TEST_DATABASE_URL` to a fresh local disposable PostGIS
+database and run `pnpm --filter @idea-map/server test:moderation-integrated`.
+It uses injected identity, dispatcher, and policy fakes; it does not validate an
+accepted scoring method, the disabled production worker, or hosted permissions.
+
+For owned escalation holds, upgrades, and legal-retention races, set
+`TEST_DATABASE_URL` to a fresh disposable PostGIS database and run
+`pnpm --filter @idea-map/server test:moderator-escalations`. The test uses
+synthetic identities and does not grant live permissions or test a user interface.
+
 For request-changes, separate holds, legal retention, and timed-publication
 races, set `TEST_DATABASE_URL` to a fresh disposable PostGIS database and run
 `pnpm --filter @idea-map/server test:moderator-changes`. This uses synthetic
