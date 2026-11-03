@@ -188,6 +188,14 @@ across transactions. Holding a client for an outer render while the nested API
 request needs another client can also exhaust that pool under concurrent load.
 Verify the selected coordination mechanism against the actual pooler and the
 complete render path, including a queued removal and concurrent page requests.
+A disposable PostgreSQL probe showed that a later `FOR SHARE` reader could join
+while an update was waiting for an earlier reader. A shared row lock alone does
+not prevent new readers from delaying the gate; test admission and bounded drain
+behavior explicitly. In the same kind of local probe, a waiting exclusive
+transaction-scoped advisory lock prevented a later shared lock from entering.
+That result does not validate Neon pooling, resource limits, deadlock handling,
+or the application response lifecycle; all public readers and removal writers
+would have to use the same reviewed lock convention.
 A synthetic local-fetch probe against the built Nitro runtime did not carry a
 custom server-side context object into the nested request. Do not assume an inner
 request can reuse an outer request's guarded transaction. Test any alternative
@@ -195,7 +203,8 @@ context propagation and cleanup against the deployed runtime. Never trust a
 client-supplied header as proof that a request holds a guard.
 A synthetic probe of two concurrent built suggestion-page renders preserved
 distinct Node `AsyncLocalStorage` values when the outer request explicitly wrapped
-its internal fetch. It used a database fake and a Windows module-URL workaround.
+its internal fetch. It used a database fake and initialized the module URL before
+importing the internal bundle, as the normal server entry point does.
 That result does not show that a middleware guards the full rendered response or
 that every internal fetch uses the same context. Verify actual database locks,
 the hosted pooler, and concurrent and disconnected requests before relying on it.
