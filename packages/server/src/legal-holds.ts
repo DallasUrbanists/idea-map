@@ -7,11 +7,12 @@ function reference(value: unknown, max: number): value is string {
   return typeof value === 'string' && !!value.trim() && Buffer.byteLength(value) <= max && !/[\x00-\x1f\x7f]/u.test(value)
 }
 
-type Access = { state: 'unauthenticated' | 'forbidden' | 'processed' }
+type Outcome = 'forbidden' | 'processed' | 'not_found' | 'already_held' | 'already_released'
+type Access = { state: 'unauthenticated' | Outcome }
 
 /** The verifier is the configured Firebase Admin SDK; never accept client-supplied actor IDs. */
 async function withLegalAuthority(databaseUrl: string, projectId: string, cookie: string, verifier: RegisteredSessionVerifier,
-  action: (client: pg.PoolClient, provider: string, subject: string) => Promise<void>): Promise<Access> {
+  action: (client: pg.PoolClient, provider: string, subject: string) => Promise<Outcome>): Promise<Access> {
   if (!databaseUrl) throw new Error('Invalid legal-hold configuration')
   const session = await verifyRegisteredSession(projectId, cookie, verifier)
   if (session.state !== 'verified') return session
@@ -23,7 +24,7 @@ async function withLegalAuthority(databaseUrl: string, projectId: string, cookie
     const provider = `firebase:${projectId}`
     const role = await client.query<{ user_id: string | null }>('SELECT public.lock_active_legal_hold_authority($1,$2) AS user_id', [provider, session.uid])
     if (!role.rows[0]?.user_id) { await client.query('ROLLBACK'); return { state: 'forbidden' } }
-    await action(client, provider, session.uid)
+    const outcome = await action(client, provider, session.uid)
     let timer: ReturnType<typeof setTimeout> | undefined
     let current: RegisteredSession
     try {
@@ -37,7 +38,7 @@ async function withLegalAuthority(databaseUrl: string, projectId: string, cookie
       return { state: current.state === 'unauthenticated' ? 'unauthenticated' : 'forbidden' }
     }
     await client.query('COMMIT')
-    return { state: 'processed' }
+    return { state: outcome }
   } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
 }
 
@@ -46,7 +47,9 @@ export async function placeLegalHold(databaseUrl: string, projectId: string, coo
   input: { ideaId: string, caseReference: string, reason: string }): Promise<Access> {
   if (!uuid.test(input.ideaId) || !reference(input.caseReference, 300) || !reference(input.reason, 1000)) throw new Error('Invalid legal hold')
   return withLegalAuthority(databaseUrl, projectId, cookie, verifier, async (client, provider, subject) => {
-    await client.query('SELECT public.place_legal_hold($1,$2,$3,$4,$5)', [provider, subject, input.ideaId, input.caseReference, input.reason])
+    const result = await client.query<{ outcome: Outcome }>('SELECT public.place_legal_hold_outcome($1,$2,$3,$4,$5) AS outcome', [provider, subject, input.ideaId, input.caseReference, input.reason])
+    if (!result.rows[0]?.outcome) throw new Error('Missing legal-hold outcome')
+    return result.rows[0].outcome
   })
 }
 
@@ -55,7 +58,9 @@ export async function releaseLegalHold(databaseUrl: string, projectId: string, c
   input: { holdId: string, reason: string, legalReviewReference: string | null }): Promise<Access> {
   if (!uuid.test(input.holdId) || !reference(input.reason, 1000) || (input.legalReviewReference !== null && !reference(input.legalReviewReference, 300))) throw new Error('Invalid legal hold release')
   return withLegalAuthority(databaseUrl, projectId, cookie, verifier, async (client, provider, subject) => {
-    await client.query('SELECT public.release_legal_hold($1,$2,$3,$4,$5)', [provider, subject, input.holdId, input.reason, input.legalReviewReference])
+    const result = await client.query<{ outcome: Outcome }>('SELECT public.release_legal_hold_outcome($1,$2,$3,$4,$5) AS outcome', [provider, subject, input.holdId, input.reason, input.legalReviewReference])
+    if (!result.rows[0]?.outcome) throw new Error('Missing legal-hold outcome')
+    return result.rows[0].outcome
   })
 }
 

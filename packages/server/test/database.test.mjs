@@ -26,6 +26,7 @@ test('bootstrap, forward migrations, ownership constraints and PostGIS', async (
     const journalPath = join(initial, 'meta', '_journal.json')
     const journal = JSON.parse(await readFile(journalPath, 'utf8'))
     const expectedMigrations = journal.entries.length
+    const allEntries = [...journal.entries]
     journal.entries = journal.entries.slice(0, 1)
     await writeFile(journalPath, JSON.stringify(journal))
     await client.connect()
@@ -38,9 +39,21 @@ test('bootstrap, forward migrations, ownership constraints and PostGIS', async (
     const legacyIdea = (await client.query("INSERT INTO ideas(author_contact_id,owner_id,publication_state) VALUES ($1,$2,'approved') RETURNING id", [contact, user])).rows[0].id
     const legacyRevision = (await client.query("INSERT INTO idea_revisions(idea_id,version,content,review_state) VALUES ($1,1,'{}','approved') RETURNING id", [legacyIdea])).rows[0].id
     await client.query('INSERT INTO approved_revisions(idea_id,revision_id) VALUES ($1,$2)', [legacyIdea, legacyRevision])
+    // Upgrade through the legal-hold base before applying the decision migrations.
+    // A later base timestamp must not cause Drizzle to skip the merged branch.
+    const baseIndex = allEntries.findIndex(entry => entry.tag === '0017_legal_hold_outcomes')
+    assert.ok(baseIndex >= 0)
+    journal.entries = allEntries.slice(0, baseIndex + 1)
+    for (const entry of journal.entries.slice(1)) {
+      await cp(join(migrations, `${entry.tag}.sql`), join(initial, `${entry.tag}.sql`))
+    }
+    await writeFile(journalPath, JSON.stringify(journal))
+    await migrate(db, { migrationsFolder: initial })
+    assert.ok((await client.query("SELECT to_regprocedure('public.place_legal_hold_outcome(text,text,uuid,text,text)') AS fn")).rows[0].fn)
     await migrate(db, { migrationsFolder: migrations })
     await migrate(db, { migrationsFolder: migrations })
     assert.equal((await client.query('SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations')).rows[0].count, expectedMigrations)
+    assert.equal((await client.query("SELECT count(*)::int AS count FROM information_schema.columns WHERE table_name = 'moderation_events' AND column_name = 'assessment_id'")).rows[0].count, 1)
     assert.deepEqual((await client.query('SELECT revision_id, verified_for_trust FROM approval_records WHERE idea_id = $1', [legacyIdea])).rows[0], { revision_id: legacyRevision, verified_for_trust: false })
     const deliveryPool = new pg.Pool({ connectionString: url, max: 2 })
     try {
