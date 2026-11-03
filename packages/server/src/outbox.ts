@@ -87,7 +87,9 @@ export async function enqueueJob(client: pg.PoolClient, intent: JobIntent): Prom
 async function transaction<T>(pool: pg.Pool, body: (client: pg.PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect()
   try {
-    await client.query('BEGIN')
+    // Later eligibility reads must see writers that committed while this
+    // transaction waited on a row lock, regardless of the server default.
+    await client.query('BEGIN ISOLATION LEVEL READ COMMITTED')
     const result = await body(client)
     await client.query('COMMIT')
     return result

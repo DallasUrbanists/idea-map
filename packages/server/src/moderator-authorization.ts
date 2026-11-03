@@ -54,12 +54,27 @@ export async function withVerifiedModerator<T>(databaseUrl: string, projectId: s
   if (session.state !== 'verified') return session
   const client = await runtimeDatabasePool(databaseUrl).connect()
   try {
-    await client.query('BEGIN')
+    // Review actions recheck the current revision after waiting for its lock.
+    await client.query('BEGIN ISOLATION LEVEL READ COMMITTED')
     const result = await client.query<{ user_id: string | null }>(
       'SELECT public.lock_active_moderator($1, $2) AS user_id', [`firebase:${projectId}`, session.uid])
     const userId = result.rows[0]?.user_id
     if (!userId) { await client.query('ROLLBACK'); return { state: 'forbidden' } }
     const value = await action(client, userId)
+    // A review action may wait on database locks. Recheck the provider while
+    // the database assignment is still locked, before committing any action.
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let current: RegisteredSession
+    try {
+      current = await Promise.race([
+        verifyRegisteredSession(projectId, cookie, verifier),
+        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Identity recheck timed out')), 5000) }),
+      ])
+    } finally { if (timer) clearTimeout(timer) }
+    if (current.state !== 'verified' || current.uid !== session.uid || current.email !== session.email) {
+      await client.query('ROLLBACK')
+      return { state: current.state === 'unauthenticated' ? 'unauthenticated' : 'forbidden' }
+    }
     await client.query('COMMIT')
     return { state: 'authorized', value }
   } catch (error) {
