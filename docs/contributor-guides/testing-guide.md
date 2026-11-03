@@ -61,12 +61,12 @@ automatic publication.
 
 ## CI and contribution gates
 
-Pull requests, including forks, run with a read-only repository token and no
-repository secrets in the ordinary test workflows. The moderation foundation
-workflow supplies lint, root tests, typecheck, build, web smoke and synthetic
-integration checks. The browser workflow builds `dev/Dockerfile.browser-ci` and
-runs the existing dialog SSR and Chromium tests. You can reproduce it from the
-repository root with these commands:
+For pull requests, including those from forks, the ordinary *continuous
+integration (CI)* workflows use a read-only repository token and no repository
+secrets. The moderation foundation workflow supplies lint, root tests,
+typecheck, build, web smoke, and synthetic integration checks. The browser workflow builds `dev/Dockerfile.browser-ci` and
+runs the dialog server-side rendering and Chromium tests. You can reproduce the
+check from the repository root with these commands:
 
 ```sh
 docker build -f dev/Dockerfile.browser-ci -t idea-map-browser-ci .
@@ -78,27 +78,35 @@ browser image includes its operating-system libraries. The browser is the
 Chromedp project’s modified Chromium headless shell, not Playwright’s bundled
 browser; manual and other browser checks remain separate. The pinned browser
 image is for Linux amd64, matching the hosted runner. pnpm and JavaScript
-dependencies are locked. The workflow records the image ID and Chromium version. Contributors
-should update the browser digest through a reviewed change and rerun the checks
-to receive fixes.
-Native development is unchanged. The browser container requires no hosted
-credentials or services. If you use a proxy with a custom CA, you should pass
-`--secret id=proxy_ca,src="$CODEX_PROXY_CERT"` to the build.
+dependencies are locked. The workflow records the image ID and Chromium
+version. Contributors should update the browser digest through a reviewed change
+and rerun the checks to receive fixes. Native development is unchanged. The
+browser container requires no hosted credentials or services.
+
+If your proxy uses a custom *certificate authority (CA)*, you should replace
+`PROXY_CA_FILE` with the path to its CA file and build with this command:
+
+```sh
+docker build --secret "id=proxy_ca,src=PROXY_CA_FILE" -f dev/Dockerfile.browser-ci -t idea-map-browser-ci .
+```
+
+You can then run the image with the same `docker run` command shown earlier.
 
 The dependency-audit workflow checks production dependencies at high severity or
 above on pull requests, main, and weekly. You can run
 `pnpm audit --prod --audit-level high` locally to reproduce it. Lower-severity
-and development dependency advisories still require periodic review; a clean audit is not proof of security.
-Dependabot configuration requests weekly npm, Actions, and Docker updates;
-maintainers must review and test each proposed update. Contributors should report
-sensitive findings privately as described in CONTRIBUTING.md.
+and development dependency advisories still require periodic review; a clean
+audit is not proof of security. Dependabot configuration requests weekly npm,
+Actions, and Docker updates; maintainers should review and test each proposed
+update. Contributors should report sensitive findings privately as described in
+[CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 Before merging, maintainers should verify that applicable checks have completed
 and passed on the current head, review changes and unresolved feedback, and apply
 the repository's normal approval and branch rules. Workflow configuration does
-not itself prove branch protection is enabled. Fork pull requests must be tested
-from an actual fork without secrets; a same-repository pull request alone is not
-that evidence. You should review the
+not itself prove branch protection is enabled. Maintainers should verify that a
+fork pull request runs without repository secrets; a same-repository pull request
+alone does not provide that evidence. You should review the
 [release procedure](../policies/release-procedure.md) for versioning, approval,
 and separately authorized publication and deployment.
 

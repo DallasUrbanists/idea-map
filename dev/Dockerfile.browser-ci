@@ -1,4 +1,5 @@
-# The amd64 browser image pins Chromium and its OS libraries together.
+# The amd64 browser image pins Chromium and its operating-system libraries
+# together.
 FROM node:24.22.1-bookworm-slim@sha256:be8204d4bd327363357f532187b752ff62759c31bedf98e9e18fc08c9cbd605c AS node
 FROM chromedp/headless-shell@sha256:b9f182c7474cc773513e672054bc2d9df90fe479e90a356fddaaef4b9492c230
 COPY --from=node /usr/local/ /usr/local/
