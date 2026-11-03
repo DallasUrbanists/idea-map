@@ -30,10 +30,10 @@ following inputs in a reviewable staging proposal without credentials or private
 
 | Input | Required boundary |
 | --- | --- |
-| Project, region, and owner | An explicitly authorized test project and region; no shared or production resources |
-| State | A separately controlled state bucket and prefix, with access and recovery ownership confirmed |
+| Project, region, and owner | An explicitly authorized development or test project and region, with scoped test resources; no production or v1 resources |
+| State | An approved, versioned development state bucket and unique prefix for each root, with access and recovery ownership confirmed |
 | Images | Reviewed immutable web and worker image digests and their matching source revisions |
-| Database | A disposable PostGIS database containing only synthetic data, with a separate restricted worker credential and connection budget |
+| Database | A disposable Neon/PostGIS database containing only synthetic data, with a separate restricted worker credential and connection budget |
 | Delivery | A test-only queue, distinct task and repair invoker identities, and a paused hourly scheduler |
 | Review and recovery | Named operator, restricted log access and retention, logging cost review, recovery owner, rollback digest, test window, and exact test-owned cleanup scope |
 
@@ -45,6 +45,15 @@ shared staging resources or assume the staging web root owns the same state.
 Operators should review the opt-in worker runtime configuration, exact service
 URI, and pinned existing database secret before a live plan. The canonical
 staging URL does not establish that an isolated worker or queue exists.
+
+The [Neon architecture](../architecture/neon.md#environments-and-connections)
+defines the hosted database choice and isolation. Operators should inspect
+existing development test resources before proposing new ones, verify that the
+worker credential has the required restricted permissions, and include all
+shared-compute connections in the capacity review. An existing web test role is
+not evidence that worker access is adequate. Separate Terraform state prefixes
+can use an existing approved development bucket when its access and recovery
+controls are suitable; a new bucket is not required solely for another root.
 
 Operators should keep `enable_task_delivery` off during initial review. When an
 operator has separate authorization to configure test delivery, review a plan with it enabled
@@ -66,17 +75,29 @@ or storage. Its [example variables](../../infra/task-delivery-staging/synthetic.
 are deliberately non-live and leave the root disabled. A synthetic name does not
 prove that a resource or project is isolated.
 
-The synthetic queue requests logging for every operation so operators can review
-dispatch and response attempts. [Cloud Tasks logging](https://docs.cloud.google.com/tasks/docs/monitor#use-cloud-logging-with-queues)
+The foundation worker's runtime settings refer to the queue and invoker
+identities managed by `infra/terraform`. The scoped root defines different
+resources and does not replace those settings. Operators using the foundation
+worker should review and use the foundation-owned delivery resources, rather
+than create a second queue and scheduler for that worker. Use the scoped root
+only for an independently configured isolated worker whose reviewed settings
+match its resources, and confirm that no other root manages the same objects.
+
+The scoped root's synthetic queue requests logging for every operation so
+operators can review dispatch and response attempts.
+[Cloud Tasks logging](https://docs.cloud.google.com/tasks/docs/monitor#use-cloud-logging-with-queues)
 is sampled at zero by default and a full sampling setting does not prove that
 every log was retained or delivered. Before any live plan, operators should
 review log routing, restricted access, retention, exclusions, and cost. Logs can
 contain task and queue identifiers; keep them and provider responses out of
-public evidence. Do not use this synthetic configuration for real submissions.
+public evidence. The foundation queue has its own configuration; this logging
+setting does not apply to it. Review its logging separately and do not create a
+second queue merely to obtain logs. Do not use the scoped synthetic
+configuration for real submissions.
 
 Before requesting a live plan, prepare a review record containing the exact
-isolated project and region, separate state bucket and prefix, worker service and
-origin, worker runtime identity and reviewed image digest, pinned test-only
+isolated project and region, approved state bucket and unique prefix, worker
+service and origin, worker runtime identity and reviewed image digest, pinned test-only
 database secret version, queue and invoker names, operator and recovery owner,
 and cleanup exclusions. Confirm that no other Terraform root manages these
 same resources or IAM members. The worker must already have the reviewed queue,
