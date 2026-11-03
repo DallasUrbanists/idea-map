@@ -13,6 +13,7 @@ const metadata = { name: env.BACKUP_BUCKET, projectNumber: env.BACKUP_PROJECT_NU
 
 test('backup configuration requires direct verified TLS and a hosted production job', () => {
   assert.equal(backupConfiguration(env).environment, 'dev')
+  assert.equal(backupConfiguration({ ...env, BACKUP_DATABASE_URL: `${env.BACKUP_DATABASE_URL}&gssencmode=disable` }).environment, 'dev')
   for (const change of [
     { BACKUP_ENVIRONMENT: 'v1' }, { BACKUP_BUCKET: 'gs://wrong' }, { BACKUP_PROJECT_NUMBER: 'bad' },
     { STORAGE_EMULATOR_HOST: '' }, { STORAGE_EMULATOR_HOST: 'http://127.0.0.1:8080' },
@@ -20,6 +21,15 @@ test('backup configuration requires direct verified TLS and a hosted production 
     { BACKUP_DATABASE_URL: 'postgres://example-pooler.neon.tech/db?sslmode=verify-full&sslrootcert=system' },
     { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&sslmode=disable' },
     { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&host=other.invalid' },
+    { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&ssl=true' },
+    { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&dbname=other' },
+    { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&port=5433' },
+    { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&user=other' },
+    { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&password=other' },
+    { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&gssencmode=require' },
+    { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&gssencmode=disable&gssencmode=prefer' },
+    { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&sslkeylogfile=keys' },
+    { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&requiressl=1' },
     { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full' },
   ]) assert.throws(() => backupConfiguration({ ...env, ...change }))
 })
@@ -80,7 +90,8 @@ test('one completed Monday dump finalizes identical daily and weekly uploads', a
   const result = await exportEncryptedBackup(backupConfiguration(env), { storage, now: new Date('2026-11-02T10:00:00Z'), start: pgEnv => { childEnv = pgEnv; dumps++; return source() } })
   assert.equal(childEnv.PGDATABASE, env.BACKUP_DATABASE_URL)
   assert.equal(childEnv.BACKUP_DATABASE_URL, undefined)
-  assert.ok(Object.keys(childEnv).every(key => ['PATH', 'SystemRoot', 'WINDIR', 'PGDATABASE', 'PGCONNECT_TIMEOUT'].includes(key)))
+  assert.equal(childEnv.PGGSSENCMODE, 'disable')
+  assert.ok(Object.keys(childEnv).every(key => ['PATH', 'SystemRoot', 'WINDIR', 'PGDATABASE', 'PGCONNECT_TIMEOUT', 'PGGSSENCMODE'].includes(key)))
   assert.equal(dumps, 1)
   assert.equal(states.length, 2)
   for (const state of states) {

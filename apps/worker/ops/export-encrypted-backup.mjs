@@ -37,7 +37,10 @@ export function backupConfiguration(env) {
   if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.hostname || !url.pathname || url.pathname === '/' ||
       url.hostname.includes('-pooler.') || url.searchParams.get('sslmode') !== 'verify-full' ||
       url.searchParams.get('sslrootcert') !== 'system' ||
-      ['host', 'hostaddr', 'service', 'sslmode', 'sslrootcert'].some(key => url.searchParams.getAll(key).length > (['sslmode', 'sslrootcert'].includes(key) ? 1 : 0))) {
+      ['host', 'hostaddr', 'port', 'user', 'password', 'dbname', 'service', 'ssl', 'requiressl', 'sslkeylogfile'].some(key => url.searchParams.has(key)) ||
+      ['sslmode', 'sslrootcert'].some(key => url.searchParams.getAll(key).length !== 1) ||
+      url.searchParams.getAll('gssencmode').length > 1 ||
+      (url.searchParams.has('gssencmode') && url.searchParams.get('gssencmode') !== 'disable')) {
     throw new Error('Invalid backup configuration')
   }
   return { ...target, databaseUrl: env.BACKUP_DATABASE_URL }
@@ -71,7 +74,7 @@ export async function exportEncryptedBackup(config, options = {}) {
   const bucket = options.storage.bucket(config.bucket)
   const [metadata] = await bucket.getMetadata()
   verifyBackupBucket(metadata, config)
-  const dump = (options.start ?? startDump)({ ...env, PGDATABASE: config.databaseUrl, PGCONNECT_TIMEOUT: '10' })
+  const dump = (options.start ?? startDump)({ ...env, PGDATABASE: config.databaseUrl, PGCONNECT_TIMEOUT: '10', PGGSSENCMODE: 'disable' })
   const uploads = []
   const files = []
   try {
