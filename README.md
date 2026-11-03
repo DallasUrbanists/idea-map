@@ -13,14 +13,11 @@ below to find the code and guidance for your change.
 
 ## What you can try
 
-The local app opens an Idea Map landing page with an **Account** link. The
-checkout includes account flows, server APIs, database migrations, synthetic
-fixtures, and component previews in Storybook. A successful startup does not
-mean every product workflow is available: the complete map exploration and
-presentation experience remains planned work. Use the
-[open issues](https://github.com/DallasUrbanists/idea-map/issues) to check feature
-progress and the [product vision](https://github.com/DallasUrbanists/idea-map/wiki/Product-Vision-and-Scope)
-to understand the intended experience.
+Idea Map brings community ideas into a map and presentation experience. The
+[product vision](https://github.com/DallasUrbanists/idea-map/wiki/Product-Vision-and-Scope)
+explains the intended experience, and the
+[open issues](https://github.com/DallasUrbanists/idea-map/issues) track
+implementation status.
 
 The selected stack combines Vue and Nuxt with TypeScript on Node.js, using pnpm
 workspaces. PostgreSQL with PostGIS stores authoritative geographic and content
@@ -32,71 +29,23 @@ these boundaries and the Google Cloud hosting design.
 
 ## Run locally
 
-Use a terminal at the repository root, which contains `pnpm-workspace.yaml`.
-The package commands below work in Bash and PowerShell. You need Git,
-Node **24.22.1**, pnpm **11.25.0**, and a running Docker installation with Compose;
-the [development guide](docs/contributor-guides/development-guide.md#one-time-setup-for-each-checkout)
-provides tool installation, configuration details, and troubleshooting.
+The [development guide](docs/contributor-guides/development-guide.md) is the
+canonical quickstart for a checkout with synthetic data and no production
+credentials. Follow its [one-time setup](docs/contributor-guides/development-guide.md#one-time-setup-for-each-checkout)
+for tools, dependencies, and local settings, then its
+[session-start procedure](docs/contributor-guides/development-guide.md#start-of-each-work-session)
+for services, readiness checks, migrations, Nuxt, and optional Storybook.
 
-1. Clone the repository and enter the new checkout:
+After startup, [the local app](http://127.0.0.1:3000) displays the Idea Map heading
+and an **Account** link. The optional component preview opens at
+[local Storybook](http://localhost:6006). These are the expected quickstart
+results; feature-specific validation belongs in the
+[testing guide](docs/contributor-guides/testing-guide.md).
 
-    ```sh
-    git clone https://github.com/DallasUrbanists/idea-map.git
-    cd idea-map
-    ```
-
-2. Install the locked dependencies:
-
-    ```sh
-    pnpm install --frozen-lockfile
-    ```
-
-3. Copy [`.env.example`](.env.example) to `.env` at the repository root using
-    your editor or file manager; preserve an existing `.env` rather than
-    overwriting it. Keep the synthetic demo settings for this quickstart and
-    never add real credentials or commit `.env`.
-4. Follow the [session-start procedure](docs/contributor-guides/development-guide.md#start-of-each-work-session)
-    to start services, inspect their status, check readiness, apply migrations,
-    and start Nuxt, in this order:
-
-    ```sh
-    pnpm dev:services
-    pnpm dev:status
-    pnpm dev:check
-    pnpm dev:db:migrate
-    pnpm dev
-    ```
-
-5. Open [the local app](http://127.0.0.1:3000) after Nuxt reports it is ready;
-    expect the Idea Map heading and **Account** link. Keep the terminal running
-    while you work, and use the exact `127.0.0.1` origin from the demo settings.
-
-The first service start can take several minutes to download images and emulator
-artifacts. Readiness checks must pass before you continue; migrations prepare
-an empty database without adding demo ideas. If a command fails, use the
-[development guide](docs/contributor-guides/development-guide.md) to diagnose it
-before advancing to the next step.
-
-Optional: run `pnpm dev:storybook` in another terminal to open the component
-preview at [local Storybook](http://localhost:6006). To explore synthetic data,
-follow the [fixture instructions](docs/contributor-guides/development-guide.md#local-synthetic-fixtures),
-including their scoped cleanup; the basic quickstart does not create fixture
-records.
-
-When you finish, press Ctrl+C in each terminal running Nuxt, Storybook, or a log
-viewer. Run these commands from the same checkout to stop its background
-services and confirm no containers remain running for its Compose project:
-
-```sh
-pnpm dev:stop
-pnpm dev:status
-```
-
-Stopping services preserves the PostgreSQL volume and downloaded emulator
-artifacts. Auth accounts and Firestore emulator records are held in memory and
-are lost on shutdown. See the [shutdown guide](docs/contributor-guides/development-guide.md#end-of-each-work-session)
-for details; do not delete database volumes or other checkouts' services as
-routine cleanup.
+The guide also covers [synthetic fixtures](docs/contributor-guides/development-guide.md#local-synthetic-fixtures)
+and their scoped cleanup, [troubleshooting](docs/contributor-guides/development-guide.md#ports-and-troubleshooting),
+and [session shutdown](docs/contributor-guides/development-guide.md#end-of-each-work-session),
+including which data persists and which emulator records are lost.
 
 ## Find your way around
 
