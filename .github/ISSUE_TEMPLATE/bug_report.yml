@@ -1,0 +1,23 @@
+name: Bug report
+description: Report a reproducible problem
+title: "Bug: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the observed and expected behavior without personal data or secrets.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include a minimal example, environment, and relevant synthetic data.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and context
+      description: Add relevant logs or screenshots after removing private information and credentials.

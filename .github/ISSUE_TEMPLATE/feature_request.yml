@@ -1,0 +1,23 @@
+name: Feature request
+description: Propose a focused improvement
+title: "Feature: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and intended outcome
+      description: Who needs this and what should improve?
+    validations:
+      required: true
+  - type: textarea
+    id: criteria
+    attributes:
+      label: Acceptance criteria
+      description: Describe observable behavior and how to verify it.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Dependencies and context
+      description: Link related work and note relevant constraints.

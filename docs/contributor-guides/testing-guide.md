@@ -13,6 +13,7 @@ covers wording changes; code changes need the checks relevant to their behavior.
 The following contents links navigate within this guide:
 
 - [Everyday checks](#everyday-checks)
+- [CI and contribution gates](#ci-and-contribution-gates)
 - [Offline provider fixtures](#offline-provider-fixtures)
 - [Package tests](#package-tests)
 - [Database tests](#database-tests)
@@ -57,6 +58,42 @@ synthetic outbox, moderation, approval-history, and worker checks on pull
 requests, including forks. It uses a disposable PostGIS service and requires no
 hosted credentials. It does not test real moderation authorization or enable
 automatic publication.
+
+## CI and contribution gates
+
+Pull requests, including forks, run with a read-only repository token and no
+repository secrets in the ordinary test workflows. The moderation foundation
+workflow supplies lint, root tests, typecheck, build, web smoke and synthetic
+integration checks. The browser workflow builds `dev/Dockerfile.browser-ci` and
+runs the existing dialog SSR and Chromium tests. To reproduce it from the root:
+
+```sh
+docker build -f dev/Dockerfile.browser-ci -t idea-map-browser-ci .
+docker run --rm --init idea-map-browser-ci
+```
+
+The Node base image is pinned by digest, pnpm and the JavaScript dependencies
+are locked, but Debian's Chromium package is selected at image build time and
+can change. Record the built image and Chromium version when comparing runs;
+this is not a fully pinned browser image. Native development is unchanged. The
+browser container requires no hosted credentials or services. For a proxy with a
+custom CA, pass `--secret id=proxy_ca,src="$CODEX_PROXY_CERT"` to the build.
+
+The dependency-audit workflow checks production dependencies at high severity or
+above on pull requests, main, and weekly. Run `pnpm audit --prod --audit-level
+high` locally to reproduce it. Lower-severity and development dependency
+advisories still require periodic review; a clean audit is not proof of security.
+Dependabot configuration requests weekly npm, Actions, and Docker updates;
+maintainers must review and test each proposed update. Report sensitive findings
+privately as described in CONTRIBUTING.md.
+
+Before merging, maintainers should verify that applicable checks have completed
+and passed on the current head, review changes and unresolved feedback, and apply
+the repository's normal approval and branch rules. Workflow configuration does
+not itself prove branch protection is enabled. Fork pull requests must be tested
+from an actual fork without secrets; a same-repository pull request alone is not
+that evidence. Review the [release procedure](../policies/release-procedure.md)
+for versioning, approval, and separately authorized publication and deployment.
 
 ## Offline provider fixtures
 
