@@ -162,6 +162,27 @@
       "when": 1793660005000,
       "tag": "0022_change_request_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1793660006000,
+      "tag": "0023_escalation_hold_ownership",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793660007000,
+      "tag": "0024_moderator_escalation",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793671878721,
+      "tag": "0025_escalation_assessment_evidence",
+      "breakpoints": true
     }
   ]
 }
