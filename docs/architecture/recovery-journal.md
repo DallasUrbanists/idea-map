@@ -37,7 +37,8 @@ grants and deny policies as well as the explicitly scoped grants.
 The server package contains an encoder and decoder for version-one intent and
 commit confirmation records and version-two hold-placement confirmations. It
 also contains a create-only transport for private JSON, a reader for a
-specifically identified object generation, and an unverified recovery summary. The
+specifically identified object generation, an unwired live-reference inventory,
+and an unverified recovery summary. The
 encoder checks required fields and sizes but cannot verify authority, legal
 meaning, or whether a reason or reference is non-sensitive; its caller must
 establish those facts. The decoder rejects unknown versions, extra fields,
@@ -117,6 +118,16 @@ investigate an ambiguous create-only write, but does not authorize the decision,
 prove future availability or journal coverage, or reopen access. Its metadata
 deadline stops waiting for a response; it does not cancel the underlying storage
 client request. Review reader permissions and request limits before integration.
+
+The reference inventory lists only the journal prefix with version listing,
+rejects noncurrent objects, unexpected names, ambiguous pagination and invalid
+metadata, and returns opaque IDs with exact generations. It requires the writer
+fence before listing: new objects can otherwise be missed between pages. It does
+not read record bodies or inspect soft-deleted objects, and it always reports
+coverage as unverified. Its size, page and time limits can cause a safe failure;
+its request deadline does not cancel an in-flight storage request. Review the
+reader's bucket-wide list permission before use. Permanently deleted records,
+missing tails, older backups, and unauthorized writers need separate evidence.
 
 The checkpoint needs a coordinated boundary, not merely a timestamp. Suspend
 all covered mutations, drain in-flight transactions and journal writes, verify

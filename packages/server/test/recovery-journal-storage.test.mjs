@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { Readable, Writable } from 'node:stream'
 import { after, test } from 'node:test'
 import { CRC32C } from '@google-cloud/storage'
-import { compareCurrentRecoveryJournalRecord, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
+import { compareCurrentRecoveryJournalRecord, listUnverifiedRecoveryJournal, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
 import { encodeRecoveryConfirmation } from '../dist/recovery-journal-record.js'
 
 const target = { environment: 'dev', bucket: 'synthetic-private-backups' }
@@ -158,4 +158,40 @@ test('ambiguous write readback requires the same current generation and exact sa
     storageFor({ hang: true }),
   ]) await assert.rejects(compareCurrentRecoveryJournalRecord(storage, target, id, body, 20),
     error => error.message === 'Journal record could not be verified')
+})
+
+test('journal inventory discovers bounded exact generations without asserting coverage', async () => {
+  const secondId = '22222222-2222-4222-8222-222222222222'
+  const prefix = 'idea-map-v2/dev/recovery-journal/'
+  const metadata = recordId => ({ name: `${prefix}${recordId}.json`, bucket: target.bucket,
+    generation: '90071992547409931234', metageneration: '1', size: '123', contentType: 'application/json', crc32c: 'AAAAAA==' })
+  const queries = []
+  const storageFor = pages => ({ bucket: () => ({ async getFiles(query) {
+    queries.push(query)
+    const result = pages.shift()
+    if (result instanceof Error) throw result
+    return result
+  } }) })
+  const first = { metadata: metadata(id) }
+  const second = { metadata: metadata(secondId) }
+  const result = await listUnverifiedRecoveryJournal(storageFor([[[first], { pageToken: 'next', prefix: 'untrusted' }], [[second], null]]), target)
+  assert.deepEqual(result, { references: [{ recordId: id, generation: first.metadata.generation },
+    { recordId: secondId, generation: second.metadata.generation }], coverageVerified: false, softDeletedChecked: false })
+  assert.equal(queries.length, 2)
+  assert.ok(queries.every(query => query.prefix === prefix && query.versions === true && query.autoPaginate === false))
+  assert.equal(queries[1].pageToken, 'next')
+
+  const malformed = [
+    { ...first.metadata, name: `${prefix}../private.json` },
+    { ...first.metadata, bucket: 'wrong-bucket' },
+    { ...first.metadata, generation: 4 },
+    { ...first.metadata, timeDeleted: '2026-11-03T12:00:00.000Z' },
+    { ...first.metadata, size: '16385' },
+    { ...first.metadata, crc32c: undefined },
+  ]
+  for (const value of malformed) await assert.rejects(listUnverifiedRecoveryJournal(storageFor([[[{ metadata: value }], null]]), target), /could not be verified/)
+  await assert.rejects(listUnverifiedRecoveryJournal(storageFor([[[first, first], null]]), target), /could not be verified/)
+  await assert.rejects(listUnverifiedRecoveryJournal(storageFor([[[], { pageToken: 'repeat' }], [[], { pageToken: 'repeat' }]]), target), /could not be verified/)
+  await assert.rejects(listUnverifiedRecoveryJournal(storageFor([new Error('synthetic sensitive provider error')]), target), error =>
+    error.message === 'Journal inventory could not be verified' && !error.message.includes('sensitive'))
 })

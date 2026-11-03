@@ -6,7 +6,7 @@ import { Readable } from 'node:stream'
 import { test } from 'node:test'
 import { exportEncryptedBackup } from '../ops/export-encrypted-backup.mjs'
 import { inspectBackupRetention } from '../ops/inspect-backup-retention.mjs'
-import { compareCurrentRecoveryJournalRecord, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../../../packages/server/dist/recovery-journal-storage.js'
+import { compareCurrentRecoveryJournalRecord, listUnverifiedRecoveryJournal, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../../../packages/server/dist/recovery-journal-storage.js'
 import { encodeRecoveryConfirmation } from '../../../packages/server/dist/recovery-journal-record.js'
 
 const require = createRequire(import.meta.url)
@@ -128,6 +128,9 @@ test('storage client sends create-only archives, completion metadata, and journa
     assert.deepEqual(inventory.groupCounts, { daily: 1, weekly: 1 })
     assert.deepEqual(inventory.candidates, [])
     assert.equal(inventory.latestDailyAgeSeconds, 120)
+    assert.deepEqual(new Set(requests.filter(item => item.path.endsWith('/o') && item.method === 'GET').map(item => item.query.prefix)),
+      new Set(['daily', 'weekly', 'completion'].map(kind => `idea-map-v2/dev/${kind}/`)))
+    objects.delete('idea-map-v2/dev/recovery-journal/synthetic')
     const recordId = '11111111-1111-4111-8111-111111111111'
     const record = Buffer.from(encodeRecoveryConfirmation(recordId, 'dev', '2026-11-02T10:01:00.000Z'))
     await writeRecoveryJournalRecord(storage, target, recordId, record)
@@ -135,6 +138,8 @@ test('storage client sends create-only archives, completion metadata, and journa
     assert.deepEqual(payloads.get(recordName), record)
     assert.equal(objects.get(recordName).metadata, undefined)
     objects.get(recordName).generation = '90071992547409931234'
+    assert.deepEqual(await listUnverifiedRecoveryJournal(storage, target), { references: [{ recordId,
+      generation: '90071992547409931234' }], coverageVerified: false, softDeletedChecked: false })
     assert.deepEqual(Buffer.from(await readRecoveryJournalRecord(storage, target, recordId, objects.get(recordName).generation)), record)
     assert.deepEqual(await compareCurrentRecoveryJournalRecord(storage, target, recordId, record),
       { generation: '90071992547409931234', coverageVerified: false })
@@ -157,7 +162,7 @@ test('storage client sends create-only archives, completion metadata, and journa
     assert.equal(errors.length, 0)
     assert.equal(requests.filter(item => item.method === 'POST').length, 5)
     assert.deepEqual(new Set(requests.filter(item => item.path.endsWith('/o') && item.method === 'GET').map(item => item.query.prefix)),
-      new Set(['daily', 'weekly', 'completion'].map(kind => `idea-map-v2/dev/${kind}/`)))
+      new Set(['daily', 'weekly', 'completion', 'recovery-journal'].map(kind => `idea-map-v2/dev/${kind}/`)))
     assert.ok(requests.every(item => ['GET', 'POST'].includes(item.method)))
   } finally {
     await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
