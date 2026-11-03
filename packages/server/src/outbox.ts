@@ -208,13 +208,15 @@ export async function retryExhaustedDispatch(pool: pg.Pool, jobId: string): Prom
 
 /** Run database-only work once. The handler must lock and recheck domain eligibility before changing it. */
 export async function executeJob(pool: pg.Pool, jobId: string,
-  handler: (client: pg.PoolClient, job: DurableJob) => Promise<'completed' | 'stale'>): Promise<'completed' | 'stale' | 'duplicate' | 'not-due' | 'missing'> {
+  handler: (client: pg.PoolClient, job: DurableJob) => Promise<'completed' | 'stale'>,
+  allowedKinds?: readonly string[]): Promise<'completed' | 'stale' | 'duplicate' | 'not-due' | 'missing'> {
   return transaction(pool, async client => {
     const result = await client.query<JobRow & { state: string, due: boolean }>(`
       SELECT id, idempotency_key, kind, revision_id, assessment_id, assessment_received_at, scheduled_at, state,
         scheduled_at <= clock_timestamp() AS due FROM jobs WHERE id = $1 FOR UPDATE`, [jobId])
     const row = result.rows[0]
     if (!row || !row.scheduled_at) return 'missing'
+    if (allowedKinds && !allowedKinds.includes(row.kind)) throw new Error('Job kind changed during routing')
     if (row.state === 'completed' || row.state === 'stale') return 'duplicate'
     if (row.state !== 'pending') throw new Error('Unknown job state')
     if (!row.due) return 'not-due'

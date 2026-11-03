@@ -119,5 +119,5 @@ export async function executeModerationJob(pool: pg.Pool, jobId: string, policy:
     await enqueueJob(client, { idempotencyKey: `projection:${job.revisionId}:${job.assessmentId}`, kind: 'projection',
       revisionId: job.revisionId, scheduledAt: new Date() })
     return 'completed'
-  })
+  }, ['moderation-deadline', 'moderation-shortcut'])
 }

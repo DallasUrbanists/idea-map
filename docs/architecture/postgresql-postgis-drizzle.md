@@ -207,6 +207,16 @@ idempotent delivery; a database transaction cannot make a provider call atomic.
 The moderation implementation owns the eligibility checks and the task service
 owns authenticated invocation and execution retry limits.
 
+The worker job router recognizes moderation and projection kinds, but the
+runtime configures no execution handlers until their domain gates are accepted.
+An unsupported kind or absent handler remains unavailable; it is not marked
+complete. A selected handler must recheck the job kind under the job lock. A
+future projection handler needs reviewed revision, media, removal and privacy
+semantics and idempotent delivery; external provider effects cannot be made
+atomic by the database transaction. The injected projection callback used in
+local tests writes synthetic database records only and is not a production
+projection implementation.
+
 The moderation policy callback must return `retry` when required evidence is
 temporarily unavailable. It may return `stale` only when that job is permanently
 ineligible; a rejected shortcut leaves its separate standard deadline job intact.
