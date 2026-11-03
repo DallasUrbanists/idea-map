@@ -65,7 +65,8 @@ Pull requests, including forks, run with a read-only repository token and no
 repository secrets in the ordinary test workflows. The moderation foundation
 workflow supplies lint, root tests, typecheck, build, web smoke and synthetic
 integration checks. The browser workflow builds `dev/Dockerfile.browser-ci` and
-runs the existing dialog SSR and Chromium tests. To reproduce it from the root:
+runs the existing dialog SSR and Chromium tests. You can reproduce it from the
+repository root with these commands:
 
 ```sh
 docker build -f dev/Dockerfile.browser-ci -t idea-map-browser-ci .
@@ -76,28 +77,30 @@ The Node and Chromium headless-shell base images are pinned by digest; the
 browser image includes its operating-system libraries. The browser is the
 Chromedp project’s modified Chromium headless shell, not Playwright’s bundled
 browser; manual and other browser checks remain separate. The pinned browser
-image is for Linux amd64, matching the hosted runner. pnpm and JavaScript dependencies
-are locked. The workflow records the image ID and Chromium version; update the
-browser digest through a reviewed change and rerun the checks to receive fixes.
+image is for Linux amd64, matching the hosted runner. pnpm and JavaScript
+dependencies are locked. The workflow records the image ID and Chromium version. Contributors
+should update the browser digest through a reviewed change and rerun the checks
+to receive fixes.
 Native development is unchanged. The browser container requires no hosted
-credentials or services. For a proxy with a custom CA, pass
+credentials or services. If you use a proxy with a custom CA, you should pass
 `--secret id=proxy_ca,src="$CODEX_PROXY_CERT"` to the build.
 
 The dependency-audit workflow checks production dependencies at high severity or
-above on pull requests, main, and weekly. Run `pnpm audit --prod --audit-level
-high` locally to reproduce it. Lower-severity and development dependency
-advisories still require periodic review; a clean audit is not proof of security.
+above on pull requests, main, and weekly. You can run
+`pnpm audit --prod --audit-level high` locally to reproduce it. Lower-severity
+and development dependency advisories still require periodic review; a clean audit is not proof of security.
 Dependabot configuration requests weekly npm, Actions, and Docker updates;
-maintainers must review and test each proposed update. Report sensitive findings
-privately as described in CONTRIBUTING.md.
+maintainers must review and test each proposed update. Contributors should report
+sensitive findings privately as described in CONTRIBUTING.md.
 
 Before merging, maintainers should verify that applicable checks have completed
 and passed on the current head, review changes and unresolved feedback, and apply
 the repository's normal approval and branch rules. Workflow configuration does
 not itself prove branch protection is enabled. Fork pull requests must be tested
 from an actual fork without secrets; a same-repository pull request alone is not
-that evidence. Review the [release procedure](../policies/release-procedure.md)
-for versioning, approval, and separately authorized publication and deployment.
+that evidence. You should review the
+[release procedure](../policies/release-procedure.md) for versioning, approval,
+and separately authorized publication and deployment.
 
 ## Offline provider fixtures
 
