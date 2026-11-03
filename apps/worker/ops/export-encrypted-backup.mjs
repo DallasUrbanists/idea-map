@@ -45,13 +45,14 @@ export function backupConfiguration(env) {
 
 export const dumpArguments = Object.freeze(['--no-password', '--format=custom', '--no-owner'])
 
-function startDump(env) {
-  const child = spawn('pg_dump', dumpArguments,
+export function startDump(env, spawnProcess = spawn) {
+  const child = spawnProcess('pg_dump', dumpArguments,
     { env, windowsHide: true, signal: AbortSignal.timeout(30 * 60 * 1000), stdio: ['ignore', 'pipe', 'pipe'] })
-  child.stderr.resume()
+  let warning = false
+  child.stderr.on('data', chunk => { if (chunk.length) warning = true })
   const done = new Promise((resolveDone, reject) => {
     child.once('error', reject)
-    child.once('close', code => code === 0 ? resolveDone() : reject(new Error('Database export failed')))
+    child.once('close', code => code === 0 && !warning ? resolveDone() : reject(new Error('Database export failed or reported a warning')))
   })
   return { child, done }
 }

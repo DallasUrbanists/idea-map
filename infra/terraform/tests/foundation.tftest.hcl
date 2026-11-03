@@ -496,6 +496,27 @@ run "backup_job_rejects_unmanaged_buckets" {
   expect_failures = [google_cloud_run_v2_job.backup]
 }
 
+run "backup_job_can_use_backup_only_foundation" {
+  command = plan
+  variables {
+    manage_media_buckets            = false
+    manage_backup_bucket_separately = true
+    enable_backup_job               = true
+    backup_job_image                = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/backup@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    backup_project_number           = "123456789"
+    backup_database_secret_id       = "backup-only"
+    backup_database_secret_version  = "7"
+    backup_schedule                 = "0 */12 * * *"
+  }
+  assert {
+    condition = toset(keys(google_storage_bucket.media)) == toset(["backups"]) && (
+      google_storage_bucket_iam_member.backup_writer[0].bucket == var.bucket_names.backups &&
+      google_cloud_scheduler_job.backup[0].paused
+    )
+    error_message = "A backup-only foundation must use its own backup bucket and start the scheduler paused."
+  }
+}
+
 run "backup_job_requires_explicit_inputs" {
   command = plan
   variables {

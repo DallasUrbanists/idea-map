@@ -22,6 +22,51 @@ run "development_rehearsal_omits_media" {
   }
 }
 
+run "development_can_manage_only_the_foundation_backup_bucket" {
+  command = plan
+  variables {
+    manage_media_buckets            = false
+    manage_backup_bucket_separately = true
+    bucket_names                    = { uploads = "", public = "", backups = "synthetic-idea-map-dev-backups" }
+  }
+  assert {
+    condition = toset(keys(google_storage_bucket.media)) == toset(["backups"]) && (
+      google_storage_bucket.media["backups"].name == "synthetic-idea-map-dev-backups" &&
+      length(google_service_account.upload_signer) == 0 && length(google_storage_bucket_iam_member.preview_reader) == 0
+    )
+    error_message = "The dev backup-only option must not create or grant access to media buckets."
+  }
+}
+
+run "backup_only_rejects_production" {
+  command = plan
+  variables {
+    environment                     = "prod"
+    manage_media_buckets            = false
+    manage_backup_bucket_separately = true
+    bucket_names                    = { uploads = "", public = "", backups = "synthetic-backups" }
+  }
+  expect_failures = [var.manage_backup_bucket_separately, google_cloud_run_v2_service.runtime["web"], google_cloud_run_v2_service.runtime["worker"]]
+}
+
+run "backup_only_rejects_invalid_name" {
+  command = plan
+  variables {
+    manage_media_buckets            = false
+    manage_backup_bucket_separately = true
+  }
+  expect_failures = [var.manage_backup_bucket_separately]
+}
+
+run "backup_only_rejects_duplicate_management_mode" {
+  command = plan
+  variables {
+    manage_backup_bucket_separately = true
+    bucket_names                    = { uploads = "synthetic-uploads", public = "synthetic-previews", backups = "synthetic-backups" }
+  }
+  expect_failures = [var.manage_backup_bucket_separately]
+}
+
 run "reject_media_access_without_managed_buckets" {
   command = plan
   variables {

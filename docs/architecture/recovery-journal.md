@@ -1,8 +1,9 @@
 # Recovery decision journal
 
 Recovery operators need an independent record of removals and legal-hold
-decisions made after a database backup. This design uses the existing private
-backup bucket and keeps PostgreSQL as the application's authority. The journal
+decisions made after a database backup. This design uses the foundation's private
+backup bucket when it is provisioned and keeps PostgreSQL as the application's
+authority. The journal
 is not implemented; a restored service must remain isolated until its decisions
 can be reconciled and the [recovery procedure](../contributor-guides/backup-recovery.md)
 is satisfied.
@@ -19,7 +20,9 @@ The following contents links navigate within this guide:
 
 An older database archive can contain content that was later withdrawn, or lack
 a later legal hold. The journal preserves evidence of those decisions outside
-PostgreSQL so recovery can fail closed. It does not replace database backups,
+PostgreSQL so recovery can fail closed. A foundation definition is not proof
+that a backup bucket exists in a particular environment. The journal does not
+replace database backups,
 authorize a removal or hold, invalidate public caches, or by itself preserve
 all held material. Sharing the existing bucket also means it is not independent
 of a loss or compromise of that bucket.

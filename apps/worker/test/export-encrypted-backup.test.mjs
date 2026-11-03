@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { Readable, Writable } from 'node:stream'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { backupConfiguration, exportEncryptedBackup, verifyBackupBucket } from '../ops/export-encrypted-backup.mjs'
+import { backupConfiguration, exportEncryptedBackup, startDump, verifyBackupBucket } from '../ops/export-encrypted-backup.mjs'
 
 const env = { BACKUP_ENVIRONMENT: 'dev', BACKUP_BUCKET: 'synthetic-private-backups', BACKUP_PROJECT_NUMBER: '123456789',
   BACKUP_DATABASE_URL: 'postgres://test:secret@example.invalid/db?sslmode=verify-full&sslrootcert=system' }
@@ -33,6 +33,12 @@ test('backup configuration failure emits a sanitized alert event', () => {
   assert.deepEqual(JSON.parse(result.stderr), { severity: 'ERROR', event: 'backup_export_failed' })
   assert.doesNotMatch(result.stderr, /synthetic-secret/)
   assert.equal(result.stdout, '')
+})
+
+test('a dump warning fails the export without exposing diagnostic contents', async () => {
+  const result = startDump({}, () => spawn(process.execPath, ['-e', "process.stderr.write('synthetic sensitive warning')"], { stdio: ['ignore', 'pipe', 'pipe'] }))
+  result.child.stdout.resume()
+  await assert.rejects(result.done, error => error.message === 'Database export failed or reported a warning' && !error.message.includes('synthetic'))
 })
 
 function provider(bucketMetadata = metadata, failWeekly = false, failCompletion = false, mismatchedWeekly = false) {

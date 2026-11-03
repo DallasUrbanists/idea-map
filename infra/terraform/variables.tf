@@ -37,6 +37,19 @@ variable "manage_media_buckets" {
   type        = bool
   default     = true
 }
+variable "manage_backup_bucket_separately" {
+  description = "In dev only, manage the foundation backup bucket without creating media buckets."
+  type        = bool
+  default     = false
+  validation {
+    condition = !var.manage_backup_bucket_separately || (
+      var.environment == "dev" && !var.manage_media_buckets &&
+      can(regex("^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$", var.bucket_names.backups)) &&
+      var.bucket_names.backups != var.bucket_names.uploads && var.bucket_names.backups != var.bucket_names.public
+    )
+    error_message = "A separate backup bucket requires dev, omitted media buckets, and a distinct valid backup name."
+  }
+}
 variable "web_image" {
   description = "Reviewed immutable web container image digest."
   type        = string

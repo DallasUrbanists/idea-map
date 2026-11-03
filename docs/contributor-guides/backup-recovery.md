@@ -79,8 +79,9 @@ ownership, revocations, grants, and default privileges have been applied and
 tested. Do not use `--no-acl`: it omits revocations and can give `PUBLIC`
 execute access to restored functions. Account for the export's
 direct database connection in the existing connection limits before scheduling it.
-Use the existing environment's backup bucket and Terraform state ownership;
-do not create a second bucket or database for this exporter. Daily
+Use the environment's foundation-owned backup bucket and Terraform state;
+do not create a second backup bucket or database for this exporter. A bucket
+definition does not establish that it has been provisioned. Daily
 scheduling alone does not prove the 24-hour data-loss target when a run is
 delayed or fails.
 
@@ -129,7 +130,10 @@ production export runs only in an authorized hosted job. The command checks
 for Cloud Run job environment variables, but those values are not proof of
 the runtime or identity; verify both separately. The command emits a
 start timestamp and object names on success. The timestamp precedes the dump and
-is a conservative freshness reference. If either Monday upload fails, the run
+is a conservative freshness reference. A nonzero dump exit or any dump warning
+fails the export; the command does not log diagnostic text because it can
+contain sensitive information. Investigate warnings through an authorized
+private procedure. If either Monday upload fails, the run
 fails; a completed copy may remain and must be investigated rather than assumed
 to make the other copy complete. Treat an ambiguous upload as unverified.
 After all required objects pass their upload checks, the exporter creates one
@@ -147,15 +151,20 @@ not reconstruct an earlier point in time.
 
 The existing foundation can optionally define a Cloud Run job and a Cloud
 Scheduler trigger for exports. The option starts disabled, and the scheduler
-starts paused. The configuration uses the existing backup bucket and state; it
-does not create a second bucket, database, or secret. Review existing resources
+starts paused. The job uses the foundation-owned backup bucket and state; it
+does not create a second backup bucket, database, or secret. Confirm whether the
+foundation bucket already exists and review the complete plan for duplicate
+media buckets before any apply. Review existing resources
 and complete the release and infrastructure prerequisites before a separately
 authorized plan or apply.
 
-The job requires `manage_media_buckets = true` in the owning foundation. A
-development release rehearsal that omits its foundation buckets cannot enable
-this job or grant access to a bucket owned by another Terraform state. Coordinate
-backup ownership separately before preparing such an environment.
+The job requires the backup bucket to be managed by the owning foundation. A
+development release rehearsal that omits media buckets can separately opt in
+to `manage_backup_bucket_separately` with a distinct reviewed backup bucket
+name. This uses the same foundation resource address as the full configuration;
+it does not manage the staging media buckets or grant access to a bucket owned
+by another state. Check existing resources and state ownership before any plan
+or apply. Creating a missing bucket requires separate authorization.
 
 Prepare an immutable backup image and a dedicated direct database URL secret.
 The image's `pg_dump` major version must support the actual source server;
