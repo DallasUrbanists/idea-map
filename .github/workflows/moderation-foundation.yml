@@ -58,6 +58,7 @@ jobs:
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderator_decisions
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderator_manual_approval
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderator_review
+          docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderator_queue
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderator_changes
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderator_escalations
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderation_integrated
@@ -117,6 +118,10 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_moderator_review
         run: pnpm --filter @idea-map/server test:moderator-review
+      - name: Private moderator queue
+        env:
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_moderator_queue
+        run: pnpm --filter @idea-map/server test:moderator-queue
       - name: Request-changes races
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_moderator_changes
