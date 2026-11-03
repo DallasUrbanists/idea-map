@@ -28,7 +28,7 @@ The isolated [SSR staging service](../contributor-guides/ssr-staging.md) uses
 synthetic data, a separate Cloud SQL database, and staging-only shared caching.
 The [Hosting cache guide](hosting-cache.md) describes its cache restrictions.
 
-Cloud Run uses immutable image digests and zero minimum instances. The
+Cloud Run uses immutable image digests, request-based CPU, and zero minimum instances. The
 configured starting bounds are two web instances with concurrency 20 and one
 worker instance with concurrency 1 per environment. Before changing those
 limits, you should load-test them along with the database pool sizes.
@@ -37,6 +37,10 @@ Infrastructure definitions use internal ingress until an explicit ingress and
 invoker configuration authorizes the required traffic. The deployment must
 provide reviewed public web routing without exposing worker endpoints or private
 media.
+
+The [Cloud Run release guide](../contributor-guides/cloud-run-release.md)
+describes the split between Terraform configuration and the workflow's image
+and traffic ownership, along with promotion and recovery.
 
 ## Tasks and reconciliation
 

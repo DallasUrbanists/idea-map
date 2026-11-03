@@ -32,6 +32,9 @@ resource "google_cloud_run_v2_service" "runtime" {
     }
     containers {
       image = each.value.image
+      resources {
+        cpu_idle = true
+      }
       dynamic "env" {
         for_each = each.key == "web" && var.enable_resend_secrets && var.resend_webhook_secret_version != "" ? [1] : []
         content {
@@ -72,6 +75,9 @@ resource "google_cloud_run_v2_service" "runtime" {
     }
   }
   lifecycle {
+    # Release automation owns image and traffic after the initial bootstrap.
+    # Keep all other revision configuration under Terraform management.
+    ignore_changes = [template[0].containers[0].image, traffic]
     precondition {
       condition     = var.resend_webhook_secret_version == "" || var.enable_resend_secrets
       error_message = "Enable the Resend secrets before selecting a webhook secret version."

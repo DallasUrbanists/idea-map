@@ -98,6 +98,8 @@ overwritten or silently rewrite release history.
 
 Operators should follow the authorized deployment procedure for application
 rollback and verify schema and data compatibility before restoring anything.
+The [Cloud Run release guide](../contributor-guides/cloud-run-release.md)
+describes image evidence, promotion, and revision rollback.
 
 ## Validate release tooling without publication
 

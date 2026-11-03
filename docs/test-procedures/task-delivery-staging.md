@@ -131,6 +131,13 @@ Operators should run the existing local synthetic tests in the
 [testing guide](../contributor-guides/testing-guide.md#package-tests) and mark
 any hosted publication scenarios that were not executed as unrun. Their injected
 policy callback is not evidence of accepted scoring or real moderator authorization.
+The controlled-time worker delivery check combines the adopted deadline
+calculation with a fake task transport, fake token verification, and synthetic
+approval. It checks lost responses, delayed repair, duplicate delivery, and
+superseded jobs; it does not validate Google services or enable production
+execution. Reviewers should use a separate empty, migrated local `idea_map_test_*`
+database, set `TEST_DATABASE_URL`, and run
+`pnpm --filter @idea-map/worker test:delivery` from the repository root.
 
 ## Finish the test
 
