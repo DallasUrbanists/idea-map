@@ -1,4 +1,4 @@
-FROM node:24.22.1-trixie-slim AS build
+FROM node:24.22.1-trixie-slim@sha256:89c5244bc22a9bc3287d89ebc7e49b9cb5bb84cd40e6175ac3421d5a9f68b95a AS build
 WORKDIR /app
 RUN --mount=type=secret,id=proxy_ca \
     export NODE_USE_ENV_PROXY=1 \
@@ -14,7 +14,7 @@ RUN --mount=type=secret,id=proxy_ca \
     && test -f /worker/dist/index.js \
     && test -f /worker/node_modules/@idea-map/server/dist/index.js
 
-FROM node:24.22.1-trixie-slim AS runtime
+FROM node:24.22.1-trixie-slim@sha256:89c5244bc22a9bc3287d89ebc7e49b9cb5bb84cd40e6175ac3421d5a9f68b95a AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build --chown=node:node /worker ./

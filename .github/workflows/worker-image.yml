@@ -1,0 +1,42 @@
+name: Worker image
+
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile.worker'
+      - '.dockerignore'
+      - 'apps/worker/**'
+      - 'packages/**'
+      - 'scripts/test-worker-image.sh'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'tsconfig*.json'
+      - '.github/workflows/worker-image.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile.worker'
+      - '.dockerignore'
+      - 'apps/worker/**'
+      - 'packages/**'
+      - 'scripts/test-worker-image.sh'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'tsconfig*.json'
+      - '.github/workflows/worker-image.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  local-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build worker image
+        run: docker build -f Dockerfile.worker -t idea-map-worker:smoke .
+      - name: Run isolated smoke checks
+        run: scripts/test-worker-image.sh idea-map-worker:smoke
