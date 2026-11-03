@@ -26,6 +26,16 @@ interface TaskShape {
   httpRequest?: { httpMethod?: string, url?: string, body?: string, oidcToken?: { serviceAccountEmail?: string, audience?: string } }
 }
 
+// PostgreSQL stores these schedules at millisecond precision. Do not discard a
+// provider's extra fractional precision when comparing the returned timestamp.
+function matchesSchedule(value: unknown, scheduledAt: Date): boolean {
+  if (typeof value !== 'string') return false
+  const match = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.(\d{1,9}))?Z$/.exec(value)
+  if (!match || /[1-9]/.test((match[1] ?? '').slice(3))) return false
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) && parsed === scheduledAt.getTime() && new Date(parsed).toISOString().slice(0, 19) === value.slice(0, 19)
+}
+
 function taskName(queue: string, jobId: string, generation: number): string {
   if (!/^projects\/[a-z0-9-]+\/locations\/[a-z0-9-]+\/queues\/[a-zA-Z0-9_-]+$/.test(queue) ||
     !/^[0-9a-f-]{36}$/.test(jobId) || !Number.isSafeInteger(generation) || generation < 0) throw new Error('Invalid task identity')
@@ -57,10 +67,9 @@ export function createCloudTasksDispatcher(options: { queue: string, workerOrigi
     const found = await options.transport.request('GET', `${name}?responseView=FULL`, null, signal)
     const task = found.data as TaskShape | null
     const http = task?.httpRequest
-    const schedule = task?.scheduleTime ? Date.parse(task.scheduleTime) : NaN
     if (found.status !== 200 || task?.name !== name || http?.httpMethod !== request.httpMethod || http.url !== request.url ||
       http.body !== request.body || http.oidcToken?.serviceAccountEmail !== options.invokerEmail ||
-      http.oidcToken?.audience !== options.workerOrigin || !Number.isFinite(schedule) || schedule < job.scheduledAt.getTime()) {
+      http.oidcToken?.audience !== options.workerOrigin || !matchesSchedule(task.scheduleTime, job.scheduledAt)) {
       throw new Error('Cloud Tasks duplicate could not be verified')
     }
   } }
