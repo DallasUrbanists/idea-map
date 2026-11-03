@@ -10,5 +10,6 @@ export * from './moderation-jobs.js'
 export * from './cloud-tasks.js'
 export * from './approval-history.js'
 export * from './moderation-schedule.js'
-
 export * from './provider-mode.js'
+export * from './moderator-authorization.js'
+export * from './verified-ownership.js'

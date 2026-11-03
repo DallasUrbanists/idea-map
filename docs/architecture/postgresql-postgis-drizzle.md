@@ -64,6 +64,27 @@ event; callers must not treat an email string or an anonymous identity as proof
 of ownership. The server must normalize email consistently without
 provider-specific alias assumptions.
 
+A verified ownership claim records the matched contact, internal user,
+project-specific Firebase identity, and server-recorded verification time in
+one transaction with the ownership update and an audit event. The server checks
+the current verified account before and immediately before committing the
+claim; the external identity provider and database do not share a transaction,
+so later trust decisions must verify the account again. Existing claims without
+identity evidence remain unverified.
+
+The claim path preserves the email local part, normalizes only the ASCII domain,
+and does not collapse provider-specific aliases. It rejects unsupported or
+ambiguous input rather than guessing. The database function has a fixed search
+path and no `PUBLIC` execute grant; an authorized operator must separately scope
+runtime access. Claiming does not alter contact verification, consent, or
+publication state.
+
+The ownership-evidence migration leaves existing claims unverified and adds a
+unique identity index for its composite foreign key. The index build is not
+concurrent, so operators must review write-locking, backups, and rollback before
+applying it. Earlier application versions can ignore the additive columns;
+operators should preserve newly recorded evidence during rollback.
+
 A composite foreign key prevents an approved-revision pointer from referencing a
 revision belonging to another idea. A server transaction must still verify the
 revision is approved before setting the pointer and must retain the prior
@@ -91,6 +112,12 @@ Before changing an idea's ownership or approval history, lock the affected idea
 rows and then the affected user rows in sorted order. A trust decision holds the
 same locks through publication. An identity supplied to that decision must come
 from verified server-side ownership evidence; an email string alone is not enough.
+The current submission and each counted prior approval require a claim tied to
+the same internal user's verified identity. The current claim must match the
+exact identity and email that the caller has reverified with the provider; the
+caller must resolve both the identity and user IDs from that provider result.
+Missing or mismatched ownership evidence makes
+the trusted shortcut unavailable rather than inventing a history count.
 Unverified ownership or unknown history must retain the original standard
 deadline. The migration marks backfilled approved pointers as unverified because
 it cannot reconstruct prior reversals; an authorized correction can resolve each
@@ -101,6 +128,33 @@ These primitives are not a complete moderator workflow. Before enabling them in
 production, implement verified ownership and authorized moderator controls,
 privacy-safe deletion and the policy's correction-audit retention and legal-hold
 rules. All ownership and approval writers must follow the locking protocol.
+
+Moderator authority is stored in `moderator_assignments` for an internal user.
+Each assignment records the grant actor and reason and, on revocation, the
+revoking actor, time, and reason. A partial unique index permits one active
+assignment per user; a database trigger prevents deletion, reinstatement, and
+changes other than revocation. These records have user foreign keys, so their
+privacy-safe deletion and legal-hold lifecycle must be resolved before live
+assignments are enabled.
+
+The server resolves a verified Firebase subject through the project-specific
+`firebase:PROJECT_ID` identity namespace. The restricted
+`lock_active_moderator(text, text)` function locks the identity and active
+assignment until the authorized transaction ends, so a concurrent revocation
+cannot commit halfway through an action. The function uses a fixed search path
+and has no `PUBLIC` execute grant. After separate authorization, an operator must
+grant execute only to the intended runtime role; that role must not be able to
+write assignments, modify the function, or create objects in the trusted schema.
+
+Role provisioning, verified identity creation, legal-hold handling, and
+privacy-safe removal are not provided by this boundary. Do not grant live roles
+or enable automatic publication until those processes and their permissions have
+been reviewed and separately authorized.
+
+The role migration adds tables and functions without changing existing identity
+or approval records and does not grant runtime access. Older application versions
+can ignore the new objects during rollback; operators must preserve assignment
+records and review deletion and recovery before removing database objects.
 
 ## Outbox recovery
 

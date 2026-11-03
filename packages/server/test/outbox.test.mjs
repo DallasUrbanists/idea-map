@@ -3,7 +3,8 @@ import { test } from 'node:test'
 import pg from 'pg'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
-import { createJobIntent, dispatchJob, enqueueJob, executeJob, reconcileOutbox, retryExhaustedDispatch } from '../dist/outbox.js'
+import { createJobIntent, dispatchJob, enqueueJob, executeJob, reconcileOutbox, rearmMissingDelivery, retryExhaustedDispatch } from '../dist/outbox.js'
+import { createCloudTasksDispatcher, inspectCloudTask } from '../dist/cloud-tasks.js'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !new URL(url).pathname.startsWith('/idea_map_test_')) {
@@ -149,6 +150,22 @@ test('durable dispatch, recovery and transactional execution', async () => {
     assert.equal((await pool.query("SELECT published FROM outbox_test_domain WHERE id = 'idea'")).rows[0].published, 1)
     assert.equal((await pool.query("SELECT count(*)::int AS n FROM jobs WHERE idempotency_key = 'rolled-back-projection'")).rows[0].n, 0)
     assert.equal((await pool.query('SELECT state FROM jobs WHERE id = $1', [rollbackJob.id])).rows[0].state, 'pending')
+
+    const uncertain = (await createJobIntent(pool, { idempotencyKey: 'different-provider-schedule', kind: 'test', scheduledAt: deadline }, async () => {})).job
+    const queue = 'projects/synthetic-project/locations/us-central1/queues/jobs'
+    let task
+    const transport = { async request(method, path, body) {
+      if (method === 'POST') { task = body.task; return { status: 409 } }
+      return { status: 200, data: { ...task, scheduleTime: new Date(deadline.getTime() + 86_400_000).toISOString() } }
+    } }
+    const dispatcher = createCloudTasksDispatcher({ queue, workerOrigin: 'https://worker.example.invalid', invokerEmail: 'tasks@synthetic-project.iam.gserviceaccount.com', transport })
+    for (let attempt = 0; attempt < 5; attempt++) await assert.rejects(dispatchJob(pool, dispatcher, uncertain.id), /could not be verified/)
+    const pending = (await pool.query('SELECT j.scheduled_at, o.published_at, o.dispatch_attempts, o.delivery_generation FROM jobs j JOIN outbox o ON o.job_id=j.id WHERE j.id=$1', [uncertain.id])).rows[0]
+    assert.equal(pending.scheduled_at.getTime(), deadline.getTime())
+    assert.equal(pending.published_at, null)
+    assert.equal(pending.dispatch_attempts, 5)
+    assert.equal(pending.delivery_generation, 0)
+    assert.equal(await rearmMissingDelivery(pool, uncertain.id, 0, (id, generation) => inspectCloudTask(transport, queue, id, generation, new AbortController().signal)), false)
   } finally {
     await pool.end()
   }

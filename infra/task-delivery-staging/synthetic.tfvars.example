@@ -1,0 +1,10 @@
+# Deliberately non-live example. Replace only in a separately authorized,
+# isolated staging plan after the worker and state ownership are reviewed.
+enable_isolated_staging = false
+project_id               = "synthetic-idea-map"
+region                   = "us-central1"
+name_prefix              = "ideamap-synthetic"
+worker_service_name      = "synthetic-worker"
+worker_origin            = "https://worker.synthetic.invalid"
+worker_runtime_email     = "worker@synthetic-idea-map.iam.gserviceaccount.com"
+worker_image             = "example.invalid/worker@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"

@@ -138,6 +138,34 @@ pnpm --filter @idea-map/server test:moderation-schedule
 To check the assessment and publication
 transactions, use a separate empty disposable PostGIS database with the
 `idea_map_test_` prefix and run `pnpm --filter @idea-map/server test:moderation-jobs`.
+
+For a deterministic local job record and its fixture-specific cleanup, start the
+local Compose database, apply the migrations, and set
+`IDEA_MAP_FIXTURE_DATABASE_URL` to the local demo database URL. For example, in
+Bash use `export IDEA_MAP_FIXTURE_DATABASE_URL=postgres://idea_map:local-only@127.0.0.1:54329/idea_map_dev`;
+in PowerShell use `$env:IDEA_MAP_FIXTURE_DATABASE_URL = 'postgres://idea_map:local-only@127.0.0.1:54329/idea_map_dev'`.
+The address must point directly to this checkout's local Compose database, not a
+tunnel or hosted database. From the repository root run:
+
+```sh
+pnpm fixture:jobs seed
+pnpm fixture:jobs seed
+pnpm fixture:jobs clean
+```
+
+The second seed reports `already-seeded`; cleanup removes only the marked
+fixture and reports `cleaned` or `absent`. A collision, changed identifying
+fields, or an outside reference aborts the transaction and preserves the data;
+investigate rather than deleting unrelated records. `absent` means the fixture
+marker is absent; it does not prove that every reserved identifier is unused.
+The fixture's job starts
+terminal and its outbox entry acknowledged, so repair cannot dispatch it. It
+contains an invented assessment and does not validate scoring or publication.
+For execution, race, and recovery checks, use the separate disposable
+databases below. To test fixture cleanup itself, migrate a fresh local
+`idea_map_test_` database on port 54329 and run `pnpm test:job-fixture` with
+`TEST_DATABASE_URL` set to that database.
+
 For controlled receipt and deadline checks, set `TEST_DATABASE_URL` to another
 empty local disposable database with the same prefix and run:
 
@@ -159,6 +187,39 @@ database with the `idea_map_test_` prefix, set `TEST_DATABASE_URL`, and run
 `pnpm --filter @idea-map/server test:approval-history`. The test uses synthetic
 identities and injected moderator authorization; it does not verify the real
 identity provider or moderator permissions.
+
+For database-backed moderator authorization, set `TEST_DATABASE_URL` to a fresh
+disposable PostGIS database and run:
+
+```sh
+pnpm --filter @idea-map/server test:moderator-authorization
+```
+
+The test verifies revocation locking, assignment history restrictions, and a
+synthetic least-privilege database role. To exercise the built status endpoint
+with Firebase, start the local emulators, migrate a separate local disposable
+database, build the app, and run `pnpm test:moderator-auth` with that database in
+`TEST_DATABASE_URL`. These checks do not grant live roles or validate hosted
+permissions.
+
+For verified ownership, use a fresh disposable PostGIS database and run the
+following command with `TEST_DATABASE_URL` set to that database:
+
+```sh
+pnpm --filter @idea-map/server test:verified-ownership
+```
+
+To test the protected claim endpoint, start the local emulators, migrate a
+separate local disposable database, build the app, and set `TEST_DATABASE_URL`
+to that database. Then run:
+
+```sh
+pnpm test:ownership-claim
+```
+
+The test enables the endpoint only for its synthetic server and uses a restricted
+test database role. It does not authorize live claims or validate hosted
+permissions.
 
 To exercise the built webhook endpoint against a disposable local database, set
 `TEST_DATABASE_URL` to a migrated `idea_map_test_` database on `127.0.0.1`, run

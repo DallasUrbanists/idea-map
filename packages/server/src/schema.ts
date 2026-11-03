@@ -16,7 +16,22 @@ export const identities = pgTable('identities', {
   userId: uuid('user_id').notNull().references(() => users.id),
   provider: text('provider').notNull(),
   subject: text('subject').notNull(),
-}, table => [uniqueIndex('identities_provider_subject_key').on(table.provider, table.subject), index('identities_user_idx').on(table.userId)])
+}, table => [uniqueIndex('identities_provider_subject_key').on(table.provider, table.subject), uniqueIndex('identities_id_user_key').on(table.id, table.userId), index('identities_user_idx').on(table.userId)])
+// Role assignment and revocation are restricted operator actions, not user input.
+export const moderatorAssignments = pgTable('moderator_assignments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  grantedBy: uuid('granted_by').notNull().references(() => users.id),
+  grantedAt: createdAt(),
+  grantReason: text('grant_reason').notNull(),
+  revokedBy: uuid('revoked_by').references(() => users.id),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  revokeReason: text('revoke_reason'),
+}, table => [
+  uniqueIndex('moderator_assignments_active_user_key').on(table.userId).where(sql`${table.revokedAt} IS NULL`),
+  check('moderator_assignments_grant_reason', sql`length(trim(${table.grantReason})) > 0 AND octet_length(${table.grantReason}) <= 1000`),
+  check('moderator_assignments_revoke_fields', sql`(${table.revokedAt} IS NULL AND ${table.revokedBy} IS NULL AND ${table.revokeReason} IS NULL) OR (${table.revokedAt} IS NOT NULL AND ${table.revokedBy} IS NOT NULL AND ${table.revokeReason} IS NOT NULL AND length(trim(${table.revokeReason})) > 0 AND octet_length(${table.revokeReason}) <= 1000)`),
+])
 export const contacts = pgTable('contacts', {
   id: uuid('id').primaryKey().defaultRandom(),
   normalizedEmail: text('normalized_email').notNull(),
@@ -38,8 +53,16 @@ export const ownershipClaims = pgTable('ownership_claims', {
   ideaId: uuid('idea_id').notNull().references(() => ideas.id),
   userId: uuid('user_id').notNull().references(() => users.id),
   contactId: uuid('contact_id').notNull().references(() => contacts.id),
+  verifiedIdentityId: uuid('verified_identity_id'),
+  verifiedAt: timestamp('verified_at', { withTimezone: true }),
   createdAt: createdAt(),
-}, table => [uniqueIndex('ownership_claims_idea_key').on(table.ideaId), index('ownership_claims_user_idx').on(table.userId), foreignKey({ columns: [table.ideaId, table.contactId], foreignColumns: [ideas.id, ideas.authorContactId] })])
+}, table => [
+  uniqueIndex('ownership_claims_idea_key').on(table.ideaId),
+  index('ownership_claims_user_idx').on(table.userId),
+  foreignKey({ columns: [table.ideaId, table.contactId], foreignColumns: [ideas.id, ideas.authorContactId] }),
+  foreignKey({ columns: [table.verifiedIdentityId, table.userId], foreignColumns: [identities.id, identities.userId] }),
+  check('ownership_claims_verified_pair', sql`(${table.verifiedIdentityId} IS NULL) = (${table.verifiedAt} IS NULL)`),
+])
 export const ideaRevisions = pgTable('idea_revisions', {
   id: uuid('id').primaryKey().defaultRandom(),
   ideaId: uuid('idea_id').notNull().references(() => ideas.id),

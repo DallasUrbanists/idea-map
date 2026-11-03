@@ -11,6 +11,7 @@ for starting and ending a session.
 The following contents links navigate within this guide:
 
 - [Services and isolation](#services-and-isolation)
+- [Web image](#web-image)
 - [Worker image](#worker-image)
 - [Networking and configuration](#networking-and-configuration)
 - [Storage and lifecycle](#storage-and-lifecycle)
@@ -28,15 +29,36 @@ path. Each checkout has separate containers and volumes. The published ports are
 fixed, so two checkouts cannot run these services at the same time. Published
 ports bind loopback only.
 
+## Web image
+
+Build the web image and run its local-only smoke checks from the repository root:
+
+```sh
+docker build -f Dockerfile -t idea-map-web:local .
+scripts/test-web-image.sh idea-map-web:local
+```
+
+The smoke script removes its own local container after checking a non-root
+runtime, health, private configuration, no-store caching, and disabled
+moderation. For a build behind a proxy with a custom CA, pass the CA with
+`--secret id=proxy_ca,src="$CODEX_PROXY_CERT"` as in the worker example below.
+The Node base image is pinned by digest; update it through a reviewed change
+and rebuild to receive base-image fixes.
+The CI workflow builds and tests an image locally without pushing or deploying
+it; it does not establish hosted authentication, privacy, or rollout readiness.
+
 ## Worker image
 
 The worker image is built from `Dockerfile.worker`. Its build compiles the
 worker and server packages and prepares a production dependency bundle. The
 runtime runs as a non-root user and starts the authenticated worker process.
+Its Node base image is pinned by digest; update it through a reviewed change
+and rebuild to receive base-image fixes.
 Build it from the repository root with:
 
 ```sh
 docker build -f Dockerfile.worker -t idea-map-worker:local .
+scripts/test-worker-image.sh idea-map-worker:local
 ```
 
 For a build behind an HTTPS proxy with a custom CA, pass the CA as a BuildKit
@@ -50,7 +72,12 @@ Use your environment’s CA file in place of `CODEX_PROXY_CERT` when applicable.
 The image does not configure identities, secrets, queues, or a scheduler. The
 [Google Cloud guide](google-cloud.md#tasks-and-reconciliation) describes the
 required environment and the gates on using the worker. A local image build is
-not deployment or evidence of hosted authentication and task delivery.
+not deployment or evidence of hosted authentication and task delivery. The
+smoke script starts and removes its own local container using synthetic settings;
+it checks a non-root runtime, package loading, health, and rejection of
+unauthenticated task requests. The worker-image CI workflow builds and runs the
+same checks without pushing an image. Authenticated provider behavior and
+isolated staging validation remain separate work.
 
 ## Networking and configuration
 
