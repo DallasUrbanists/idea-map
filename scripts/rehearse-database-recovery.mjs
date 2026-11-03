@@ -116,6 +116,7 @@ try {
   const journalTarget = { environment: 'dev', bucket: 'synthetic-private-backups' }
   const removalOperation = randomUUID()
   const holdOperation = randomUUID()
+  let committedHoldId
   const authorizedAt = new Date().toISOString()
   const base = { environment: 'dev', ideaId, actorId: director, authorizedAt }
   const previousEmulator = process.env.STORAGE_EMULATOR_HOST
@@ -130,11 +131,11 @@ try {
     if (removed !== 'removed') throw new Error('Synthetic removal failed')
     const holdOutcome = await sql(source, `SELECT public.place_legal_hold_outcome('firebase:demo-idea-map','${marker}','${ideaId}','synthetic case','synthetic preservation')`)
     if (holdOutcome !== 'processed') throw new Error('Synthetic legal hold failed')
-    const heldId = await sql(source, `SELECT id FROM legal_holds WHERE idea_id='${ideaId}' AND case_reference='synthetic case' AND released_at IS NULL`)
-    if (!/^[0-9a-f-]{36}$/.test(heldId)) throw new Error('Synthetic hold identity is ambiguous')
+    committedHoldId = await sql(source, `SELECT id FROM legal_holds WHERE idea_id='${ideaId}' AND case_reference='synthetic case' AND released_at IS NULL`)
+    if (!/^[0-9a-f-]{36}$/.test(committedHoldId)) throw new Error('Synthetic hold identity is ambiguous')
     const confirmedAt = new Date().toISOString()
     await writeRecoveryJournalRecord(journal, journalTarget, randomUUID(), encodeRecoveryConfirmation(removalOperation, 'dev', confirmedAt))
-    await writeRecoveryJournalRecord(journal, journalTarget, randomUUID(), encodeRecoveryHoldConfirmation(holdOperation, 'dev', confirmedAt, heldId))
+    await writeRecoveryJournalRecord(journal, journalTarget, randomUUID(), encodeRecoveryHoldConfirmation(holdOperation, 'dev', confirmedAt, committedHoldId))
   } finally {
     if (previousEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
     else process.env.STORAGE_EMULATOR_HOST = previousEmulator
@@ -169,12 +170,20 @@ try {
   const holdQuery = `SELECT count(*) FROM legal_holds h JOIN ideas i ON i.id=h.idea_id JOIN contacts c ON c.id=i.author_contact_id WHERE c.normalized_email='${marker}@example.invalid' AND h.released_at IS NULL`
   const sourceHolds = await sql(source, holdQuery)
   const restoredHolds = await sql(target, holdQuery)
+  const authorityQuery = `SELECT count(*) FROM legal_hold_assignments WHERE user_id='${director}'`
+  const sourceAuthority = await sql(source, authorityQuery)
+  const restoredAuthority = await sql(target, authorityQuery)
+  const actorQuery = `SELECT count(*) FROM users WHERE id='${director}'`
+  const sourceActor = await sql(source, actorQuery)
+  const restoredActor = await sql(target, actorQuery)
   const laterRevisionQuery = `SELECT count(*) FROM idea_revisions WHERE idea_id='${ideaId}' AND version=2`
   const sourceLaterRevision = await sql(source, laterRevisionQuery)
   const restoredLaterRevision = await sql(target, laterRevisionQuery)
   const summary = summarizeUnverifiedRecovery(entries, 'dev')
   if (summary.coverageVerified !== false || summary.removals.length !== 1 || summary.removals[0] !== ideaId ||
-      summary.holdPlacements.length !== 1 || summary.holdPlacements[0] !== ideaId || summary.reviewOperations.length !== 0 || summary.unmatchedConfirmations !== 0) {
+      summary.holdPlacements.length !== 1 || summary.holdPlacements[0] !== ideaId || summary.holdIdentities.length !== 1 ||
+      summary.holdIdentities[0].operationId !== holdOperation || summary.holdIdentities[0].ideaId !== ideaId ||
+      summary.holdIdentities[0].holdId !== committedHoldId || summary.reviewOperations.length !== 0 || summary.unmatchedConfirmations !== 0) {
     throw new Error('Synthetic journal summary failed verification')
   }
   // This conservative local update suppresses the known removal while the
@@ -190,12 +199,13 @@ try {
   const restoredGateOpen = await sql(target, 'SELECT is_open FROM public.public_access_gate WHERE singleton=true')
   const publicConnect = await sql(source, `SELECT has_database_privilege('public','${target}','CONNECT')`)
   const namedConnect = await sql(source, `SELECT has_database_privilege('${reader}','${target}','CONNECT')`)
-  if (restored !== '1' || excluded !== '0' || postgis !== '1' || ideas !== '1' || Number(migrations) < 1 || sourceVisible !== '0' || restoredVisible !== '1' || reconciledVisible !== '0' || sourceHolds !== '1' || restoredHolds !== '0' || sourceLaterRevision !== '1' || restoredLaterRevision !== '0' || sourcePublicExecute !== 'f' || restoredPublicExecute !== 'f' || restoredPendingPublicExecute !== 'f' || restoredGateOpen !== 'f' || sourceNamedExecute !== 't' || restoredNamedExecute !== 't' || publicConnect !== 'f' || namedConnect !== 'f') throw new Error('Restored synthetic database failed verification')
+  if (restored !== '1' || excluded !== '0' || postgis !== '1' || ideas !== '1' || Number(migrations) < 1 || sourceVisible !== '0' || restoredVisible !== '1' || reconciledVisible !== '0' || sourceHolds !== '1' || restoredHolds !== '0' || sourceAuthority !== '1' || restoredAuthority !== '0' || sourceActor !== '1' || restoredActor !== '0' || sourceLaterRevision !== '1' || restoredLaterRevision !== '0' || sourcePublicExecute !== 'f' || restoredPublicExecute !== 'f' || restoredPendingPublicExecute !== 'f' || restoredGateOpen !== 'f' || sourceNamedExecute !== 't' || restoredNamedExecute !== 't' || publicConnect !== 'f' || namedConnect !== 'f') throw new Error('Restored synthetic database failed verification')
   const lossMs = Number(latest) - Number(captured)
   if (!Number.isFinite(lossMs) || lossMs < 0) throw new Error('Synthetic data-loss interval could not be measured')
   console.log(JSON.stringify({ backupSeconds: (backupFinished - dumpStarted) / 1000,
     recoverySeconds: (Date.now() - recoveryStarted) / 1000, dataLossSeconds: lossMs / 1000,
     migrations: Number(migrations), postgisRestored: true, syntheticRemovalSuppressed: true, heldEvidenceRequiresReconciliation: true,
+    holdAuthorityRequiresReconciliation: true,
     journalCoverageVerified: false, syntheticGrantAndRevocationRestored: true, missingRoleRejected: true, databaseAccessFenced: true }))
 } finally {
   try {

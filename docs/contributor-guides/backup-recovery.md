@@ -35,12 +35,14 @@ separate empty database. It verifies the synthetic idea, PostGIS, migrations,
 and the absence of a record inserted after the snapshot. It also withdraws a
 synthetic approved idea, adds a later revision, and places a synthetic legal
 hold after the export. The older isolated restore still contains the previously
-public state and lacks the later hold and revision. The rehearsal writes
+public state and lacks the later hold, revision, actor, and legal-authority
+assignment. The rehearsal writes
 synthetic journal intents and confirmations to an in-memory fake around those
 decisions, records the synthetic committed hold's ID, summarizes them, and
 suppresses the known removal in the isolated restore. It does not prove journal coverage,
-reapply the hold, or preserve held material. The service must stay isolated
-until those remaining decisions and evidence are reconciled. The rehearsal
+reapply the hold, reconstruct its authority, or preserve held material. The
+service must stay isolated until those remaining decisions and evidence are
+reconciled. The rehearsal
 first confirms that restoring without a required
 synthetic role fails, then prepares that role and restores to another database.
 It checks that one protected security-definer function retains its synthetic
