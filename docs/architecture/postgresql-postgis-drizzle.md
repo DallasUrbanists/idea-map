@@ -14,6 +14,13 @@ The following contents links navigate within this guide:
 - [Approval history and corrections](#approval-history-and-corrections)
 - [Outbox recovery](#outbox-recovery)
 - [Consent and retention](#consent-and-retention)
+    - [Moderator holds](#moderator-holds)
+    - [Legal holds and decision metadata](#legal-holds-and-decision-metadata)
+    - [Moderator rejection](#moderator-rejection)
+    - [Moderator requests for changes](#moderator-requests-for-changes)
+    - [Moderator escalations](#moderator-escalations)
+    - [Moderator removal](#moderator-removal)
+    - [Escalation owner transfers](#escalation-owner-transfers)
 
 ## Schema and migration boundary
 
