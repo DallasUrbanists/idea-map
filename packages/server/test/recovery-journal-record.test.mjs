@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { decodeRecoveryRecord, encodeRecoveryConfirmation, encodeRecoveryIntent } from '../dist/recovery-journal-record.js'
+import { decodeRecoveryRecord, encodeRecoveryConfirmation, encodeRecoveryHoldConfirmation, encodeRecoveryIntent } from '../dist/recovery-journal-record.js'
 
 const base = { operationId: '11111111-1111-4111-8111-111111111111', environment: 'dev',
   ideaId: '22222222-2222-4222-8222-222222222222', actorId: '33333333-3333-4333-8333-333333333333',
@@ -23,6 +23,9 @@ test('decision records preserve authorized removal and hold facts without extra 
   const confirmation = encodeRecoveryConfirmation(base.operationId, 'dev', base.authorizedAt)
   assert.deepEqual(decodeRecoveryRecord(intent, 'dev'), decode(intent))
   assert.deepEqual(decodeRecoveryRecord(confirmation, 'dev'), decode(confirmation))
+  const holdConfirmation = encodeRecoveryHoldConfirmation(base.operationId, 'dev', base.authorizedAt, '44444444-4444-4444-8444-444444444444')
+  assert.deepEqual(decodeRecoveryRecord(holdConfirmation, 'dev'), decode(holdConfirmation))
+  assert.equal(decode(holdConfirmation).version, 2)
 })
 
 test('decision records reject missing, unsafe, or incompatible facts', () => {
@@ -42,6 +45,7 @@ test('decision records reject missing, unsafe, or incompatible facts', () => {
     { ...base, unexpectedContent: 'must not be stored', decision: removal },
   ]) assert.throws(() => encodeRecoveryIntent(input), { message: 'Invalid recovery decision' })
   assert.throws(() => encodeRecoveryConfirmation(base.operationId, 'dev', 'bad'), { message: 'Invalid recovery confirmation' })
+  assert.throws(() => encodeRecoveryHoldConfirmation(base.operationId, 'dev', base.authorizedAt, 'bad'), { message: 'Invalid recovery confirmation' })
 })
 
 test('recovery rejects wrong-environment, ambiguous, noncanonical, or future record formats', () => {

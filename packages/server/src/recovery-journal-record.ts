@@ -17,6 +17,7 @@ export type RecoveryIntent = {
 }
 type IntentRecord = RecoveryIntent & { version: 1, recordType: 'intent' }
 type ConfirmationRecord = { version: 1, recordType: 'commit_confirmation', operationId: string, environment: 'dev' | 'prod', confirmedAt: string }
+type HoldConfirmationRecord = { version: 2, recordType: 'hold_commit_confirmation', operationId: string, environment: 'dev' | 'prod', confirmedAt: string, holdId: string }
 
 function text(value: unknown, maxBytes: number): value is string {
   return typeof value === 'string' && value.trim().length > 0 && Buffer.byteLength(value) <= maxBytes &&
@@ -71,24 +72,34 @@ export function encodeRecoveryConfirmation(operationId: string, environment: 'de
   return Buffer.from(JSON.stringify({ version: 1, recordType: 'commit_confirmation', operationId, environment, confirmedAt }))
 }
 
+/** Record a known committed placement and its database-assigned hold ID. */
+export function encodeRecoveryHoldConfirmation(operationId: string, environment: 'dev' | 'prod', confirmedAt: string, holdId: string): Uint8Array {
+  if (typeof operationId !== 'string' || !operationIdPattern.test(operationId) || !['dev', 'prod'].includes(environment) ||
+      !timestamp(confirmedAt) || typeof holdId !== 'string' || !uuid.test(holdId)) throw new Error('Invalid recovery confirmation')
+  return Buffer.from(JSON.stringify({ version: 2, recordType: 'hold_commit_confirmation', operationId, environment, confirmedAt, holdId }))
+}
+
 /** Reject noncanonical, wrong-environment, or incompatible records during recovery. */
-export function decodeRecoveryRecord(payload: Uint8Array, environment: 'dev' | 'prod'): IntentRecord | ConfirmationRecord {
+export function decodeRecoveryRecord(payload: Uint8Array, environment: 'dev' | 'prod'): IntentRecord | ConfirmationRecord | HoldConfirmationRecord {
   try {
     if (!(payload instanceof Uint8Array) || payload.byteLength < 1 || payload.byteLength > 16_384 || !['dev', 'prod'].includes(environment)) {
       throw new Error('Invalid record')
     }
     const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(payload))
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid record')
-    const record = value as IntentRecord | ConfirmationRecord
-    if (record.version !== 1 || record.environment !== environment) throw new Error('Invalid record')
+    const record = value as IntentRecord | ConfirmationRecord | HoldConfirmationRecord
+    if (record.environment !== environment) throw new Error('Invalid record')
     let canonical: Uint8Array
-    if (record.recordType === 'intent') {
+    if (record.version === 1 && record.recordType === 'intent') {
       if (!keys(record, ['version', 'recordType', 'operationId', 'environment', 'ideaId', 'actorId', 'authorizedAt', 'decision'])) throw new Error('Invalid record')
       canonical = encodeRecoveryIntent({ operationId: record.operationId, environment: record.environment,
         ideaId: record.ideaId, actorId: record.actorId, authorizedAt: record.authorizedAt, decision: record.decision })
-    } else if (record.recordType === 'commit_confirmation') {
+    } else if (record.version === 1 && record.recordType === 'commit_confirmation') {
       if (!keys(record, ['version', 'recordType', 'operationId', 'environment', 'confirmedAt'])) throw new Error('Invalid record')
       canonical = encodeRecoveryConfirmation(record.operationId, record.environment, record.confirmedAt)
+    } else if (record.version === 2 && record.recordType === 'hold_commit_confirmation') {
+      if (!keys(record, ['version', 'recordType', 'operationId', 'environment', 'confirmedAt', 'holdId'])) throw new Error('Invalid record')
+      canonical = encodeRecoveryHoldConfirmation(record.operationId, record.environment, record.confirmedAt, record.holdId)
     } else throw new Error('Invalid record')
     if (!Buffer.from(payload).equals(Buffer.from(canonical))) throw new Error('Invalid record')
     return record

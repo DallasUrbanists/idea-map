@@ -8,7 +8,7 @@ import { Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { dumpArguments, exportEncryptedBackup } from '../apps/worker/ops/export-encrypted-backup.mjs'
-import { encodeRecoveryConfirmation, encodeRecoveryIntent } from '../packages/server/dist/recovery-journal-record.js'
+import { encodeRecoveryConfirmation, encodeRecoveryHoldConfirmation, encodeRecoveryIntent } from '../packages/server/dist/recovery-journal-record.js'
 import { summarizeUnverifiedRecovery } from '../packages/server/dist/recovery-journal-plan.js'
 import { writeRecoveryJournalRecord } from '../packages/server/dist/recovery-journal-storage.js'
 
@@ -130,9 +130,11 @@ try {
     if (removed !== 'removed') throw new Error('Synthetic removal failed')
     const holdOutcome = await sql(source, `SELECT public.place_legal_hold_outcome('firebase:demo-idea-map','${marker}','${ideaId}','synthetic case','synthetic preservation')`)
     if (holdOutcome !== 'processed') throw new Error('Synthetic legal hold failed')
+    const heldId = await sql(source, `SELECT id FROM legal_holds WHERE idea_id='${ideaId}' AND case_reference='synthetic case' AND released_at IS NULL`)
+    if (!/^[0-9a-f-]{36}$/.test(heldId)) throw new Error('Synthetic hold identity is ambiguous')
     const confirmedAt = new Date().toISOString()
     await writeRecoveryJournalRecord(journal, journalTarget, randomUUID(), encodeRecoveryConfirmation(removalOperation, 'dev', confirmedAt))
-    await writeRecoveryJournalRecord(journal, journalTarget, randomUUID(), encodeRecoveryConfirmation(holdOperation, 'dev', confirmedAt))
+    await writeRecoveryJournalRecord(journal, journalTarget, randomUUID(), encodeRecoveryHoldConfirmation(holdOperation, 'dev', confirmedAt, heldId))
   } finally {
     if (previousEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
     else process.env.STORAGE_EMULATOR_HOST = previousEmulator

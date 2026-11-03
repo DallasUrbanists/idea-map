@@ -35,8 +35,9 @@ not be able to change backup archives or completion records. Review inherited
 grants and deny policies as well as the explicitly scoped grants.
 
 The server package contains an encoder and decoder for version-one intent and
-commit confirmation records, a create-only transport for private JSON, a reader
-for a specifically identified object generation, and an unverified recovery summary. The
+commit confirmation records and version-two hold-placement confirmations. It
+also contains a create-only transport for private JSON, a reader for a
+specifically identified object generation, and an unverified recovery summary. The
 encoder checks required fields and sizes but cannot verify authority, legal
 meaning, or whether a reason or reference is non-sensitive; its caller must
 establish those facts. The decoder rejects unknown versions, extra fields,
@@ -45,8 +46,9 @@ version-one encoding when extending the format; a failed decode keeps recovery
 isolated. The transport bounds record size and write time, uses an opaque
 caller-supplied record ID and a create-only precondition, and treats provider
 errors and timeouts as uncertain. The summary conservatively identifies ideas
-in removal and hold-placement intents, flags unconfirmed operations and all hold
-releases for authorized review, and reports confirmations without intents. It
+in removal and hold-placement intents, flags unconfirmed operations, placements
+without a confirmed hold ID, and all hold releases for authorized review, and
+reports confirmations without intents. It
 never establishes inventory coverage, removes a hold, changes a database, or
 authorizes public access. Its output contains private identifiers and must not
 be written to public logs. These components do not discover records, guard
@@ -124,6 +126,16 @@ verified relevant overlap conservatively, and require authorized reconciliation
 where order or outcome is unclear. If writers cannot be fenced or completeness
 cannot be verified, keep the restored service isolated.
 
+The current hold-placement function creates the hold ID inside PostgreSQL, but
+the version-one journal confirmation does not record that ID. A later release
+names a hold ID, and the same idea and case can have more than one hold over
+time. A version-two hold-placement confirmation can identify the actual committed
+hold ID; the caller must obtain it from the authorized transaction and establish
+that the commit succeeded. A version-one placement confirmation and an uncertain
+outcome require review. Before integrating the journal, verify the ID association
+through the live mutation path. Do not match a release to a placement solely by
+idea and case or apply it automatically.
+
 On restore, an operator verifies coverage and reads the relevant complete
 journal before public reads or side effects resume. Apply removals and hold
 placements conservatively and idempotently; do not release a hold or republish
@@ -175,6 +187,11 @@ across transactions. Holding a client for an outer render while the nested API
 request needs another client can also exhaust that pool under concurrent load.
 Verify the selected coordination mechanism against the actual pooler and the
 complete render path, including a queued removal and concurrent page requests.
+The current Nitro runtime passes server-side request context to its internal
+fetches, which may allow a nested request to reuse an outer request's guarded
+transaction. Treat that as an implementation option, not a verified boundary;
+test context propagation and cleanup against the deployed runtime. Never trust a
+client-supplied header as proof that a request holds a guard.
 
 The gate and pending state need a guarded transaction and must cover every
 public read, projection, and media delivery path. A restored older database may

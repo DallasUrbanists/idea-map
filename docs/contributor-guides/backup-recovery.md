@@ -37,8 +37,8 @@ synthetic approved idea, adds a later revision, and places a synthetic legal
 hold after the export. The older isolated restore still contains the previously
 public state and lacks the later hold and revision. The rehearsal writes
 synthetic journal intents and confirmations to an in-memory fake around those
-decisions, summarizes them, and suppresses the
-known removal in the isolated restore. It does not prove journal coverage,
+decisions, records the synthetic committed hold's ID, summarizes them, and
+suppresses the known removal in the isolated restore. It does not prove journal coverage,
 reapply the hold, or preserve held material. The service must stay isolated
 until those remaining decisions and evidence are reconciled. The rehearsal
 first confirms that restoring without a required
