@@ -22,6 +22,13 @@ Do not use v1 projects or data. Existing synthetic staging roots are separate
 from the foundation's `idea-map-*-dev` services; do not make two Terraform
 roots manage the same service.
 
+For a new development-only release rehearsal that does not need media, set
+`manage_media_buckets = false` and leave `enable_media_access` off. The
+foundation then leaves existing staging media buckets under their current root
+and creates no backup bucket. This does not configure media access or backup
+recovery; review those separately before using those features. Do not use this
+setting to remove buckets already managed by the foundation.
+
 Before enabling either workflow, an authorized administrator should create
 GitHub environments named `staging` and `production`, restrict them to
 `main`, and require independent reviewers for production. The administrator
@@ -72,6 +79,14 @@ an opt-in, dev-only bootstrap process that returns 503. Replace it with the
 configured worker through a separately reviewed Terraform plan before using
 the release workflow. A bootstrap revision is not a recovery target: the
 workflow rejects worker revisions with overridden commands or arguments.
+
+Before a Neon-backed web service is created, prepare a web-only pooled TLS
+database credential and existing Secret Manager version outside Terraform. Set
+both `web_database_secret_id` and the numeric `web_database_secret_version` in
+the reviewed environment configuration. Review the web role, secret access,
+and connection budget separately from the worker's credential. A database
+reference alone does not prove that the service can authenticate or that its
+schema and permissions are correct; verify those in the isolated environment.
 
 The workflow operates on `idea-map-web-dev` and `idea-map-worker-dev` in
 staging and the corresponding `-prod` services in production. It requires one
