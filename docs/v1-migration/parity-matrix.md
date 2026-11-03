@@ -209,6 +209,11 @@ generation/replacement and previews after provider review
 
 ### Presentation
 
+The [presentation inventory](presentation-inventory.md) records the pinned
+routes, pairing roles, state and command boundaries, and opt-in transport in
+detail. The [presentation contracts](../architecture/presentation.md) define
+the intended application boundary separately from this historical evidence.
+
 Source evidence: Presentation: `presentationApi`, `presentationLinks`,
 `presentationQr`, `presentationSession`, `presentationSocket`,
 `presentationState`
