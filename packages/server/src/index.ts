@@ -20,3 +20,5 @@ export * from './moderator-change-requests.js'
 export * from './moderator-escalations.js'
 export * from './moderator-removals.js'
 export * from './moderator-escalation-transfers.js'
+
+export * from './registered-drafts.js'

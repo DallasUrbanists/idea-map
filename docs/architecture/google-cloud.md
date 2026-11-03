@@ -134,6 +134,21 @@ its authorization remains valid, because the bearer could otherwise create it
 again. Neither method is a resumable upload session, validates file contents, or
 establishes a public preview.
 
+The server package also provides a registered-only draft inventory boundary.
+It verifies a registered session for each mutation and rechecks identity before
+commit. Allocations bind a private object name to a draft revision and slot;
+finalization uses an injected trusted verifier to bind an exact generation and
+digest. Freezing rechecks every expected slot and records a stable private
+manifest for that draft revision. A missing or changed asset leaves the inventory
+incomplete. A frozen inventory is not an accepted submission or assessment and
+does not establish policy, content-type, decoding, rights, or provider safety.
+
+The inventory boundary has no public endpoint or production storage verifier.
+Anonymous and guest drafts remain unavailable through it. The draft revision is
+not yet bound to an accepted idea revision; callers must not use it to authorize
+publication. Retention, cleanup, complete media validation, and separately
+reviewed upload limits remain prerequisites for real use.
+
 The opt-in `enable_media_access` Terraform setting defines a dedicated signer
 with object-creation access to the pending bucket, gives the web identity token
 creation access to that signer, and grants web read access to the approved bucket.
