@@ -32,6 +32,8 @@ resource "google_cloud_run_v2_service" "runtime" {
     }
     containers {
       image = each.value.image
+      # This temporary dev-only process serves no requests and supplies no data.
+      command = each.key == "worker" && var.enable_worker_bootstrap ? ["node", "-e", "require('node:http').createServer((req,res)=>{res.writeHead(503);res.end()}).listen(process.env.PORT || 8080,'0.0.0.0')"] : null
       resources {
         cpu_idle = true
       }
@@ -113,6 +115,10 @@ resource "google_cloud_run_v2_service" "runtime" {
     precondition {
       condition     = !var.enable_worker_runtime || (var.enable_task_delivery && var.worker_origin != "" && var.worker_database_secret_id != "" && var.worker_database_secret_version != "")
       error_message = "Worker runtime requires task delivery, the exact worker origin, and a pinned existing database secret."
+    }
+    precondition {
+      condition     = !var.enable_worker_bootstrap || (var.environment == "dev" && !var.enable_worker_runtime && !var.enable_task_delivery)
+      error_message = "Worker bootstrap is dev-only and cannot enable runtime or delivery."
     }
     postcondition {
       condition     = each.key != "worker" || !var.enable_worker_runtime || self.uri == var.worker_origin

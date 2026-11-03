@@ -328,6 +328,15 @@ acceptance timestamp. The record must survive retries and guest-to-account
 claims; an ownership update must not create or replace consent. Referenced terms
 versions must remain available for review.
 
+The registered-only draft submission transaction saves the exact frozen draft
+and location as a private idea revision, with the agreement and original result.
+The version identifies the retained terms bytes by SHA-256. The server accepts
+only its current bundled version for a new submission and preserves those bytes
+with each consent record. A replay returns the original result even if storage
+is unavailable. Maintainers must retain old terms and update the bundled version
+and its checks when adopting new terms. This server-only transaction has no
+public route, does not accept an assessment, and does not publish an idea.
+
 Deletion must honor authorized removal deadlines, legal holds, and backup
 expiry. Restore workflows must preserve removal records so deleted content does
 not return to public projections. Consent and moderation records must remain

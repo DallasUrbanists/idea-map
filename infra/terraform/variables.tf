@@ -73,6 +73,11 @@ variable "enable_worker_runtime" {
   type        = bool
   default     = false
 }
+variable "enable_worker_bootstrap" {
+  description = "Temporarily start a non-operational internal worker to discover its generated URI in dev."
+  type        = bool
+  default     = false
+}
 variable "web_database_secret_id" {
   description = "ID of the existing web-only database URL secret in this project."
   type        = string
