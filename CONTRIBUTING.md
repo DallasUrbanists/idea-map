@@ -10,7 +10,9 @@ This section is for those who want to choose a useful task and understand
 whether someone else is already working on it.
 
 1. Browse the [open issues](https://github.com/DallasUrbanists/idea-map/issues).
-2. Check whether the issue already has someone working on it and whether it depends on other work.
+2. Check whether the issue already has someone working on it and whether it
+    depends on other work. You should use the issue forms for bugs or feature
+    requests, and report security-sensitive problems privately.
 3. Leave a comment if you would like to help or need clarification.
 
 The [roadmap](https://github.com/DallasUrbanists/idea-map/wiki/Roadmap-and-Milestones)
@@ -112,7 +114,8 @@ reviewers the information they need.
 2. Push your branch to your repository.
 3. Open a pull request against `main`.
 
-Prepare the description using the
+You should use the pull-request template to record the problem, validation, and
+remaining risks. Prepare the description using the
 [review-description standards](docs/contributor-guides/documentation-style-guide.md#review-descriptions-and-release-notes).
 
 Follow the [pull-request readiness rules](docs/contributor-guides/development-guide.md#prepare-and-review-a-pull-request)
