@@ -139,9 +139,11 @@ It verifies a registered session for each mutation and rechecks identity before
 commit. Allocations bind a private object name to a draft revision and slot;
 finalization uses an injected trusted verifier to bind an exact generation and
 digest. Freezing rechecks every expected slot and records a stable private
-manifest for that draft revision. A missing or changed asset leaves the inventory
-incomplete. A frozen inventory is not an accepted submission or assessment and
-does not establish policy, content-type, decoding, rights, or provider safety.
+manifest for that draft revision. An asset missing or changed during verification
+leaves the inventory incomplete. Storage state can change after a check, so an
+assessment must revalidate its exact required evidence. A frozen inventory is not
+an accepted submission or assessment and does not establish policy, content-type,
+decoding, rights, or provider safety. The server must keep manifests private.
 
 The inventory boundary has no public endpoint or production storage verifier.
 Anonymous and guest drafts remain unavailable through it. The draft revision is
