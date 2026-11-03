@@ -20,16 +20,22 @@ variable "region" {
   default     = "us-central1"
 }
 variable "bucket_names" {
-  description = "Globally unique names for uploads, approved media and backups."
+  description = "Globally unique names for uploads, approved media and backups when this root manages them."
   type = object({
     uploads = string
     public  = string
     backups = string
   })
+  default = { uploads = "", public = "", backups = "" }
   validation {
-    condition     = length(toset(values(var.bucket_names))) == 3 && alltrue([for name in values(var.bucket_names) : length(trimspace(name)) > 0])
-    error_message = "Supply three distinct, nonempty bucket names."
+    condition     = !var.manage_media_buckets || (length(toset(values(var.bucket_names))) == 3 && alltrue([for name in values(var.bucket_names) : length(trimspace(name)) > 0]))
+    error_message = "Supply three distinct, nonempty bucket names when this root manages media buckets."
   }
+}
+variable "manage_media_buckets" {
+  description = "Manage foundation media and backup buckets; disabling is limited to dev and leaves media access unconfigured."
+  type        = bool
+  default     = true
 }
 variable "web_image" {
   description = "Reviewed immutable web container image digest."

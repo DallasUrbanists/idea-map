@@ -22,6 +22,13 @@ Do not use v1 projects or data. Existing synthetic staging roots are separate
 from the foundation's `idea-map-*-dev` services; do not make two Terraform
 roots manage the same service.
 
+For a new development-only release rehearsal that does not need media, set
+`manage_media_buckets = false` and leave `enable_media_access` off. The
+foundation then leaves existing staging media buckets under their current root
+and creates no backup bucket. This does not configure media access or backup
+recovery; review those separately before using those features. Do not use this
+setting to remove buckets already managed by the foundation.
+
 Before enabling either workflow, an authorized administrator should create
 GitHub environments named `staging` and `production`, restrict them to
 `main`, and require independent reviewers for production. The administrator

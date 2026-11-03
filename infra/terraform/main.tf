@@ -103,6 +103,14 @@ resource "google_cloud_run_v2_service" "runtime" {
       error_message = "Use separate web and worker database secrets."
     }
     precondition {
+      condition     = var.manage_media_buckets || var.environment == "dev"
+      error_message = "Only a development foundation may omit its media and backup buckets."
+    }
+    precondition {
+      condition     = var.manage_media_buckets || !var.enable_media_access
+      error_message = "Media access requires buckets managed by this foundation."
+    }
+    precondition {
       condition     = !var.enable_worker_runtime || (var.enable_task_delivery && var.worker_origin != "" && var.worker_database_secret_id != "" && var.worker_database_secret_version != "")
       error_message = "Worker runtime requires task delivery, the exact worker origin, and a pinned existing database secret."
     }
@@ -115,7 +123,7 @@ resource "google_cloud_run_v2_service" "runtime" {
 }
 
 resource "google_storage_bucket" "media" {
-  for_each                    = local.buckets
+  for_each                    = var.manage_media_buckets ? local.buckets : {}
   name                        = each.value
   location                    = var.region
   uniform_bucket_level_access = true
