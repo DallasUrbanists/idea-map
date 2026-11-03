@@ -12,8 +12,8 @@ export async function writeRecoveryJournalRecord(storage: Storage,
   target: { environment: 'dev' | 'prod', bucket: string }, recordId: string, payload: Uint8Array,
   timeoutMs = 5000): Promise<void> {
   if (typeof process.env.STORAGE_EMULATOR_HOST === 'string' || !['dev', 'prod'].includes(target?.environment) ||
-      !/^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$/.test(target?.bucket ?? '') ||
-      !recordIdPattern.test(recordId) || !(payload instanceof Uint8Array) || payload.byteLength < 1 || payload.byteLength > 16_384 ||
+      typeof target?.bucket !== 'string' || !/^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$/.test(target.bucket) ||
+      typeof recordId !== 'string' || !recordIdPattern.test(recordId) || !(payload instanceof Uint8Array) || payload.byteLength < 1 || payload.byteLength > 16_384 ||
       !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 5000) throw new Error('Invalid journal record')
   const bytes = Buffer.from(payload)
   try {

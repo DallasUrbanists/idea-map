@@ -33,10 +33,11 @@ assigned loopback port, and migrates a synthetic database. It streams one archiv
 through the export pipeline to a local storage fake, then restores it into a
 separate empty database. It verifies the synthetic idea, PostGIS, migrations,
 and the absence of a record inserted after the snapshot. It also withdraws a
-synthetic approved idea and places a synthetic legal hold after the export. The
-older isolated restore still contains the previously public state and lacks that
-later hold. The rehearsal writes synthetic journal intents and confirmations to
-an in-memory fake around those decisions, summarizes them, and suppresses the
+synthetic approved idea, adds a later revision, and places a synthetic legal
+hold after the export. The older isolated restore still contains the previously
+public state and lacks the later hold and revision. The rehearsal writes
+synthetic journal intents and confirmations to an in-memory fake around those
+decisions, summarizes them, and suppresses the
 known removal in the isolated restore. It does not prove journal coverage,
 reapply the hold, or preserve held material. The service must stay isolated
 until those remaining decisions and evidence are reconciled. The rehearsal
@@ -45,7 +46,9 @@ synthetic role fails, then prepares that role and restores to another database.
 It checks that one protected security-definer function retains its synthetic
 named-role grant and `PUBLIC` revocation in the restore. The fake
 stores only synthetic data and does not test Cloud Storage encryption or
-permissions, all database grants, or Neon role setup.
+permissions, all database grants, or Neon role setup. The synthetic target
+also revokes `PUBLIC` database connections and verifies that its test role
+cannot connect; that does not establish a hosted network or IAM fence.
 
 The JSON result reports backup and recovery elapsed seconds, the interval between
 the saved and later synthetic records, and verification results. Recovery starts before the empty
@@ -297,6 +300,9 @@ Restore only into a new isolated Neon database with compatible PostgreSQL and
 PostGIS. Hosted development uses synthetic data only; keep production backups
 and restored production records within separately controlled production recovery
 resources, not the development project or a local machine.
+Fence network and application access independently before creating the target,
+restrict database connections, and verify effective inherited access. An older
+archive cannot be trusted to contain a later publication gate or removal.
 Verify archive integrity before using it, and use `pg_restore`
 with error checking. Prepare restricted database roles before restoring ACLs,
 then verify function ownership and execute permissions for `PUBLIC` and each

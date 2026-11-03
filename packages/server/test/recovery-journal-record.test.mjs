@@ -32,6 +32,7 @@ test('decision records reject missing, unsafe, or incompatible facts', () => {
     { ...base, operationId: '../bad', decision: removal },
     { ...base, authorizedAt: '2026-11-03', decision: removal },
     { ...base, actorId: 'not-a-user', decision: removal },
+    { ...base, actorId: { toString: () => base.actorId }, decision: removal },
     { ...base, decision: { ...removal, reason: 'bad\nreason' } },
     { ...base, decision: { ...removal, reason: '\ud800' } },
     { ...base, decision: { ...placement, authorizationReference: '' } },

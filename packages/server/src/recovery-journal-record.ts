@@ -36,8 +36,8 @@ function keys(value: object, expected: string[]): boolean {
 /** Encode canonical decision facts already verified by the calling transaction. */
 export function encodeRecoveryIntent(input: RecoveryIntent): Uint8Array {
   if (!input || typeof input !== 'object' || !keys(input, ['operationId', 'environment', 'ideaId', 'actorId', 'authorizedAt', 'decision']) ||
-      !operationIdPattern.test(input.operationId) || !['dev', 'prod'].includes(input.environment) ||
-      !uuid.test(input.ideaId) || !uuid.test(input.actorId) || !timestamp(input.authorizedAt) ||
+      typeof input.operationId !== 'string' || !operationIdPattern.test(input.operationId) || !['dev', 'prod'].includes(input.environment) ||
+      typeof input.ideaId !== 'string' || !uuid.test(input.ideaId) || typeof input.actorId !== 'string' || !uuid.test(input.actorId) || !timestamp(input.authorizedAt) ||
       !input.decision || typeof input.decision !== 'object') throw new Error('Invalid recovery decision')
   const decision = input.decision
   if (decision.kind === 'removal') {
@@ -48,7 +48,7 @@ export function encodeRecoveryIntent(input: RecoveryIntent): Uint8Array {
     if (decision.kind === 'hold_release') required.push('holdId', 'legalReviewReference')
     if (!keys(decision, required) || !text(decision.caseReference, 300) || !text(decision.reason, 1000) ||
         !text(decision.authorizationReference, 300) || !text(decision.scope, 1000) ||
-        (decision.kind === 'hold_release' && (!uuid.test(decision.holdId) ||
+        (decision.kind === 'hold_release' && (typeof decision.holdId !== 'string' || !uuid.test(decision.holdId) ||
           (decision.legalReviewReference !== null && !text(decision.legalReviewReference, 300))))) throw new Error('Invalid recovery decision')
   } else throw new Error('Invalid recovery decision')
   // Select each field so unexpected prototype properties cannot enter storage.
@@ -65,7 +65,7 @@ export function encodeRecoveryIntent(input: RecoveryIntent): Uint8Array {
 
 /** A caller may encode confirmation only after it knows the database committed. */
 export function encodeRecoveryConfirmation(operationId: string, environment: 'dev' | 'prod', confirmedAt: string): Uint8Array {
-  if (!operationIdPattern.test(operationId) || !['dev', 'prod'].includes(environment) || !timestamp(confirmedAt)) {
+  if (typeof operationId !== 'string' || !operationIdPattern.test(operationId) || !['dev', 'prod'].includes(environment) || !timestamp(confirmedAt)) {
     throw new Error('Invalid recovery confirmation')
   }
   return Buffer.from(JSON.stringify({ version: 1, recordType: 'commit_confirmation', operationId, environment, confirmedAt }))

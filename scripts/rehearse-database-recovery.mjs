@@ -105,7 +105,7 @@ try {
   await exportEncryptedBackup({ environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789', databaseUrl },
     { start: startSyntheticDump, storage, now: new Date('2026-11-03T00:00:00Z') })
   const backupFinished = Date.now()
-  await sql(source, `INSERT INTO synthetic_recovery_marker(id) VALUES ('${marker}-after'); INSERT INTO users(id) VALUES ('${director}'); INSERT INTO identities(user_id,provider,subject) VALUES ('${director}','firebase:demo-idea-map','${marker}'); INSERT INTO moderator_assignments(user_id,granted_by,grant_reason) VALUES ('${director}','${director}','synthetic grant'); INSERT INTO legal_hold_assignments(user_id,authority,authorization_reference,granted_by) VALUES ('${director}','executive_director','synthetic authority','${director}')`)
+  await sql(source, `INSERT INTO synthetic_recovery_marker(id) VALUES ('${marker}-after'); INSERT INTO idea_revisions(idea_id,version,content) VALUES ('${ideaId}',2,'{"title":"Synthetic later held material"}'::jsonb); INSERT INTO users(id) VALUES ('${director}'); INSERT INTO identities(user_id,provider,subject) VALUES ('${director}','firebase:demo-idea-map','${marker}'); INSERT INTO moderator_assignments(user_id,granted_by,grant_reason) VALUES ('${director}','${director}','synthetic grant'); INSERT INTO legal_hold_assignments(user_id,authority,authorization_reference,granted_by) VALUES ('${director}','executive_director','synthetic authority','${director}')`)
   const entries = []
   const journal = { bucket: () => ({ file: () => ({ createWriteStream(options) {
     if (options.preconditionOpts.ifGenerationMatch !== 0 || options.validation !== 'crc32c') throw new Error('Synthetic journal safeguards missing')
@@ -143,6 +143,7 @@ try {
   await sql(source, `REVOKE EXECUTE ON FUNCTION public.place_legal_hold_outcome(text,text,uuid,text,text) FROM ${reader}; DROP ROLE ${reader}`)
   const recoveryStarted = Date.now()
   await docker('exec', container, 'createdb', '-U', 'idea_map', '-T', 'template0', unpreparedTarget)
+  await sql(source, `REVOKE CONNECT ON DATABASE ${unpreparedTarget} FROM PUBLIC`)
   const unprepared = start('docker', ['exec', '-i', container, 'pg_restore', '-U', 'idea_map', '--no-owner', '--exit-on-error', '-d', unpreparedTarget])
   let unpreparedError = ''
   unprepared.child.stderr.on('data', chunk => { unpreparedError += chunk })
@@ -151,6 +152,7 @@ try {
   if (unpreparedResults[1].status !== 'rejected' || !unpreparedError.includes(`role \"${reader}\" does not exist`)) throw new Error('Missing synthetic role did not stop the restore')
   await sql(source, `CREATE ROLE ${reader} NOLOGIN`)
   await docker('exec', container, 'createdb', '-U', 'idea_map', '-T', 'template0', target)
+  await sql(source, `REVOKE CONNECT ON DATABASE ${target} FROM PUBLIC`)
   const restore = start('docker', ['exec', '-i', container, 'pg_restore', '-U', 'idea_map', '--no-owner', '--exit-on-error', '-d', target])
   restore.child.stdout.resume()
   await Promise.all([pipeline(createReadStream(archive), restore.child.stdin), restore.done])
@@ -165,6 +167,9 @@ try {
   const holdQuery = `SELECT count(*) FROM legal_holds h JOIN ideas i ON i.id=h.idea_id JOIN contacts c ON c.id=i.author_contact_id WHERE c.normalized_email='${marker}@example.invalid' AND h.released_at IS NULL`
   const sourceHolds = await sql(source, holdQuery)
   const restoredHolds = await sql(target, holdQuery)
+  const laterRevisionQuery = `SELECT count(*) FROM idea_revisions WHERE idea_id='${ideaId}' AND version=2`
+  const sourceLaterRevision = await sql(source, laterRevisionQuery)
+  const restoredLaterRevision = await sql(target, laterRevisionQuery)
   const summary = summarizeUnverifiedRecovery(entries, 'dev')
   if (summary.coverageVerified !== false || summary.removals.length !== 1 || summary.removals[0] !== ideaId ||
       summary.holdPlacements.length !== 1 || summary.holdPlacements[0] !== ideaId || summary.reviewOperations.length !== 0 || summary.unmatchedConfirmations !== 0) {
@@ -178,13 +183,15 @@ try {
   const sourcePublicExecute = await sql(source, functionPrivilege)
   const restoredPublicExecute = await sql(target, functionPrivilege)
   const restoredNamedExecute = await sql(target, namedPrivilege)
-  if (restored !== '1' || excluded !== '0' || postgis !== '1' || ideas !== '1' || Number(migrations) < 1 || sourceVisible !== '0' || restoredVisible !== '1' || reconciledVisible !== '0' || sourceHolds !== '1' || restoredHolds !== '0' || sourcePublicExecute !== 'f' || restoredPublicExecute !== 'f' || sourceNamedExecute !== 't' || restoredNamedExecute !== 't') throw new Error('Restored synthetic database failed verification')
+  const publicConnect = await sql(source, `SELECT has_database_privilege('public','${target}','CONNECT')`)
+  const namedConnect = await sql(source, `SELECT has_database_privilege('${reader}','${target}','CONNECT')`)
+  if (restored !== '1' || excluded !== '0' || postgis !== '1' || ideas !== '1' || Number(migrations) < 1 || sourceVisible !== '0' || restoredVisible !== '1' || reconciledVisible !== '0' || sourceHolds !== '1' || restoredHolds !== '0' || sourceLaterRevision !== '1' || restoredLaterRevision !== '0' || sourcePublicExecute !== 'f' || restoredPublicExecute !== 'f' || sourceNamedExecute !== 't' || restoredNamedExecute !== 't' || publicConnect !== 'f' || namedConnect !== 'f') throw new Error('Restored synthetic database failed verification')
   const lossMs = Number(latest) - Number(captured)
   if (!Number.isFinite(lossMs) || lossMs < 0) throw new Error('Synthetic data-loss interval could not be measured')
   console.log(JSON.stringify({ backupSeconds: (backupFinished - dumpStarted) / 1000,
     recoverySeconds: (Date.now() - recoveryStarted) / 1000, dataLossSeconds: lossMs / 1000,
     migrations: Number(migrations), postgisRestored: true, syntheticRemovalSuppressed: true, heldEvidenceRequiresReconciliation: true,
-    journalCoverageVerified: false, syntheticGrantAndRevocationRestored: true, missingRoleRejected: true }))
+    journalCoverageVerified: false, syntheticGrantAndRevocationRestored: true, missingRoleRejected: true, databaseAccessFenced: true }))
 } finally {
   try {
     if (created) {

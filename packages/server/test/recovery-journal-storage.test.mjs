@@ -56,6 +56,7 @@ test('journal storage rejects invalid destinations, IDs, bodies, and timeouts be
   for (const [destination, recordId, body, timeout] of [
     [{ ...target, environment: 'prod-other' }, id, payload, 50],
     [{ ...target, bucket: 'gs://wrong' }, id, payload, 50],
+    [{ ...target, bucket: { toString: () => target.bucket } }, id, payload, 50],
     [target, '../unsafe', payload, 50], [target, id, Buffer.from('not-json'), 50],
     [target, id, Buffer.from('[]'), 50], [target, id, Buffer.from([0xff]), 50],
     [target, id, Buffer.alloc(16_385), 50], [target, id, payload, 5001],
