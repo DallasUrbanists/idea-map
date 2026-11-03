@@ -1,11 +1,17 @@
 import { decodeRecoveryRecord, encodeRecoveryIntent } from './recovery-journal-record.js'
 import { withVerifiedModerator, type ModeratorAccess, type RegisteredSessionVerifier } from './moderator-authorization.js'
 import { pendingRemovalDatabasePool } from './runtime-database.js'
+import { writeRecoveryJournalRecord } from './recovery-journal-storage.js'
+import type { Storage } from '@google-cloud/storage'
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const uuid4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const journalReason = 'Authorized removal'
 type PendingResult = 'stale' | { state: 'pending', recordId: string, payload: Uint8Array }
+type PendingRemovalInput = {
+  operationId: string, recordId: string, ideaId: string, approvedRevisionId: string,
+  classification: 'violation' | 'other', reason: string,
+}
 
 /**
  * Persist an authorized pending removal and close the gate in one transaction.
@@ -14,10 +20,7 @@ type PendingResult = 'stale' | { state: 'pending', recordId: string, payload: Ui
  * operation after an uncertain result.
  */
 export async function preparePendingRemoval(databaseUrl: string, projectId: string, cookie: string,
-  verifier: RegisteredSessionVerifier, environment: 'dev' | 'prod', input: {
-    operationId: string, recordId: string, ideaId: string, approvedRevisionId: string,
-    classification: 'violation' | 'other', reason: string,
-  }): Promise<ModeratorAccess<PendingResult>> {
+  verifier: RegisteredSessionVerifier, environment: 'dev' | 'prod', input: PendingRemovalInput): Promise<ModeratorAccess<PendingResult>> {
   if (!databaseUrl || !['dev', 'prod'].includes(environment) || !input || typeof input !== 'object' ||
       typeof input.operationId !== 'string' || !uuid4.test(input.operationId) ||
       typeof input.recordId !== 'string' || !uuid4.test(input.recordId) ||
@@ -54,5 +57,24 @@ export async function preparePendingRemoval(databaseUrl: string, projectId: stri
     }, pendingRemovalDatabasePool(databaseUrl))
   } catch {
     throw new Error('Pending removal unavailable')
+  }
+}
+
+/**
+ * Write the committed intent once. An uncertain outcome keeps the pending row
+ * and gate closed; a separate authorized reader must reconcile a conflict.
+ * This does not remove content, confirm a database mutation, or reopen access.
+ */
+export async function prepareAndJournalRemoval(databaseUrl: string, projectId: string, cookie: string,
+  verifier: RegisteredSessionVerifier, target: { environment: 'dev' | 'prod', bucket: string },
+  storage: Storage, input: PendingRemovalInput): Promise<ModeratorAccess<'stale' | 'journaled' | 'journal_uncertain'>> {
+  const result = await preparePendingRemoval(databaseUrl, projectId, cookie, verifier, target?.environment, input)
+  if (result.state !== 'authorized') return result
+  if (result.value === 'stale') return { state: 'authorized', value: 'stale' }
+  try {
+    await writeRecoveryJournalRecord(storage, target, result.value.recordId, result.value.payload)
+    return { state: 'authorized', value: 'journaled' }
+  } catch {
+    return { state: 'authorized', value: 'journal_uncertain' }
   }
 }

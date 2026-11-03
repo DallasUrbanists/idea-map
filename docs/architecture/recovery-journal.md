@@ -197,11 +197,13 @@ the same database transaction through a restricted database function. It keeps
 the moderator's free-text reason in the private database and uses a non-sensitive
 reason in the journal intent. An older backup and the intent alone cannot recover
 the original free-text reason if the current database is lost; that metadata needs
-separate authorized reconciliation. The transaction does not write the journal
-or remove content. After a known commit, a successful call returns the original
-record ID and canonical intent bytes for the journal writer. A retry of the same
-operation returns the stored bytes, including the original timestamp; keep those
-private and do not infer success from a failed or uncertain call.
+separate authorized reconciliation. After a known commit, a successful call
+returns the original record ID and canonical intent bytes for the journal writer.
+A retry of the same operation returns the stored bytes, including the original
+timestamp. An unwired coordinator can write those bytes to the journal and reports
+an uncertain outcome without reopening the gate. It does not remove content or
+confirm a database mutation. Keep the returned bytes private and do not infer
+success from a failed or uncertain call.
 Granting a web identity general gate updates would also let it reopen the gate;
 verify narrowly scoped grants and inherited permissions before integrating the
 transaction. Direct or older removal entry points must not be able to bypass the

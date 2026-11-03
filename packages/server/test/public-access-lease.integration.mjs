@@ -5,7 +5,7 @@ import { Readable, Writable } from 'node:stream'
 import { test } from 'node:test'
 import pg from 'pg'
 import { acquirePublicAccessLease } from '../dist/public-access-lease.js'
-import { preparePendingRemoval } from '../dist/pending-removal.js'
+import { prepareAndJournalRemoval, preparePendingRemoval } from '../dist/pending-removal.js'
 import { decodeRecoveryRecord, encodeRecoveryIntent } from '../dist/recovery-journal-record.js'
 import { pendingRemovalDatabasePool, runtimeDatabasePool } from '../dist/runtime-database.js'
 import { readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
@@ -80,6 +80,7 @@ test('authorized pending removal closes the gate atomically and retries without 
   const pool = new pg.Pool({ connectionString: url.toString(), max: 6, connectionTimeoutMillis: 2000 })
   let reader, otherReader, pendingOperationId, secondOperationId, restrictedUrl, restrictedPool, roleCreated = false
   const concurrentOperations = []
+  const journalOperations = []
   const role = `gate_runtime_${randomUUID().replaceAll('-', '')}`
   try {
     const actor = (await pool.query('INSERT INTO public.users DEFAULT VALUES RETURNING id')).rows[0].id
@@ -172,6 +173,35 @@ test('authorized pending removal closes the gate atomically and retries without 
     await assert.rejects(prepare(verifier, { reason: 'different synthetic reason' }), /Pending removal unavailable/)
     await assert.rejects(prepare(verifier, { reason: '\ud800' }), /Invalid pending removal/)
     assert.equal((await pool.query('SELECT count(*)::int AS count FROM public.public_access_pending_decisions')).rows[0].count, 1)
+    const objects = new Map()
+    const stagedJournal = lostResponse => ({ bucket: () => ({ file: name => ({ createWriteStream: () => {
+      const chunks = []
+      return new Writable({
+        write(chunk, _encoding, callback) { chunks.push(Buffer.from(chunk)); callback() },
+        final(callback) {
+          if (objects.has(name)) return callback(new Error('synthetic precondition failure'))
+          objects.set(name, Buffer.concat(chunks))
+          callback(lostResponse ? new Error('synthetic lost response') : undefined)
+        },
+      })
+    } }) }) })
+    const uncertainInput = { ...input, operationId: randomUUID(), recordId: randomUUID() }
+    const successfulInput = { ...input, operationId: randomUUID(), recordId: randomUUID() }
+    journalOperations.push(uncertainInput.operationId, successfulInput.operationId)
+    const originalEmulator = process.env.STORAGE_EMULATOR_HOST
+    delete process.env.STORAGE_EMULATOR_HOST
+    try {
+      const stage = (storage, decision) => prepareAndJournalRemoval(url.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, target, storage, decision)
+      assert.deepEqual(await stage(stagedJournal(true), uncertainInput), { state: 'authorized', value: 'journal_uncertain' })
+      assert.deepEqual(await stage(stagedJournal(false), uncertainInput), { state: 'authorized', value: 'journal_uncertain' })
+      assert.deepEqual(await stage(stagedJournal(false), successfulInput), { state: 'authorized', value: 'journaled' })
+    } finally {
+      if (originalEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
+      else process.env.STORAGE_EMULATOR_HOST = originalEmulator
+    }
+    assert.equal(objects.size, 2)
+    assert.ok([...objects.values()].every(value => !value.toString('utf8').includes(input.reason)))
+    assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
     assert.equal((await pool.query("SELECT has_table_privilege('public', 'public.public_access_pending_decisions', 'SELECT') AS allowed")).rows[0].allowed, false)
     const functionName = 'public.prepare_pending_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text)'
     assert.equal((await pool.query('SELECT has_function_privilege($1,$2,$3) AS allowed', ['public', functionName, 'EXECUTE'])).rows[0].allowed, false)
@@ -208,7 +238,7 @@ test('authorized pending removal closes the gate atomically and retries without 
     concurrentOperations.push(...concurrent.map(item => item.operationId))
     const outcomes = await Promise.all(concurrent.map(item => prepare(verifier, item)))
     assert.ok(outcomes.every(result => result.state === 'authorized' && result.value.state === 'pending'))
-    assert.equal((await pool.query('SELECT count(*)::int AS count FROM public.public_access_pending_decisions')).rows[0].count, 4)
+    assert.equal((await pool.query('SELECT count(*)::int AS count FROM public.public_access_pending_decisions')).rows[0].count, 6)
     assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
   } finally {
     await reader?.release().catch(() => {})
@@ -220,6 +250,7 @@ test('authorized pending removal closes the gate atomically and retries without 
     if (pendingOperationId) await pool.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id = $1', [pendingOperationId])
     if (secondOperationId) await pool.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id = $1', [secondOperationId])
     if (concurrentOperations.length) await pool.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id = ANY($1::uuid[])', [concurrentOperations])
+    if (journalOperations.length) await pool.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id = ANY($1::uuid[])', [journalOperations])
     await pool.query('UPDATE public.public_access_gate SET is_open = false WHERE singleton = true')
     if (roleCreated) {
       await pool.query(`REVOKE EXECUTE ON FUNCTION public.lock_active_moderator(text,text), public.prepare_pending_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text) FROM "${role}"`)
