@@ -410,10 +410,12 @@ those dependencies rather than silently discard evidence.
 
 A moderator can create an escalation as a separate blocking hold with a reason
 and an owner who has an active database moderator assignment. The transaction
-locks both assignments and checks the current revision and assessment. The
-escalation remains a hold across later edits and when the owner's assignment is
-revoked; it must be explicitly released. It does not clear or replace an
-ordinary hold. The current record exposes the owner's internal user ID for a
+locks both assignments and checks the current revision and assessment. It saves
+the nullable assessment identity with a revision-bound foreign key and protects
+that evidence from later changes, including reassessment and hold release. A new
+escalation without an assessment records null. The escalation remains a hold
+across later edits and when the owner's assignment is revoked; it must be
+explicitly released. It does not clear or replace an ordinary hold. The current record exposes the owner's internal user ID for a
 future authorized interface; it does not prove the owner can still sign in.
 Notifications, a usable interface, and an atomic owner-transfer process remain
 open. Do not enable live escalations until those processes and privacy controls
@@ -426,6 +428,13 @@ mixed-version migration or rollback, preserve the records, and review index
 locking and compatibility. A rollback to the former unique index also requires
 reviewing any ordinary and escalation holds on the same revision; do not drop
 or silently release them to make rollback succeed.
+
+The additive assessment-evidence migration preserves existing holds with null
+evidence; that legacy value means unknown, not proof that no assessment existed.
+It does not infer evidence from the current assessment. Preserve the column and
+its referenced assessments during rollback, and stop escalation writes before
+restoring an older function that does not record evidence. The replacement
+functions retain their existing authorization and locking behavior.
 
 A separately permissioned, unscheduled retention primitive removes released hold
 metadata only after 90 days and only when no legal hold applies. Active holds

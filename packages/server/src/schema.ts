@@ -162,6 +162,7 @@ export const reviewGates = pgTable('review_gates', {
 export const moderatorHolds = pgTable('moderator_holds', {
   id: uuid('id').primaryKey().defaultRandom(),
   revisionId: uuid('revision_id').notNull().references(() => ideaRevisions.id),
+  assessmentId: text('assessment_id'),
   kind: text('kind').notNull().default('hold'),
   ownerId: uuid('owner_id').references(() => users.id),
   placedBy: uuid('placed_by').notNull().references(() => users.id),
@@ -171,6 +172,7 @@ export const moderatorHolds = pgTable('moderator_holds', {
   releasedAt: timestamp('released_at', { withTimezone: true }),
   releaseReason: text('release_reason'),
 }, table => [
+  foreignKey({ columns: [table.assessmentId, table.revisionId], foreignColumns: [revisionAssessments.id, revisionAssessments.revisionId] }),
   uniqueIndex('moderator_holds_active_revision_kind_key').on(table.revisionId, table.kind).where(sql`${table.releasedAt} IS NULL`),
   check('moderator_holds_kind_owner', sql`(${table.kind} = 'hold' AND ${table.ownerId} IS NULL) OR (${table.kind} = 'escalation' AND ${table.ownerId} IS NOT NULL)`),
   check('moderator_holds_reason', sql`length(trim(${table.reason})) > 0 AND octet_length(${table.reason}) <= 1000`),

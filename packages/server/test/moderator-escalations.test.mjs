@@ -33,7 +33,13 @@ test('owned escalation holds survive edits, respect independent blocks, and reta
     const legacyIdea = (await pool.query('INSERT INTO ideas(author_contact_id) VALUES ($1) RETURNING id', [contact])).rows[0].id
     const legacyRevision = (await pool.query("INSERT INTO idea_revisions(idea_id,version,content) VALUES ($1,1,'{}') RETURNING id", [legacyIdea])).rows[0].id
     const legacyHold = (await pool.query("INSERT INTO moderator_holds(revision_id,placed_by,reason) VALUES ($1,$2,'existing synthetic hold') RETURNING id", [legacyRevision, actor])).rows[0].id
+    journal.entries = JSON.parse(await readFile(resolve('migrations/meta/_journal.json'), 'utf8')).entries.slice(0, 24)
+    await writeFile(journalPath, JSON.stringify(journal))
+    await migrate(drizzle(pool), { migrationsFolder: migrations })
+    const legacyEscalation = (await pool.query("INSERT INTO moderator_holds(revision_id,kind,owner_id,placed_by,reason) VALUES ($1,'escalation',$2,$2,'legacy synthetic escalation') RETURNING id", [legacyRevision, actor])).rows[0].id
     await migrate(drizzle(pool), { migrationsFolder: 'migrations' })
+    await migrate(drizzle(pool), { migrationsFolder: 'migrations' })
+    assert.equal((await pool.query('SELECT assessment_id FROM moderator_holds WHERE id=$1', [legacyEscalation])).rows[0].assessment_id, null)
     assert.deepEqual((await pool.query('SELECT kind,owner_id,reason FROM moderator_holds WHERE id=$1', [legacyHold])).rows[0], { kind: 'hold', owner_id: null, reason: 'existing synthetic hold' })
     await pool.query("INSERT INTO identities(user_id,provider,subject) VALUES ($1,'firebase:demo-idea-map','moderator')", [actor])
     await pool.query("INSERT INTO moderator_assignments(user_id,granted_by,grant_reason) VALUES ($1,$1,'synthetic actor'),($2,$1,'synthetic owner')", [actor, owner])
@@ -58,11 +64,27 @@ test('owned escalation holds survive edits, respect independent blocks, and reta
     assert.deepEqual(await placeModeratorHold(...args, item.input), { state: 'authorized', value: 'placed' })
     assert.deepEqual(await escalateModerationRevision(...args, item.input), { state: 'authorized', value: 'escalated' })
     assert.deepEqual(await escalateModerationRevision(...args, item.input), { state: 'authorized', value: 'already-escalated' })
-    const holds = (await pool.query('SELECT id,kind,owner_id,placed_by FROM moderator_holds WHERE revision_id=$1 ORDER BY kind', [item.revision])).rows
+    const holds = (await pool.query('SELECT id,kind,owner_id,placed_by,assessment_id FROM moderator_holds WHERE revision_id=$1 ORDER BY kind', [item.revision])).rows
     const escalation = holds.find(row => row.kind === 'escalation')
     const ordinary = holds.find(row => row.kind === 'hold')
     assert.equal(escalation.owner_id, owner)
     assert.equal(escalation.placed_by, actor)
+    assert.equal(escalation.assessment_id, item.input.assessmentId)
+    const reassessment = await recordAcceptedAssessment(pool, { id: 'escalation-reassessment', revisionId: item.revision, fingerprint: 'c'.repeat(64), waitMilliseconds: 0, shortcutRequested: false })
+    assert.equal((await pool.query('SELECT assessment_id FROM moderator_holds WHERE id=$1', [escalation.id])).rows[0].assessment_id, item.input.assessmentId)
+    const originalAssessment = item.input.assessmentId
+    item.input.assessmentId = 'escalation-reassessment'
+    item.job = reassessment.jobIds[0]
+    assert.deepEqual(await escalateModerationRevision(...args, item.input), { state: 'authorized', value: 'already-escalated' })
+    await assert.rejects(pool.query("UPDATE moderator_holds SET assessment_id=$2,released_by=$3,released_at=clock_timestamp(),release_reason='Synthetic release' WHERE id=$1", [escalation.id, item.input.assessmentId, actor]), /Only release/)
+    assert.equal((await pool.query('SELECT assessment_id FROM moderator_holds WHERE id=$1', [escalation.id])).rows[0].assessment_id, originalAssessment)
+
+    const unassessedIdea = (await pool.query('INSERT INTO ideas(author_contact_id) VALUES ($1) RETURNING id', [contact])).rows[0].id
+    const unassessed = (await pool.query("INSERT INTO idea_revisions(idea_id,version,content) VALUES ($1,1,'{}') RETURNING id", [unassessedIdea])).rows[0].id
+    await assert.rejects(pool.query("INSERT INTO moderator_holds(revision_id,assessment_id,kind,owner_id,placed_by,reason) VALUES ($1,$2,'escalation',$3,$3,'Synthetic mismatched evidence')", [unassessed, originalAssessment, actor]), { code: '23503' })
+    assert.deepEqual(await escalateModerationRevision(...args, { ...item.input, revisionId: unassessed, assessmentId: null }), { state: 'authorized', value: 'escalated' })
+    await recordAcceptedAssessment(pool, { id: 'after-unassessed-escalation', revisionId: unassessed, fingerprint: 'd'.repeat(64), waitMilliseconds: 0, shortcutRequested: false })
+    assert.equal((await pool.query("SELECT assessment_id FROM moderator_holds WHERE revision_id=$1 AND kind='escalation'", [unassessed])).rows[0].assessment_id, null)
     await assert.rejects(pool.query('UPDATE moderator_holds SET owner_id=$2 WHERE id=$1', [escalation.id, outsider]), /Only release/)
     assert.deepEqual(await releaseModeratorHold(...args, { ...item.input, holdId: ordinary.id }), { state: 'authorized', value: 'released' })
     await assert.rejects(executeModerationJob(pool, item.job, async () => 'allow'), /on hold/)
@@ -81,6 +103,7 @@ test('owned escalation holds survive edits, respect independent blocks, and reta
     } finally { await ownerLock.query('ROLLBACK'); ownerLock.release() }
     await assert.rejects(executeModerationJob(pool, newer.jobIds[0], async () => 'allow'), /on hold/)
     assert.deepEqual(await releaseModeratorHold(...args, { ...item.input, revisionId: edited, assessmentId: 'escalation-after-edit', holdId: escalation.id }), { state: 'authorized', value: 'released' })
+    assert.equal((await pool.query('SELECT assessment_id FROM moderator_holds WHERE id=$1', [escalation.id])).rows[0].assessment_id, originalAssessment)
     assert.equal(await executeModerationJob(pool, newer.jobIds[0], async () => 'allow'), 'completed')
 
     const restrictedItem = await create('restricted-escalation')

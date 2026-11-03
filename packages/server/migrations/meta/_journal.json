@@ -169,6 +169,13 @@
       "when": 1793656321814,
       "tag": "0023_moderator_escalation",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793671878721,
+      "tag": "0024_escalation_assessment_evidence",
+      "breakpoints": true
     }
   ]
 }
