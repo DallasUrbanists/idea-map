@@ -12,6 +12,7 @@
   "devDependencies": { "@types/pg": "8.15.6" },
   "scripts": {
     "test": "tsc --build && node --test test/*.test.mjs",
-    "test:integration": "tsc --build && node --test --test-concurrency=1 test/worker-database.integration.mjs test/recovery.integration.mjs test/inspect-job.integration.mjs test/operations-snapshot.integration.mjs"
+    "test:integration": "tsc --build && node --test --test-concurrency=1 test/worker-database.integration.mjs test/recovery.integration.mjs test/inspect-job.integration.mjs test/operations-snapshot.integration.mjs",
+    "test:delivery": "tsc --build && node --test test/task-delivery.integration.mjs"
   }
 }
