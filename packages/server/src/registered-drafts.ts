@@ -51,14 +51,15 @@ export async function createRegisteredDraft(context: Context, creationKey: strin
   const identity = await session(context)
   if (identity.state !== 'verified') return identity
   return transact(runtimeDatabasePool(context.databaseUrl), async client => {
-    await client.query(`INSERT INTO registered_drafts(provider,subject,creation_key,creation_digest,content,expected_media)
-      VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (provider,subject,creation_key) DO NOTHING`,
+    await client.query(`INSERT INTO registered_drafts(provider,subject,creation_key,creation_digest,content,expected_media,revision)
+      VALUES ($1,$2,$3,$4,$5,$6,1) ON CONFLICT (provider,subject,creation_key) DO NOTHING`,
     [`firebase:${context.projectId}`, identity.uid, creationKey, creationDigest, JSON.stringify(snapshot), snapshot.captions.length])
-    const row = await client.query<{ id: string, revision: number, creation_digest: string }>(
-      'SELECT id,revision,creation_digest FROM registered_drafts WHERE provider=$1 AND subject=$2 AND creation_key=$3 FOR UPDATE', [`firebase:${context.projectId}`, identity.uid, creationKey])
+    const row = await client.query<{ id: string, creation_digest: string }>(
+      'SELECT id,creation_digest FROM registered_drafts WHERE provider=$1 AND subject=$2 AND creation_key=$3 FOR UPDATE', [`firebase:${context.projectId}`, identity.uid, creationKey])
     if (row.rows[0].creation_digest !== creationDigest) throw new Error('Draft creation identity conflicts with existing input')
     if (!await current(context, identity)) throw new Error('Identity changed during draft operation')
-    return { state: 'ok', value: { id: row.rows[0].id, revision: row.rows[0].revision } }
+    // Draft creation always starts at revision 1, even after later revisions.
+    return { state: 'ok', value: { id: row.rows[0].id, revision: 1 } }
   })
 }
 /** Replace an unfrozen draft revision; stale and frozen requests cannot change its manifest. */
