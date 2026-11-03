@@ -48,6 +48,37 @@ test('assessment receipt, deadline, publication and recovery remain revision saf
     const delayed = { id: 'delayed-assessment', revisionId: pending.revision, fingerprint, waitMilliseconds: 86_400_000, shortcutRequested: true }
     const saved = await recordAcceptedAssessment(pool, delayed)
     assert.equal(saved.deadline.getTime() - saved.receivedAt.getTime(), 86_400_000)
+    // Conflicting retries must not alter either eligible revision or its durable work.
+    const otherEligible = await createIdea()
+    await recordAcceptedAssessment(pool, { ...delayed, id: 'other-eligible-assessment', revisionId: otherEligible.revision,
+      waitMilliseconds: null, shortcutRequested: false })
+    const revisionIds = [pending.revision, otherEligible.revision]
+    const durableState = async () => ({
+      ideas: (await pool.query('SELECT * FROM ideas WHERE id = ANY($1::uuid[]) ORDER BY id', [[pending.idea, otherEligible.idea]])).rows,
+      revisions: (await pool.query('SELECT * FROM idea_revisions WHERE id = ANY($1::uuid[]) ORDER BY id', [revisionIds])).rows,
+      assessments: (await pool.query('SELECT * FROM revision_assessments WHERE revision_id = ANY($1::uuid[]) ORDER BY id', [revisionIds])).rows,
+      gates: (await pool.query('SELECT * FROM review_gates WHERE revision_id = ANY($1::uuid[]) ORDER BY revision_id', [revisionIds])).rows,
+      jobs: (await pool.query('SELECT * FROM jobs WHERE revision_id = ANY($1::uuid[]) ORDER BY id', [revisionIds])).rows,
+      outbox: (await pool.query(`SELECT o.* FROM outbox o JOIN jobs j ON j.id = o.job_id
+        WHERE j.revision_id = ANY($1::uuid[]) ORDER BY o.id`, [revisionIds])).rows,
+    })
+    const beforeConflicts = await durableState()
+    assert.equal(beforeConflicts.assessments.length, 2)
+    assert.ok(beforeConflicts.assessments.every(assessment => assessment.current))
+    assert.equal(beforeConflicts.jobs.length, 2)
+    assert.equal(beforeConflicts.outbox.length, 2)
+    for (const [field, change] of [
+      ['revisionId', { revisionId: otherEligible.revision }],
+      ['waitMilliseconds', { waitMilliseconds: 43_200_000 }],
+      ['shortcutRequested', { shortcutRequested: false }],
+    ]) {
+      await assert.rejects(recordAcceptedAssessment(pool, { ...delayed, ...change }),
+        /Assessment identity conflicts with existing evidence/, field)
+      assert.deepEqual(await durableState(), beforeConflicts, `${field} conflict preserves durable state`)
+      assert.deepEqual(await recordAcceptedAssessment(pool, delayed), { ...saved, inserted: false },
+        `${field} conflict leaves the original assessment replayable`)
+      assert.deepEqual(await durableState(), beforeConflicts, `${field} replay preserves durable state`)
+    }
     const jobs = (await pool.query('SELECT id, kind FROM jobs WHERE assessment_id = $1', [delayed.id])).rows
     const standard = jobs.find(job => job.kind === 'moderation-deadline').id
     const shortcut = jobs.find(job => job.kind === 'moderation-shortcut').id
