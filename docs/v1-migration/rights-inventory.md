@@ -12,6 +12,7 @@ user content, datasets, trademarks, and third-party code have separate rights.
 The following contents links navigate within this guide:
 
 - [Evidence and boundaries](#evidence-and-boundaries)
+- [Snapshot comparison](#snapshot-comparison)
 - [Source and third-party inventory](#source-and-third-party-inventory)
 - [Review and release gates](#review-and-release-gates)
 
@@ -34,6 +35,25 @@ evidence for assessing any transfer.
 Existing submissions require their own original-terms and consent review.
 Permission for software reuse does not establish permission to import user
 content.
+
+## Snapshot comparison
+
+For this inventory, the tracked file blobs in the pinned v1 staging revision
+were compared with those in Idea Map commit
+[`08eea99207fedafbb01bac59208fcd75b6147ccb`][idea-map-snapshot]. The recursive
+Git trees contained 428 and 357 file entries respectively, with no identical
+blob IDs across the two snapshots. This is a byte-for-byte comparison of tracked
+files, not proof that code or assets were never adapted, copied in part, or
+introduced in another revision.
+
+The v1 Git history reachable from the pinned revision lists Hexel Colorado as
+the author name on all 176 non-merge commits. Commit author names do not prove
+ownership of every contribution or embedded third-party item; the maintainer's
+authorization and source-specific evidence remain necessary for reuse.
+
+These observations do not cover untracked files, external services, dependency
+contents, or later commits. A future copy or adaptation still needs the
+item-specific source and permission review described below.
 
 ## Source and third-party inventory
 
@@ -96,6 +116,7 @@ not justify guessing or weakening a notice. This inventory transfers no v1 data
 or assets.
 
 [ee0552e3348a286b69e2540aa332217cdecd28cb]: https://github.com/DallasUrbanists/improvement-map/tree/ee0552e3348a286b69e2540aa332217cdecd28cb
+[idea-map-snapshot]: https://github.com/DallasUrbanists/idea-map/tree/08eea99207fedafbb01bac59208fcd75b6147ccb
 [v1-readme]: https://github.com/DallasUrbanists/improvement-map/blob/ee0552e3348a286b69e2540aa332217cdecd28cb/README.md
 [93]: https://github.com/DallasUrbanists/idea-map/issues/93
 [live-location-source]: https://github.com/DallasUrbanists/improvement-map/blob/ee0552e3348a286b69e2540aa332217cdecd28cb/src/services/liveLocationData.js

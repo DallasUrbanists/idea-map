@@ -39,7 +39,7 @@ it does not clear those candidates for transfer. The
 [Streetmix package guidance](../../packages/streetmix/README.md#provider-terms-and-release-boundary)
 describes separate provider, software, and content considerations.
 
-For submitted text and photos, use the separate
+For submitted text and photos, you should use the separate
 [Terms of Use](../policies/terms-of-use-policy.md#ownership-and-service-license).
 The terms for a new submission do not establish permission to import an existing
 submission; review its original terms and any necessary consent separately.
@@ -54,8 +54,8 @@ license texts and notices in the distributed artifacts and verify visible
 attribution in the relevant outputs.
 
 The [pnpm guide](../architecture/pnpm.md#license-review) explains how to
-generate dependency license metadata. Treat that metadata as a starting point:
-inspect the actual shipped files and their license texts, including material
-included by build tooling, rather than assuming a package's declared license
-clears every file. Resolve or exclude an input when its rights or required
-notices cannot be verified.
+generate dependency license metadata. Maintainers should treat that metadata as
+a starting point and inspect the actual shipped files and their license texts,
+including material included by build tooling, rather than assuming a package's
+declared license clears every file. Maintainers should resolve or exclude an
+input when its rights or required notices cannot be verified.
