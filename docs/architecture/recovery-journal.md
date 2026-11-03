@@ -48,7 +48,8 @@ caller-supplied record ID and a create-only precondition, and treats provider
 errors and timeouts as uncertain. The summary conservatively identifies ideas
 in removal and hold-placement intents, flags unconfirmed operations, placements
 without a confirmed hold ID, and all hold releases for authorized review, and
-reports confirmations without intents. It
+reports confirmations without intents. It exposes associated hold IDs only as
+unverified evidence. It
 never establishes inventory coverage, removes a hold, changes a database, or
 authorizes public access. Its output contains private identifiers and must not
 be written to public logs. These components do not discover records, guard

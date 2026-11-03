@@ -18,7 +18,7 @@ test('recovery summary protects uncertain removals and holds and never applies a
     confirmation(3), confirmation(4),
   ]
   assert.deepEqual(summarizeUnverifiedRecovery(records, 'dev'), {
-    removals: [idea], holdPlacements: [idea], reviewOperations: [operation(2), operation(3)],
+    removals: [idea], holdPlacements: [idea], holdIdentities: [], reviewOperations: [operation(2), operation(3)],
     unmatchedConfirmations: 1, coverageVerified: false,
   })
   assert.equal(summarizeUnverifiedRecovery([], 'dev').coverageVerified, false)
@@ -37,7 +37,10 @@ test('hold placement confirmations preserve the committed hold ID and reject amb
   const holdId = '44444444-4444-4444-8444-444444444444'
   const held = id => encodeRecoveryHoldConfirmation(operation(id), 'dev', '2026-11-03T12:01:00.000Z', holdId)
   assert.deepEqual(summarizeUnverifiedRecovery([intent(1, hold), confirmation(1)], 'dev').reviewOperations, [operation(1)])
-  assert.deepEqual(summarizeUnverifiedRecovery([intent(1, hold), held(1)], 'dev').reviewOperations, [])
+  const result = summarizeUnverifiedRecovery([intent(1, hold), held(1)], 'dev')
+  assert.deepEqual(result.reviewOperations, [])
+  assert.deepEqual(result.holdIdentities, [{ operationId: operation(1), ideaId: idea, holdId }])
+  assert.equal(result.coverageVerified, false)
   assert.throws(() => summarizeUnverifiedRecovery([intent(1, hold), held(1), intent(2, hold), held(2)], 'dev'), /ambiguous/)
   assert.throws(() => summarizeUnverifiedRecovery([intent(1, { kind: 'removal', classification: 'other', reason: 'synthetic' }), held(1)], 'dev'), /ambiguous/)
 })

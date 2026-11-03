@@ -23,12 +23,14 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
   const holdPlacements = new Set<string>()
   const reviewOperations = new Set<string>()
   const placedHoldIds = new Set<string>()
+  const holdIdentities: { operationId: string, ideaId: string, holdId: string }[] = []
   for (const [operationId, intent] of intents) {
     const confirmation = confirmations.get(operationId)
     if (confirmation && Date.parse(confirmation.confirmedAt) < Date.parse(intent.authorizedAt)) throw new Error('Recovery inventory is ambiguous')
     if (confirmation?.recordType === 'hold_commit_confirmation') {
       if (intent.decision.kind !== 'hold_placement' || placedHoldIds.has(confirmation.holdId)) throw new Error('Recovery inventory is ambiguous')
       placedHoldIds.add(confirmation.holdId)
+      holdIdentities.push({ operationId, ideaId: intent.ideaId, holdId: confirmation.holdId })
     }
     if (intent.decision.kind === 'removal') removals.add(intent.ideaId)
     if (intent.decision.kind === 'hold_placement') holdPlacements.add(intent.ideaId)
@@ -39,6 +41,7 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
   }
   let unmatchedConfirmations = 0
   for (const operationId of confirmations.keys()) if (!intents.has(operationId)) unmatchedConfirmations++
-  return { removals: [...removals].sort(), holdPlacements: [...holdPlacements].sort(),
+  holdIdentities.sort((left, right) => left.operationId < right.operationId ? -1 : left.operationId > right.operationId ? 1 : 0)
+  return { removals: [...removals].sort(), holdPlacements: [...holdPlacements].sort(), holdIdentities,
     reviewOperations: [...reviewOperations].sort(), unmatchedConfirmations, coverageVerified: false as const }
 }
