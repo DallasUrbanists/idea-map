@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "legal_hold_assignments_active_director_key" ON "legal_hold_assignments" USING btree ("authority") WHERE "legal_hold_assignments"."authority" = 'executive_director' AND "legal_hold_assignments"."revoked_at" IS NULL;
