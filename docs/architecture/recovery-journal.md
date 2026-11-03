@@ -188,11 +188,17 @@ across transactions. Holding a client for an outer render while the nested API
 request needs another client can also exhaust that pool under concurrent load.
 Verify the selected coordination mechanism against the actual pooler and the
 complete render path, including a queued removal and concurrent page requests.
-The current Nitro runtime passes server-side request context to its internal
-fetches, which may allow a nested request to reuse an outer request's guarded
-transaction. Treat that as an implementation option, not a verified boundary;
-test context propagation and cleanup against the deployed runtime. Never trust a
+A synthetic local-fetch probe against the built Nitro runtime did not carry a
+custom server-side context object into the nested request. Do not assume an inner
+request can reuse an outer request's guarded transaction. Test any alternative
+context propagation and cleanup against the deployed runtime. Never trust a
 client-supplied header as proof that a request holds a guard.
+A synthetic probe of two concurrent built suggestion-page renders preserved
+distinct Node `AsyncLocalStorage` values when the outer request explicitly wrapped
+its internal fetch. It used a database fake and a Windows module-URL workaround.
+That result does not show that a middleware guards the full rendered response or
+that every internal fetch uses the same context. Verify actual database locks,
+the hosted pooler, and concurrent and disconnected requests before relying on it.
 
 The gate and pending state need a guarded transaction and must cover every
 public read, projection, and media delivery path. A restored older database may
