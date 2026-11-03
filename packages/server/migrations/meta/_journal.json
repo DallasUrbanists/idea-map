@@ -197,6 +197,20 @@
       "when": 1793671880721,
       "tag": "0027_moderator_removal_control",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1793671881721,
+      "tag": "0028_escalation_transfers",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1793671882721,
+      "tag": "0029_escalation_transfer_control",
+      "breakpoints": true
     }
   ]
 }
