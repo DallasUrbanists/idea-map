@@ -179,7 +179,7 @@ test('closed gate blocks idea pages, APIs, and media while health remains availa
   }
 })
 
-test('a waiting gate closure aborts an in-flight synthetic media fetch', async () => {
+test('a committed gate closure aborts an in-flight synthetic media fetch before drain', async () => {
   const bytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
   let mediaResponse, markStarted
   const started = new Promise(resolve => { markStarted = resolve })
@@ -210,22 +210,17 @@ test('a waiting gate closure aborts an in-flight synthetic media fetch', async (
     request = httpGet(`${launched.base}/api/media/${previewId}`)
     const disconnected = new Promise(resolve => request.once('error', resolve))
     await Promise.race([started, delay(4000).then(() => { throw new Error('Synthetic media fetch did not start') })])
+    // Close first without waiting for the active read lease. The independently
+    // committed state must prevent later reads while this response drains.
+    await writer.query('UPDATE public.public_access_gate SET is_open=false WHERE singleton=true')
+    assert.equal((await fetch(`${launched.base}/api/ideas/${approved}`)).status, 503)
+    await Promise.race([disconnected, delay(2000).then(() => { throw new Error('Synthetic client did not disconnect') })])
     await writer.query('BEGIN')
     await writer.query("SET LOCAL lock_timeout = '5s'")
-    const pid = (await writer.query('SELECT pg_backend_pid() AS pid')).rows[0].pid
     closing = writer.query('SELECT pg_catalog.pg_advisory_xact_lock(726421, 391)')
     closing.catch(() => {})
-    let waiting = false
-    for (let attempt = 0; attempt < 50; attempt++) {
-      waiting = (await db.query('SELECT EXISTS(SELECT 1 FROM pg_locks WHERE pid=$1 AND NOT granted) AS waiting', [pid])).rows[0].waiting
-      if (waiting) break
-      await delay(20)
-    }
-    assert.equal(waiting, true, 'the gate writer did not wait for the in-flight fetch')
     await closing
-    await Promise.race([disconnected, delay(2000).then(() => { throw new Error('Synthetic client did not disconnect') })])
     mediaResponse.end(bytes)
-    await writer.query('UPDATE public.public_access_gate SET is_open=false WHERE singleton=true')
     await writer.query('COMMIT')
     assert.equal((await fetch(`${launched.base}/api/ideas/${approved}`)).status, 503)
   } finally {

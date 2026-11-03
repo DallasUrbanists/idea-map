@@ -16,8 +16,8 @@ type PendingRemovalInput = {
 /**
  * Persist an authorized pending removal and close the gate in one transaction.
  * This is unwired: it does not write the journal, remove content, prevent SQL
- * bypasses, or reopen access. A caller must retain both IDs and retry the same
- * operation after an uncertain result.
+ * bypasses, drain active readers, or reopen access. A caller must retain both
+ * IDs and retry the same operation after an uncertain result.
  */
 export async function preparePendingRemoval(databaseUrl: string, projectId: string, cookie: string,
   verifier: RegisteredSessionVerifier, environment: 'dev' | 'prod', input: PendingRemovalInput): Promise<ModeratorAccess<PendingResult>> {

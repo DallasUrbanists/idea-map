@@ -55,7 +55,9 @@ BEGIN
      document->>'authorizedAt' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$' OR
      (document - ARRAY['version','recordType','operationId','environment','ideaId','actorId','authorizedAt','decision']) <> '{}'::jsonb OR
      ((document->'decision') - ARRAY['kind','classification','reason']) <> '{}'::jsonb THEN RAISE EXCEPTION 'Invalid pending removal'; END IF;
-  PERFORM pg_catalog.pg_advisory_xact_lock(726421, 391);
+  -- Commit the closed gate and pending decision before waiting for readers.
+  -- A later mutation must independently take the exclusive advisory lock and
+  -- drain all protected responses before applying the removal.
   SELECT is_open INTO gate_open FROM public.public_access_gate WHERE singleton = true FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Public access unavailable'; END IF;
   SELECT * INTO previous FROM public.public_access_pending_decisions WHERE operation_id = operation_id_value FOR UPDATE;

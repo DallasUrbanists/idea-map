@@ -4,7 +4,7 @@ import { runtimeDatabasePool } from './runtime-database.js'
 // Transaction-scoped locks work with transaction pooling. Every guarded reader
 // and removal writer must use this same namespace before this can be relied on.
 const sharedLock = 'SELECT pg_catalog.pg_advisory_xact_lock_shared(726421, 391)'
-const waitingCloser = `SELECT EXISTS (
+const accessStillValid = `SELECT (SELECT is_open FROM public.public_access_gate WHERE singleton = true) AS is_open, EXISTS (
   SELECT 1 FROM pg_catalog.pg_locks
   WHERE locktype = 'advisory' AND database = (SELECT oid FROM pg_catalog.pg_database WHERE datname = pg_catalog.current_database())
     AND classid = 726421::oid AND objid = 391::oid AND objsubid = 2 AND mode = 'ExclusiveLock' AND NOT granted
@@ -45,8 +45,8 @@ export async function acquirePublicAccessLease(pool: pg.Pool): Promise<PublicAcc
     const timer = setInterval(() => {
       if (checking || controller.signal.aborted) return
       checking = true
-      void client.query<{ closing: boolean }>(waitingCloser).then(status => {
-        if (status.rows.length !== 1 || status.rows[0]?.closing !== false) controller.abort()
+      void client.query<{ is_open: boolean | null, closing: boolean }>(accessStillValid).then(status => {
+        if (status.rows.length !== 1 || status.rows[0]?.is_open !== true || status.rows[0]?.closing !== false) controller.abort()
       }, () => controller.abort()).finally(() => { checking = false })
     }, 250)
     timer.unref()

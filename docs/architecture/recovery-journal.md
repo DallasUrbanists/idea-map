@@ -188,10 +188,11 @@ primitive that holds a shared transaction-scoped advisory lock and refuses a
 missing, closed, or unreadable gate. It reports a lost database connection through
 an abort signal. The caller must hold the lease through delivery and stop the
 response when the signal aborts. The in-progress web guard uses this primitive for
-current idea, suggestion, and media routes. A reader periodically checks for a
-waiting gate-closing advisory lock and aborts its response when one is present.
+current idea, suggestion, and media routes. A reader periodically checks the gate
+and for a waiting exclusive advisory lock, and aborts its response when the gate
+is closed or a lock is waiting.
 Pending removals use a reserved one-client pool so occupied public readers cannot
-prevent the writer from queuing. This adds to the documented connection budget.
+prevent the writer from closing the gate. This adds to the documented connection budget.
 The guard still lacks reviewed runtime grants, measured drain timing, and complete
 coverage of future serving paths. It is not sufficient to enable live removals.
 The check runs while each protected response is active and shares its database
@@ -199,9 +200,14 @@ client with that response's queries. A long-running query or delayed connection
 can delay detection. Measure query volume and worst-case drain time under load;
 the polling interval alone is not an immediate-removal guarantee.
 
-An unwired pending-removal transaction verifies the moderator, waits for the
-exclusive transaction lock, closes the gate, and stores the pending decision in
-the same database transaction through a restricted database function. It keeps
+An unwired pending-removal transaction verifies the moderator, closes the gate,
+and stores the pending decision in the same database transaction through a
+restricted database function. It does this without waiting for active readers,
+so the committed closure survives termination while they drain. A later removal
+transaction must acquire the exclusive advisory lock and drain those readers
+before changing the idea. That drain and mutation are not yet implemented. A
+reader can still deliver data between the closure and its next check, so this
+ordering alone does not establish immediate removal. It keeps
 the moderator's free-text reason in the private database and uses a non-sensitive
 reason in the journal intent. An older backup and the intent alone cannot recover
 the original free-text reason if the current database is lost; that metadata needs

@@ -104,19 +104,14 @@ test('authorized pending removal closes the gate atomically and retries without 
     assert.equal((await pool.query('SELECT count(*)::int AS count FROM public.public_access_pending_decisions')).rows[0].count, 0)
     reader = await acquirePublicAccessLease(runtimeDatabasePool(url.toString()))
     otherReader = await acquirePublicAccessLease(runtimeDatabasePool(url.toString()))
-    const closing = prepare()
-    closing.catch(() => {})
-    let waiting = false
-    for (let attempt = 0; attempt < 50; attempt++) {
-      waiting = (await pool.query("SELECT EXISTS(SELECT 1 FROM pg_locks WHERE locktype='advisory' AND NOT granted) AS waiting")).rows[0].waiting
-      if (waiting) break
-      await new Promise(resolve => setTimeout(resolve, 20))
-    }
-    assert.equal(waiting, true)
+    // The pending decision and gate commit even while readers still hold their
+    // shared locks. They must not require the later exclusive drain to finish.
+    const prepared = await prepare()
+    assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
+    await assert.rejects(acquirePublicAccessLease(pool), /Public access unavailable/)
     await waitForAborts(reader.signal, otherReader.signal)
     await assert.rejects(reader.release(), /Public access unavailable/)
     await assert.rejects(otherReader.release(), /Public access unavailable/)
-    const prepared = await closing
     assert.equal(prepared.state, 'authorized')
     assert.equal(prepared.value.state, 'pending')
     assert.equal(prepared.value.recordId, input.recordId)
