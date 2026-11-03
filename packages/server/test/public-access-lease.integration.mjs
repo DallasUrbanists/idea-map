@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import { randomUUID } from 'node:crypto'
-import { Writable } from 'node:stream'
+import { Readable, Writable } from 'node:stream'
 import { test } from 'node:test'
 import pg from 'pg'
 import { acquirePublicAccessLease } from '../dist/public-access-lease.js'
 import { preparePendingRemoval } from '../dist/pending-removal.js'
 import { decodeRecoveryRecord, encodeRecoveryIntent } from '../dist/recovery-journal-record.js'
 import { runtimeDatabasePool } from '../dist/runtime-database.js'
-import { writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
+import { readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
 
 const url = new URL(process.env.TEST_DATABASE_URL ?? 'postgres://invalid.invalid/invalid')
 if (!['127.0.0.1', 'localhost'].includes(url.hostname) || url.pathname !== '/idea_map_test_public_gate') {
@@ -138,6 +138,15 @@ test('authorized pending removal closes the gate atomically and retries without 
       await assert.rejects(writeRecoveryJournalRecord(journal(true), target, prepared.value.recordId, prepared.value.payload), /outcome is uncertain/)
       assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
       await assert.rejects(writeRecoveryJournalRecord(journal(false), target, retried.value.recordId, retried.value.payload), /outcome is uncertain/)
+      const independentReader = { bucket: () => ({ file: () => ({ interceptors: [], createReadStream: () => {
+        const stream = Readable.from([stored])
+        process.nextTick(() => stream.emit('response', { toJSON: () => ({ headers: {
+          'x-goog-stored-content-encoding': 'identity', 'x-goog-hash': 'crc32c=AAAAAA==',
+        } }) }))
+        return stream
+      } }) }) }
+      const observed = await readRecoveryJournalRecord(independentReader, target, prepared.value.recordId, '101')
+      assert.deepEqual(Buffer.from(observed), Buffer.from(retried.value.payload))
     } finally {
       if (emulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
       else process.env.STORAGE_EMULATOR_HOST = emulator
