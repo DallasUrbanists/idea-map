@@ -41,6 +41,7 @@ test('moderator review and actions verify emulator sessions, authorization and r
     await pool.query(`GRANT EXECUTE ON FUNCTION public.read_moderator_revision(text,text,uuid) TO "${role}"`)
     await pool.query(`GRANT EXECUTE ON FUNCTION public.approve_moderation_revision(text,text,uuid,text,text), public.reject_moderation_revision(text,text,uuid,text,text), public.apply_moderator_change_request(text,text,text,uuid,text,uuid,text) TO "${role}"`)
     await pool.query(`GRANT EXECUTE ON FUNCTION public.apply_moderator_hold(text,text,text,uuid,text,uuid,text) TO "${role}"`)
+    await pool.query(`GRANT EXECUTE ON FUNCTION public.escalate_moderation_revision(text,text,uuid,text,uuid,text), public.transfer_moderator_escalation(text,text,uuid,uuid,text,integer,uuid,text) TO "${role}"`)
     const contact = (await pool.query("INSERT INTO contacts(normalized_email) VALUES ('private-contact@example.invalid') RETURNING id")).rows[0].id
     const idea = (await pool.query('INSERT INTO ideas(author_contact_id) VALUES ($1) RETURNING id', [contact])).rows[0].id
     const revision = (await pool.query("INSERT INTO idea_revisions(idea_id,version,content) VALUES ($1,1,'{\"text\":\"synthetic pending content\"}') RETURNING id", [idea])).rows[0].id
@@ -122,6 +123,19 @@ test('moderator review and actions verify emulator sessions, authorization and r
     const holdId = heldReview.activeHolds[0].id
     assert.equal((await action({ ...nextDecision, action: 'release-hold', holdId })).status, 200)
     assert.equal((await action({ ...nextDecision, action: 'release-hold', holdId })).status, 409)
+    await pool.query("INSERT INTO moderator_assignments(user_id,granted_by,grant_reason) VALUES ($1,$2,'synthetic handoff')", [actor, user])
+    assert.equal((await action({ ...nextDecision, action: 'escalate', ownerId: user })).status, 200)
+    const escalation = (await (await review(next)).json()).activeHolds.find(hold => hold.kind === 'escalation')
+    assert.equal(escalation.ownerId, user)
+    assert.equal(escalation.sequence, 0)
+    const transfer = { ...nextDecision, action: 'transfer-escalation', holdId: escalation.id, ownerId: actor, expectedSequence: 0 }
+    assert.equal((await action(transfer)).status, 200)
+    assert.equal((await action(transfer)).status, 409)
+    const handedOff = (await (await review(next)).json()).activeHolds.find(hold => hold.id === escalation.id)
+    assert.equal(handedOff.ownerId, actor)
+    assert.equal(handedOff.sequence, 1)
+    assert.equal((await action(nextDecision)).status, 409)
+    assert.equal((await action({ ...nextDecision, action: 'release-hold', holdId: escalation.id })).status, 200)
     assert.equal((await action({ ...nextDecision, action: 'request-changes' })).status, 200)
     const blocked = await action(nextDecision)
     assert.equal(blocked.status, 409)
