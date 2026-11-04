@@ -147,45 +147,8 @@ prove future availability or journal coverage, or reopen access. Its metadata
 deadline stops waiting for a response; it does not cancel the underlying storage
 client request. Review reader permissions and request limits before integration.
 
-The reference inventory lists only the journal prefix with version listing,
-rejects noncurrent objects, unexpected names, ambiguous pagination and invalid
-metadata, and returns opaque IDs with exact generations, metagenerations, and
-checksums. It also lists the prefix for soft-deleted objects and fails if any are present or that listing
-fails. It requires the writer fence before listing: new objects can otherwise be
-missed between pages. It does not read record bodies and always reports coverage
-as unverified. Its size, page and time limits can cause a safe failure; its
-request deadline does not cancel an in-flight storage request. Review the reader's
-bucket-wide list permission before use. Permanently deleted records, missing
-tails, older backups, and unauthorized writers need separate evidence.
-The inventory also fails if the bucket's current soft-delete policy is disabled:
-older soft-deleted records can remain recoverable under their original policy,
-but the soft-deleted listing requires an enabled policy. Review the policy
-history and retained records before relying on the inventory.
-It verifies the bucket again after both listings and rejects a change in its
-generation or metadata generation. This detects a bucket replacement or
-metadata change during the inventory; it does not establish writer fencing,
-effective permissions, or journal coverage.
-
-An unwired inventory reader combines the reference listing with exact-generation
-record reads, checks their bytes against the inventoried checksums, then lists
-again and rejects missing, changed, or additional references and bucket changes.
-Checksums detect corruption, not unauthorized replacement. It bounds concurrency,
-total bytes, and elapsed waiting time; an SDK
-request may still finish after its caller stops waiting. The returned records and
-summary contain private information. Even a stable result does not detect a tail
-that disappeared before the first listing, authenticate a baseline, or prove that
-all writers were fenced. Keep the replacement isolated while those checks and
-hold reconciliation remain unresolved.
-
-A checkpoint comparison helper can identify missing, changed, or additional
-record IDs relative to a separately supplied list of exact generations,
-metagenerations, and checksums. Duplicate or malformed references fail the
-comparison. Its output is private; a changed generation, metageneration, or
-checksum requires investigation even if its content appears similar. A matching
-list does not authenticate the checkpoint, prove it was independently preserved,
-detect a missing tail after it, verify writer fencing, or establish coverage.
-The helper cannot reopen access or apply decisions. An existing Secret Manager
-version is not a complete tail proof by itself: access to a newly added version
+An existing Secret Manager version is not a complete tail proof by itself:
+access to a newly added version
 by its exact number is strongly consistent, but
 [version listing and the latest alias are eventually consistent](https://cloud.google.com/secret-manager/docs/reference/consistency).
 Do not infer that a version does not exist from a recent list or latest read.
@@ -210,10 +173,8 @@ two copies of every decision. The [add-version request](https://cloud.google.com
 has no caller-selected version ID or documented idempotency key. A lost response
 and retry can therefore create duplicate versions. Reconciliation would need to
 recognize exact retry bytes and reject conflicting decisions, without treating
-an uncertain write as absent. Such a change also needs compatible readback,
-permissions, retention, and restore procedures; it has not been implemented.
-The existing bucket journal does not implement the sequence fence;
-do not use it as proof of complete coverage.
+an uncertain write as absent. The proposed sequence also needs verified
+permissions, retention, writer fencing, and restore procedures before use.
 
 An unwired sequence codec explores the single-store option: put the canonical
 decision bytes directly in numbered Secret Manager versions. This uses the
@@ -321,11 +282,10 @@ locks the matching ideas, and reports counts for present and absent IDs. Repeati
 it is safe, and an uncertain intent is suppressed as well. The function has no
 `PUBLIC` execute grant; only a separately authorized recovery coordinator should
 receive access after the independent network and writer fences are verified.
-An unwired coordinator helper first reads a stable journal inventory, then invokes
-this suppression primitive. A stable inventory still cannot detect a missing tail
-or authenticate its records and does not establish either fence. Its deadline
-bounds waiting for storage only; the caller must also configure a database
-connection timeout. Database lock and statement timeouts bound the suppression
+An unwired coordinator reads numbered entries through a selected fence before
+invoking this primitive. It cannot authenticate the baseline or fence and does
+not establish either fence. Its deadline bounds waiting for storage only; the
+caller must also configure a database connection timeout. Database lock and statement timeouts bound the suppression
 transaction. Neither helper opens the gate.
 It does not authenticate the records, establish complete coverage, restore hold
 evidence, reconcile moderation and trust records, update external projections or

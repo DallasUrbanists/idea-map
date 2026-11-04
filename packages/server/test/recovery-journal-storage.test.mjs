@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { Readable, Writable } from 'node:stream'
 import { after, test } from 'node:test'
 import { CRC32C } from '@google-cloud/storage'
-import { compareCurrentRecoveryJournalRecord, listUnverifiedRecoveryJournal, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
+import { compareCurrentRecoveryJournalRecord, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
 import { encodeRecoveryConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
 
 const target = { environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789' }
@@ -136,7 +136,6 @@ test('journal operations refuse an unverified bucket before touching objects', a
     await assert.rejects(writeRecoveryJournalRecord(storage, target, id, payload, 50), /outcome is uncertain/)
     await assert.rejects(readRecoveryJournalRecord(storage, target, id, '1', 50), /could not be verified/)
     await assert.rejects(compareCurrentRecoveryJournalRecord(storage, target, id, payload, 50), /could not be verified/)
-    await assert.rejects(listUnverifiedRecoveryJournal(storage, target), /could not be verified/)
     assert.equal(objectRequests, 0)
   }
   const unavailable = { bucket: () => ({ getMetadata: () => new Promise(() => {}) }) }
@@ -255,100 +254,4 @@ test('journal comparison does not restart its deadline after metadata', async t 
   }) }) }
   await assert.rejects(compareCurrentRecoveryJournalRecord(storage, target, id, payload, 20), /could not be verified/)
   assert.equal(objectReads, 0)
-})
-test('journal inventory discovers bounded exact generations without asserting coverage', async () => {
-  const secondId = recoveryConfirmationRecordId(id)
-  const prefix = 'idea-map-v2/dev/recovery-journal/'
-  const metadata = recordId => ({ name: `${prefix}${recordId}.json`, bucket: target.bucket,
-    generation: '90071992547409931234', metageneration: '1', size: '123', contentType: 'application/json', crc32c: 'AAAAAA==' })
-  const queries = []
-  const storageFor = pages => ({ bucket: () => ({ getMetadata: bucketMetadata, async getFiles(query) {
-    queries.push(query)
-    const result = pages.shift()
-    if (result instanceof Error) throw result
-    return result
-  } }) })
-  const first = { metadata: metadata(id) }
-  const second = { metadata: metadata(secondId) }
-  const result = await listUnverifiedRecoveryJournal(storageFor([
-    [[first], { pageToken: 'next', prefix: 'untrusted' }], [[second], null],
-    [[], { pageToken: 'soft-next' }], [[], null],
-  ]), target)
-  assert.deepEqual(result, { references: [{ recordId: id, generation: first.metadata.generation, metageneration: '1', crc32c: 'AAAAAA==' },
-    { recordId: secondId, generation: second.metadata.generation, metageneration: '1', crc32c: 'AAAAAA==' }],
-    bucketGeneration: '100', bucketMetageneration: '1', coverageVerified: false, softDeletedChecked: true })
-  assert.equal(queries.length, 4)
-  assert.ok(queries.every(query => query.prefix === prefix && query.autoPaginate === false))
-  assert.ok(queries.slice(0, 2).every(query => query.versions === true && !query.softDeleted))
-  assert.ok(queries.slice(2).every(query => query.softDeleted === true && !query.versions))
-  assert.equal(queries[1].pageToken, 'next')
-  assert.equal(queries[3].pageToken, 'soft-next')
-
-  const malformed = [
-    { ...first.metadata, name: `${prefix}../private.json` },
-    { ...first.metadata, bucket: 'wrong-bucket' },
-    { ...first.metadata, generation: 4 },
-    { ...first.metadata, timeDeleted: '2026-11-03T12:00:00.000Z' },
-    { ...first.metadata, size: '16385' },
-    { ...first.metadata, crc32c: undefined },
-  ]
-  for (const value of malformed) await assert.rejects(listUnverifiedRecoveryJournal(storageFor([[[{ metadata: value }], null]]), target), /could not be verified/)
-  await assert.rejects(listUnverifiedRecoveryJournal(storageFor([[[first, first], null]]), target), /could not be verified/)
-  await assert.rejects(listUnverifiedRecoveryJournal(storageFor([[[first], null], [[second], null]]), target), /could not be verified/)
-  await assert.rejects(listUnverifiedRecoveryJournal(storageFor([[[first], null], new Error('synthetic soft-deleted listing error')]), target), /could not be verified/)
-  await assert.rejects(listUnverifiedRecoveryJournal(storageFor([[[first], null], [[], { pageToken: 'repeat' }], [[], { pageToken: 'repeat' }]]), target), /could not be verified/)
-  await assert.rejects(listUnverifiedRecoveryJournal(storageFor([[[], { pageToken: 'repeat' }], [[], { pageToken: 'repeat' }]]), target), /could not be verified/)
-  await assert.rejects(listUnverifiedRecoveryJournal(storageFor([new Error('synthetic sensitive provider error')]), target), error =>
-    error.message === 'Journal inventory could not be verified' && !error.message.includes('sensitive'))
-})
-
-test('journal inventory fails closed when listing does not respond', async t => {
-  t.mock.timers.enable({ apis: ['setTimeout'] })
-  const storage = { bucket: () => ({ getMetadata: bucketMetadata, getFiles: () => new Promise(() => {}) }) }
-  const rejected = assert.rejects(listUnverifiedRecoveryJournal(storage, target), /could not be verified/)
-  await new Promise(resolve => setImmediate(resolve))
-  t.mock.timers.tick(5000)
-  await rejected
-})
-
-test('journal inventory refuses a disabled soft-delete policy even if a listing would be empty', async () => {
-  const [safe] = await bucketMetadata()
-  let lists = 0
-  const storage = { bucket: () => ({
-    async getMetadata() { return [{ ...safe, softDeletePolicy: { retentionDurationSeconds: '0' } }] },
-    async getFiles() { lists++; return [[], null] },
-  }) }
-  await assert.rejects(listUnverifiedRecoveryJournal(storage, target), /could not be verified/)
-  assert.equal(lists, 0)
-})
-
-test('journal inventory rejects bucket replacement or policy changes during listing', async () => {
-  const [safe] = await bucketMetadata()
-  for (const last of [
-    { ...safe, generation: '101' },
-    { ...safe, metageneration: '2' },
-    { ...safe, softDeletePolicy: { retentionDurationSeconds: '0' } },
-    { ...safe, generation: undefined },
-  ]) {
-    let calls = 0
-    const storage = { bucket: () => ({
-      async getMetadata() { return [calls++ === 0 ? safe : last] },
-      async getFiles() { return [[], null] },
-    }) }
-    await assert.rejects(listUnverifiedRecoveryJournal(storage, target), /could not be verified/)
-    assert.equal(calls, 2)
-  }
-  const missingIdentity = { bucket: () => ({ async getMetadata() { return [{ ...safe, generation: undefined }] } }) }
-  await assert.rejects(listUnverifiedRecoveryJournal(missingIdentity, target), /could not be verified/)
-})
-
-test('journal inventory rejects a final bucket response after its shared deadline', async t => {
-  let now = 0, calls = 0
-  t.mock.method(performance, 'now', () => now)
-  const storage = { bucket: () => ({
-    async getMetadata() { if (++calls === 2) now = 30_000; return bucketMetadata() },
-    async getFiles() { return [[], null] },
-  }) }
-  await assert.rejects(listUnverifiedRecoveryJournal(storage, target), /could not be verified/)
-  assert.equal(calls, 2)
 })

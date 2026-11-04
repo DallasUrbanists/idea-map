@@ -1,6 +1,4 @@
 import type pg from 'pg'
-import type { Storage } from '@google-cloud/storage'
-import { prepareUnverifiedRecoveryInventory } from './recovery-inventory.js'
 import { summarizeUnverifiedRecovery } from './recovery-journal-plan.js'
 import { readUnverifiedRecoverySequence, type RecoverySequenceTransport } from './recovery-sequence-storage.js'
 
@@ -33,18 +31,6 @@ export async function suppressUnverifiedRestoredRemovals(pool: pg.Pool, records:
     try { await client.query('ROLLBACK') } catch { destroy = true }
     throw new Error('Recovery suppression outcome is uncertain')
   } finally { client.release(destroy) }
-}
-
-/**
- * Read a stable journal inventory before suppressing known removals. The caller
- * must independently fence the replacement and all decision writers first.
- * Neither successful suppression nor a stable list establishes coverage or
- * permits public access; the gate remains closed for further reconciliation.
- */
-export async function suppressKnownRemovalsFromJournal(storage: Storage,
-  target: { environment: 'dev' | 'prod', bucket: string, projectNumber: string }, pool: pg.Pool, timeoutMs = 120_000) {
-  const inventory = await prepareUnverifiedRecoveryInventory(storage, target, timeoutMs)
-  return suppressUnverifiedRestoredRemovals(pool, inventory.records, target.environment)
 }
 
 /**

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { compareUnverifiedRecoveryCheckpoint, summarizeUnverifiedRecovery } from '../dist/recovery-journal-plan.js'
+import { summarizeUnverifiedRecovery } from '../dist/recovery-journal-plan.js'
 import { encodeRecoveryConfirmation, encodeRecoveryHoldConfirmation, encodeRecoveryIntent } from '../dist/recovery-journal-record.js'
 
 const operation = n => `11111111-1111-4111-8111-${String(n).padStart(12, '0')}`
@@ -95,22 +95,6 @@ test('unmatched confirmations identify operations needing review without inventi
   assert.deepEqual(result.holdIdentities, [])
   assert.equal(result.unmatchedConfirmations, 2)
   assert.equal(result.coverageVerified, false)
-})
-
-test('checkpoint comparison exposes missing, changed, and additional exact generations without asserting coverage', () => {
-  const reference = (n, generation) => ({ recordId: operation(n), generation, metageneration: '1', crc32c: 'AAAAAA==' })
-  const checkpoint = [reference(2, '90071992547409931234'), reference(1, '1'), reference(3, '3')]
-  const inventory = [reference(4, '4'), reference(2, '90071992547409931235'), reference(1, '1')]
-  assert.deepEqual(compareUnverifiedRecoveryCheckpoint(checkpoint, inventory), {
-    missing: [operation(3)], changed: [operation(2)], additional: [operation(4)], coverageVerified: false,
-  })
-  assert.equal(compareUnverifiedRecoveryCheckpoint([], []).coverageVerified, false)
-  assert.deepEqual(compareUnverifiedRecoveryCheckpoint([reference(1, '1')], [{ ...reference(1, '1'), metageneration: '2' }]).changed, [operation(1)])
-  assert.deepEqual(compareUnverifiedRecoveryCheckpoint([reference(1, '1')], [{ ...reference(1, '1'), crc32c: 'BBBBBB==' }]).changed, [operation(1)])
-  assert.throws(() => compareUnverifiedRecoveryCheckpoint([reference(1, '1'), reference(1, '2')], []), /invalid/)
-  assert.throws(() => compareUnverifiedRecoveryCheckpoint([], [reference(1, '01')]), /invalid/)
-  assert.throws(() => compareUnverifiedRecoveryCheckpoint([], [{ ...reference(1, '1'), extra: true }]), /invalid/)
-  assert.throws(() => compareUnverifiedRecoveryCheckpoint([], [reference(1, '1'.repeat(21))]), /invalid/)
 })
 
 test('hold evidence identifies the original authority and placement time for review', () => {

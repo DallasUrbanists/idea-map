@@ -6,7 +6,7 @@ import { Readable } from 'node:stream'
 import { test } from 'node:test'
 import { exportEncryptedBackup } from '../ops/export-encrypted-backup.mjs'
 import { inspectBackupRetention } from '../ops/inspect-backup-retention.mjs'
-import { compareCurrentRecoveryJournalRecord, listUnverifiedRecoveryJournal, readRecoveryJournalRecord, readUnverifiedHeldMaterial,
+import { compareCurrentRecoveryJournalRecord, readRecoveryJournalRecord, readUnverifiedHeldMaterial,
   writeRecoveryJournalRecord, writeUnverifiedHeldMaterial } from '../../../packages/server/dist/recovery-journal-storage.js'
 import { encodeRecoveryConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../../../packages/server/dist/recovery-journal-record.js'
 
@@ -37,7 +37,6 @@ test('storage client sends create-only archives, completion metadata, and journa
   const errors = []
   let omitStoredEncoding = false
   let overrideMetadataChecksum = false
-  let syntheticSoftDeleted = false
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, 'http://127.0.0.1')
@@ -52,9 +51,7 @@ test('storage client sends create-only archives, completion metadata, and journa
       }
       if (request.method === 'GET' && url.pathname === `/storage/v1/b/${target.bucket}/o`) {
         const prefix = url.searchParams.get('prefix')
-        const softDeleted = url.searchParams.get('softDeleted') === 'true'
-        const items = softDeleted ? (syntheticSoftDeleted && prefix.endsWith('/recovery-journal/')
-          ? [{ name: `${prefix}deleted.json` }] : []) : [...objects.values()].filter(object => object.name.startsWith(prefix))
+        const items = url.searchParams.get('softDeleted') === 'true' ? [] : [...objects.values()].filter(object => object.name.startsWith(prefix))
         response.end(JSON.stringify({ items }))
         return
       }
@@ -151,14 +148,6 @@ test('storage client sends create-only archives, completion metadata, and journa
     const confirmation = encodeRecoveryConfirmation(recordId, 'dev', '2026-11-02T10:01:00.000Z')
     await writeRecoveryJournalRecord(storage, target, confirmationId, confirmation)
     const confirmationName = `idea-map-v2/dev/recovery-journal/${confirmationId}.json`
-    assert.deepEqual(await listUnverifiedRecoveryJournal(storage, target), { references: [
-      { recordId, generation: '90071992547409931234', metageneration: '1', crc32c: objects.get(recordName).crc32c },
-      { recordId: confirmationId, generation: objects.get(confirmationName).generation, metageneration: '1', crc32c: objects.get(confirmationName).crc32c },
-    ], bucketGeneration: '11', bucketMetageneration: '1', coverageVerified: false, softDeletedChecked: true })
-    assert.ok(requests.some(item => item.method === 'GET' && item.query.prefix === 'idea-map-v2/dev/recovery-journal/' && item.query.softDeleted === 'true'))
-    syntheticSoftDeleted = true
-    await assert.rejects(listUnverifiedRecoveryJournal(storage, target), /could not be verified/)
-    syntheticSoftDeleted = false
     assert.deepEqual(Buffer.from(await readRecoveryJournalRecord(storage, target, recordId, objects.get(recordName).generation)), record)
     assert.deepEqual(await compareCurrentRecoveryJournalRecord(storage, target, recordId, record),
       { generation: '90071992547409931234', coverageVerified: false })
@@ -188,7 +177,7 @@ test('storage client sends create-only archives, completion metadata, and journa
     assert.equal(errors.length, 0)
     assert.equal(requests.filter(item => item.method === 'POST').length, 7)
     assert.deepEqual(new Set(requests.filter(item => item.path.endsWith('/o') && item.method === 'GET').map(item => item.query.prefix)),
-      new Set(['daily', 'weekly', 'completion', 'recovery-journal'].map(kind => `idea-map-v2/dev/${kind}/`)))
+      new Set(['daily', 'weekly', 'completion'].map(kind => `idea-map-v2/dev/${kind}/`)))
     assert.ok(requests.every(item => ['GET', 'POST'].includes(item.method)))
   } finally {
     await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()))

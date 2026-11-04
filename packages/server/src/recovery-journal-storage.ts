@@ -20,7 +20,7 @@ function remainingTime(deadline: number): number {
   return remaining
 }
 
-async function verifiedBucket(storage: Storage, target: Target, timeoutMs: number, requireSoftDeletedListing = false) {
+async function verifiedBucket(storage: Storage, target: Target, timeoutMs: number) {
   const bucket = storage.bucket(target.bucket)
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
@@ -29,11 +29,6 @@ async function verifiedBucket(storage: Storage, target: Target, timeoutMs: numbe
       new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Bucket verification timed out')), timeoutMs) }),
     ])
     verifyBackupBucket(metadata, target)
-    // A disabled current policy does not remove versions retained under an
-    // earlier policy, but the provider's soft-deleted listing requires one.
-    if (requireSoftDeletedListing && Number(metadata.softDeletePolicy?.retentionDurationSeconds) === 0) {
-      throw new Error('Soft-deleted journal inventory cannot be verified')
-    }
     return { bucket, metadata }
   } finally { if (timer) clearTimeout(timer) }
 }
@@ -217,82 +212,6 @@ export async function readRecoveryJournalRecord(storage: Storage, target: Target
     throw new Error('Journal record could not be verified')
   } finally {
     if (timer) clearTimeout(timer)
-  }
-}
-
-/**
- * Discover live record references after writers have been independently fenced.
- * A listing cannot establish a missing tail, writer coverage, or past permanent
- * deletion. Metadata requests may finish after this function's deadline.
- */
-export async function listUnverifiedRecoveryJournal(storage: Storage, target: Target, timeoutMs = 30_000):
-Promise<{ references: { recordId: string, generation: string, metageneration: string, crc32c: string }[],
-  bucketGeneration: string, bucketMetageneration: string, coverageVerified: false, softDeletedChecked: true }> {
-  if (!validTarget(target) || !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000) throw new Error('Invalid journal target')
-  const prefix = `idea-map-v2/${target.environment}/recovery-journal/`
-  const references: { recordId: string, generation: string, metageneration: string, crc32c: string }[] = []
-  const names = new Set<string>()
-  const deadline = performance.now() + timeoutMs
-  try {
-    const { bucket, metadata: before } = await verifiedBucket(storage, target, Math.min(5000, remainingTime(deadline)), true)
-    if (typeof before.generation !== 'string' || !/^[1-9][0-9]*$/.test(before.generation) ||
-        typeof before.metageneration !== 'string' || !/^[1-9][0-9]*$/.test(before.metageneration)) {
-      throw new Error('Journal bucket identity is ambiguous')
-    }
-    const bucketGeneration = before.generation
-    const bucketMetageneration = before.metageneration
-    const listPage = async (mode: 'versions' | 'softDeleted', pageToken?: string) => {
-      const remaining = remainingTime(deadline)
-      let timer: ReturnType<typeof setTimeout> | undefined
-      try {
-        const result = await Promise.race([
-          bucket.getFiles({ prefix, ...(mode === 'versions' ? { versions: true } : { softDeleted: true }),
-            autoPaginate: false, maxResults: 1000, ...(pageToken ? { pageToken } : {}) }),
-          new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Journal inventory timed out')), Math.min(remaining, 5000)) }),
-        ])
-        remainingTime(deadline)
-        return result
-      } finally { if (timer) clearTimeout(timer) }
-    }
-    for (const mode of ['versions', 'softDeleted'] as const) {
-      const tokens = new Set<string>()
-      let pageToken: string | undefined
-      let finished = false
-      for (let page = 0; page < 100; page++) {
-        const [files, next] = await listPage(mode, pageToken)
-        if (mode === 'softDeleted' && files.length) throw new Error('Soft-deleted journal records require review')
-        for (const file of files) {
-          const value = file.metadata
-          const name = value.name
-          const recordId = typeof name === 'string' && name.startsWith(prefix) && name.endsWith('.json')
-            ? name.slice(prefix.length, -5) : ''
-          if (!recordIdPattern.test(recordId) || names.has(recordId) || value.bucket !== target.bucket || value.timeDeleted ||
-              typeof value.generation !== 'string' || !/^[1-9][0-9]*$/.test(value.generation) ||
-              typeof value.metageneration !== 'string' || !/^[1-9][0-9]*$/.test(value.metageneration) ||
-              typeof value.size !== 'string' || !/^[1-9][0-9]*$/.test(value.size) || Number(value.size) > 16_384 ||
-              value.contentType !== 'application/json' || (value.contentEncoding && value.contentEncoding !== 'identity') ||
-              typeof value.crc32c !== 'string' || !/^[A-Za-z0-9+/]{6}==$/.test(value.crc32c)) throw new Error('Journal inventory is ambiguous')
-          names.add(recordId)
-          references.push({ recordId, generation: value.generation, metageneration: value.metageneration, crc32c: value.crc32c })
-          if (references.length > 10_000) throw new Error('Journal inventory is too large')
-        }
-        if (!next) { finished = true; break }
-        if (typeof next.pageToken !== 'string' || !next.pageToken || tokens.has(next.pageToken)) throw new Error('Journal inventory pagination is ambiguous')
-        tokens.add(next.pageToken)
-        pageToken = next.pageToken
-      }
-      if (!finished) throw new Error('Journal inventory has too many pages')
-    }
-    // Detect a bucket replacement or metadata change across the two listings.
-    // This is not proof of writer fencing or of effective IAM permissions.
-    const { metadata: after } = await verifiedBucket(storage, target, Math.min(5000, remainingTime(deadline)), true)
-    if (after.generation !== bucketGeneration || after.metageneration !== bucketMetageneration) {
-      throw new Error('Journal bucket changed during inventory')
-    }
-    remainingTime(deadline)
-    return { references, bucketGeneration, bucketMetageneration, coverageVerified: false, softDeletedChecked: true }
-  } catch {
-    throw new Error('Journal inventory could not be verified')
   }
 }
 
