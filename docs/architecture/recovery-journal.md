@@ -360,6 +360,13 @@ confirmation before appending it. It compares the exact numbered entry through
 a reader, then records verification only for the same target and a version
 later than the intent. An uncertain append or read leaves the gate closed.
 These steps do not establish that all decisions and held material are present.
+If the verification commit response is lost, an unwired status check can recover
+the committed confirmation version for the same decision and target. It must
+read that exact version again; an inaccessible or different record is uncertain.
+The database rejects a status read in the verification transaction, including
+after a savepoint. Older verified rows without transaction evidence require
+authorized reconciliation. A sequential retry reuses the verified version;
+concurrent retries can still append identical versions.
 An isolated restore can also read each numbered entry through a selected fence
 and suppress the removals found there. A missing version stops suppression;
 successful reads do not authenticate the baseline, fence or writer cutoff and do

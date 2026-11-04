@@ -491,6 +491,11 @@ try {
   const restoredSequenceConfirmationPublicExecute = await sql(target, sequenceConfirmationPrivilege)
   const sequenceStatusPrivilege = "SELECT has_function_privilege('public','public.pending_sequence_removal_status(text,text,uuid,uuid,text,text,text,text,uuid)','EXECUTE')"
   const restoredSequenceStatusPublicExecute = await sql(target, sequenceStatusPrivilege)
+  const confirmationStatusPrivilege = "SELECT has_function_privilege('public','public.pending_sequence_confirmation_status(text,text,uuid,uuid,text,text,timestamptz,uuid,timestamptz,text,text,text,uuid)','EXECUTE')"
+  const restoredConfirmationStatusPublicExecute = await sql(target, confirmationStatusPrivilege)
+  const verificationTransactionPrivilege = "SELECT has_function_privilege('public','public.protect_pending_verification_transaction()','EXECUTE')"
+  const restoredVerificationTransactionPublicExecute = await sql(target, verificationTransactionPrivilege)
+  const restoredVerificationTransactionTrigger = await sql(target, "SELECT count(*) FROM pg_catalog.pg_trigger WHERE tgrelid='public.public_access_pending_decisions'::regclass AND tgname='protect_pending_verification_transaction' AND NOT tgisinternal AND tgenabled='O'")
   const pinTriggerPrivilege = "SELECT has_function_privilege('public','public.protect_pending_sequence_target()','EXECUTE')"
   const restoredPinTriggerPublicExecute = await sql(target, pinTriggerPrivilege)
   const restoredPinTrigger = await sql(target, "SELECT count(*) FROM pg_catalog.pg_trigger WHERE tgrelid='public.public_access_pending_decisions'::regclass AND tgname='protect_pending_sequence_target' AND NOT tgisinternal AND tgenabled='O'")
@@ -502,6 +507,7 @@ try {
       restoredVerificationPublicExecute !== 'f' || restoredVerificationTriggerPublicExecute !== 'f' ||
       restoredVerificationTrigger !== '1' || restoredSuppressionPublicExecute !== 'f' || restoredPinPublicExecute !== 'f' || restoredSequenceApplyPublicExecute !== 'f' ||
       restoredSequenceConfirmationPublicExecute !== 'f' || restoredSequenceStatusPublicExecute !== 'f' ||
+      restoredConfirmationStatusPublicExecute !== 'f' || restoredVerificationTransactionPublicExecute !== 'f' || restoredVerificationTransactionTrigger !== '1' ||
       restoredPinTriggerPublicExecute !== 'f' || restoredPinTrigger !== '1' || restoredGateOpen !== 'f' || sourceNamedExecute !== 't' || restoredNamedExecute !== 't' || publicConnect !== 'f' || namedConnect !== 'f') throw new Error('Restored synthetic database failed verification')
   const lossMs = Number(latest) - Number(captured)
   if (!Number.isFinite(lossMs) || lossMs < 0) throw new Error('Synthetic data-loss interval could not be measured')

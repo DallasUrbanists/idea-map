@@ -247,8 +247,9 @@ held-evidence capture, public-access gating, or recovery reconciliation.
 For the separate read-lease primitive, migrate an otherwise empty local
 `idea_map_test_public_gate` database, set `TEST_DATABASE_URL` to its loopback
 connection, and run `pnpm --filter @idea-map/server test:public-access-lease`.
-The test changes the gate, creates and removes synthetic roles, and terminates one
-test connection, so use only that disposable database. It
+The test changes the gate, creates and removes synthetic roles, terminates one
+test connection, and disables triggers in a rolled-back transaction to model an
+older row, so use only that disposable database. It
 checks lock ordering, a closed or missing gate, a limited reader, and a lost connection, plus
 authorization, retry, and rollback of a pending removal.
 It also uses fake journal writer and reader interfaces to check that a completed

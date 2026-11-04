@@ -256,12 +256,16 @@ export async function prepareRemovalConfirmation(coordinatorDatabaseUrl: string,
 export async function journalSequenceRemovalConfirmation(databaseUrl: string, projectId: string, cookie: string,
   verifier: RegisteredSessionVerifier, target: { environment: 'dev' | 'prod', projectNumber: string, secretId: string, epochId: string },
   writer: RecoverySequenceTransport, reader: RecoverySequenceTransport, input: AppliedRemoval): Promise<ModeratorAccess<
-    'confirmation_uncertain' | { state: 'confirmation_journaled', recordId: string, version: string, coverageVerified: false }>> {
+    'confirmation_uncertain' | { state: 'confirmation_journaled', recordId: string, version: string, coverageVerified: false } |
+    { state: 'confirmation_verified', recordId: string, version: string, verifiedAt: string }>> {
   if (!target || !input || !(input.payload instanceof Uint8Array)) throw new Error('Invalid pending removal')
   const destination = { ...target }
   const saved = { ...input, payload: Buffer.from(input.payload) }
   const pin = await pinPendingRemovalSequence(databaseUrl, projectId, cookie, verifier, destination, saved)
   if (pin.state !== 'authorized') return pin
+  const status = await inspectSequenceRemovalConfirmation(databaseUrl, projectId, cookie, verifier, destination, reader, saved)
+  if (status.state !== 'authorized') return status
+  if (status.value !== 'unverified') return { state: 'authorized', value: status.value }
   const prepared = await prepareRemovalConfirmation(databaseUrl, projectId, cookie, verifier, destination.environment, saved)
   if (prepared.state !== 'authorized') return prepared
   try {
@@ -270,6 +274,40 @@ export async function journalSequenceRemovalConfirmation(databaseUrl: string, pr
     const result = await appendAndVerifyRecoverySequenceVersion(writer, reader, destination, entry)
     return { state: 'authorized', value: { state: 'confirmation_journaled', recordId: prepared.value.recordId, ...result } }
   } catch { return { state: 'authorized', value: 'confirmation_uncertain' } }
+}
+
+/** Reconcile a lost confirmation-verification response without appending. */
+export async function inspectSequenceRemovalConfirmation(databaseUrl: string, projectId: string, cookie: string,
+  verifier: RegisteredSessionVerifier, target: { environment: 'dev' | 'prod', projectNumber: string, secretId: string, epochId: string },
+  reader: RecoverySequenceTransport, input: AppliedRemoval): Promise<ModeratorAccess<
+    'unverified' | 'confirmation_uncertain' | { state: 'confirmation_verified', recordId: string, version: string, verifiedAt: string }>> {
+  if (!target || !input || !(input.payload instanceof Uint8Array)) throw new Error('Invalid pending removal')
+  const destination = { ...target }, saved = { ...input, payload: Buffer.from(input.payload) }
+  const prepared = await prepareRemovalConfirmation(databaseUrl, projectId, cookie, verifier, destination.environment, saved)
+  if (prepared.state !== 'authorized') return prepared
+  const expected = encodeRecoverySequenceEntry({ kind: 'decision', environment: destination.environment,
+    epochId: destination.epochId, recordId: prepared.value.recordId, data: Buffer.from(prepared.value.payload).toString('base64') })
+  try {
+    return await withVerifiedModerator(databaseUrl, projectId, cookie, verifier, async (client, _actor, subject) => {
+      await client.query("SET LOCAL lock_timeout = '5s'")
+      await client.query("SET LOCAL statement_timeout = '10s'")
+      const result = await client.query<{ outcome: string, verified_at: Date | null, verified_version: string | null }>(
+        'SELECT * FROM public.pending_sequence_confirmation_status($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
+        [`firebase:${projectId}`, subject, saved.operationId, saved.recordId, saved.payload.toString('utf8'), saved.generation, saved.appliedAt,
+          prepared.value.recordId, prepared.value.preparedAt, destination.environment, destination.projectNumber, destination.secretId, destination.epochId])
+      const row = result.rows[0]
+      if (row?.outcome === 'unverified' && row.verified_at === null && row.verified_version === null) return 'unverified' as const
+      if (row?.outcome !== 'verified' || !(row.verified_at instanceof Date) || !Number.isFinite(row.verified_at.getTime()) ||
+          typeof row.verified_version !== 'string' || !/^[1-9][0-9]{0,4}$/.test(row.verified_version) || Number(row.verified_version) > 10_000 ||
+          row.verified_at.getTime() < Date.parse(prepared.value.preparedAt)) throw new Error('Pending removal is ambiguous')
+      try {
+        const observed = await readRecoverySequenceVersion(reader, destination, row.verified_version)
+        if (!Buffer.from(observed).equals(expected)) throw new Error('Sequence differs')
+      } catch { return 'confirmation_uncertain' as const }
+      return { state: 'confirmation_verified' as const, recordId: prepared.value.recordId,
+        version: row.verified_version, verifiedAt: row.verified_at.toISOString() }
+    }, pendingRemovalDatabasePool(databaseUrl))
+  } catch { throw new Error('Pending removal unavailable') }
 }
 
 /** Record exact sequence confirmation readback without opening the gate. */

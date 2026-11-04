@@ -5,7 +5,7 @@ import { test } from 'node:test'
 import pg from 'pg'
 import { CRC32C } from '@google-cloud/storage'
 import { acquirePublicAccessLease, publicAccessLeaseClient } from '../dist/public-access-lease.js'
-import { applySequenceJournaledRemoval, inspectSequenceRemoval, journalPendingRemovalSequence, journalSequenceRemovalConfirmation, pinPendingRemovalSequence, preparePendingRemoval, prepareRemovalConfirmation, verifySequenceRemovalConfirmation } from '../dist/pending-removal.js'
+import { applySequenceJournaledRemoval, inspectSequenceRemoval, inspectSequenceRemovalConfirmation, journalPendingRemovalSequence, journalSequenceRemovalConfirmation, pinPendingRemovalSequence, preparePendingRemoval, prepareRemovalConfirmation, verifySequenceRemovalConfirmation } from '../dist/pending-removal.js'
 import { decodeRecoveryRecord, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
 import { pendingRemovalDatabasePool, runtimeDatabasePool } from '../dist/runtime-database.js'
 
@@ -286,7 +286,7 @@ test('authorized pending removal closes the gate atomically and retries without 
     assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate WHERE singleton=true')).rows[0].is_open, false)
     const sequenceVerification = 'public.verify_pending_sequence_confirmation(text,text,uuid,uuid,timestamptz,text,text,text,text,uuid)'
     assert.equal((await pool.query('SELECT has_function_privilege($1,$2,$3) AS allowed', ['public', sequenceVerification, 'EXECUTE'])).rows[0].allowed, false)
-    await pool.query(`GRANT EXECUTE ON FUNCTION public.pin_pending_removal_sequence(text,text,uuid,uuid,text,text,text,uuid), public.prepare_pending_removal_confirmation(text,text,uuid,uuid,text,text,timestamptz,uuid), ${sequenceVerification} TO "${role}"`)
+    await pool.query(`GRANT EXECUTE ON FUNCTION public.pin_pending_removal_sequence(text,text,uuid,uuid,text,text,text,uuid), public.prepare_pending_removal_confirmation(text,text,uuid,uuid,text,text,timestamptz,uuid), public.pending_sequence_confirmation_status(text,text,uuid,uuid,text,text,timestamptz,uuid,timestamptz,text,text,text,uuid), ${sequenceVerification} TO "${role}"`)
     const appliedInput = { ...sequenceInput, generation: appliedSequence.value.version, appliedAt: appliedSequence.value.appliedAt }
     await assert.rejects(journalSequenceRemovalConfirmation(restrictedUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier,
       { ...sequenceTarget, secretId: 'other-journal' }, writer, sequenceReader, appliedInput), /Pending removal unavailable/)
@@ -313,6 +313,11 @@ test('authorized pending removal closes the gate atomically and retries without 
     assert.equal(verifiedSequence.value.state, 'confirmation_verified')
     assert.equal(verifiedSequence.value.version, '5')
     assert.deepEqual(await verifySequence(), verifiedSequence)
+    assert.deepEqual(await inspectSequenceRemovalConfirmation(restrictedUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier,
+      sequenceTarget, deniedReader, appliedInput), { state: 'authorized', value: 'confirmation_uncertain' })
+    assert.deepEqual(await journalSequenceRemovalConfirmation(restrictedUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier,
+      sequenceTarget, writer, sequenceReader, appliedInput), verifiedSequence)
+    assert.equal(versions.length, 5)
     await assert.rejects(verifySequence(sequenceReader, '4'), /Pending removal unavailable/)
     assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate WHERE singleton=true')).rows[0].is_open, false)
   } finally {
@@ -327,7 +332,7 @@ test('authorized pending removal closes the gate atomically and retries without 
     if (concurrentOperations.length) await pool.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id = ANY($1::uuid[])', [concurrentOperations])
     await pool.query('UPDATE public.public_access_gate SET is_open = false WHERE singleton = true')
     if (roleCreated) {
-      await pool.query(`REVOKE EXECUTE ON FUNCTION public.lock_active_moderator(text,text), public.prepare_pending_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text), public.apply_pending_sequence_removal(text,text,uuid,uuid,text,text,text,text,text,uuid), public.pin_pending_removal_sequence(text,text,uuid,uuid,text,text,text,uuid), public.prepare_pending_removal_confirmation(text,text,uuid,uuid,text,text,timestamptz,uuid), public.verify_pending_sequence_confirmation(text,text,uuid,uuid,timestamptz,text,text,text,text,uuid) FROM "${role}"`)
+      await pool.query(`REVOKE EXECUTE ON FUNCTION public.lock_active_moderator(text,text), public.prepare_pending_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text), public.apply_pending_sequence_removal(text,text,uuid,uuid,text,text,text,text,text,uuid), public.pin_pending_removal_sequence(text,text,uuid,uuid,text,text,text,uuid), public.prepare_pending_removal_confirmation(text,text,uuid,uuid,text,text,timestamptz,uuid), public.pending_sequence_confirmation_status(text,text,uuid,uuid,text,text,timestamptz,uuid,timestamptz,text,text,text,uuid), public.verify_pending_sequence_confirmation(text,text,uuid,uuid,timestamptz,text,text,text,text,uuid) FROM "${role}"`)
       await pool.query(`REVOKE USAGE ON SCHEMA public FROM "${role}"`)
       await pool.query(`DROP ROLE "${role}"`)
     }
@@ -433,7 +438,7 @@ test('sequence coordinator drains readers and preserves a committed confirmation
     preview = (await admin.query("INSERT INTO public.media_previews(idea_id,revision_id,object_name,generation,content_type,published) VALUES ($1,$2,$3,'1','image/png',true) RETURNING id", [idea, revision, `synthetic/${suffix}`])).rows[0].id
     await admin.query(`CREATE ROLE "${role}" LOGIN PASSWORD 'synthetic-only'`); roleCreated = true
     await admin.query(`GRANT USAGE ON SCHEMA public TO "${role}"`)
-    await admin.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text), public.prepare_pending_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text), public.pin_pending_removal_sequence(text,text,uuid,uuid,text,text,text,uuid), public.apply_pending_sequence_removal(text,text,uuid,uuid,text,text,text,text,text,uuid), public.pending_sequence_removal_status(text,text,uuid,uuid,text,text,text,text,uuid), public.prepare_pending_removal_confirmation(text,text,uuid,uuid,text,text,timestamptz,uuid), public.verify_pending_sequence_confirmation(text,text,uuid,uuid,timestamptz,text,text,text,text,uuid) TO "${role}"`)
+    await admin.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text), public.prepare_pending_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text), public.pin_pending_removal_sequence(text,text,uuid,uuid,text,text,text,uuid), public.apply_pending_sequence_removal(text,text,uuid,uuid,text,text,text,text,text,uuid), public.pending_sequence_removal_status(text,text,uuid,uuid,text,text,text,text,uuid), public.prepare_pending_removal_confirmation(text,text,uuid,uuid,text,text,timestamptz,uuid), public.pending_sequence_confirmation_status(text,text,uuid,uuid,text,text,timestamptz,uuid,timestamptz,text,text,text,uuid), public.verify_pending_sequence_confirmation(text,text,uuid,uuid,timestamptz,text,text,text,text,uuid) TO "${role}"`)
     const session = { uid: subject, email: `${suffix}@example.invalid`, email_verified: true, firebase: { sign_in_provider: 'password' } }
     const verifier = { async verifySessionCookie() { return session }, async getUser() { return { uid: subject, email: session.email, emailVerified: true, disabled: false } } }
     const input = { operationId: randomUUID(), recordId: randomUUID(), ideaId: idea, approvedRevisionId: revision,
@@ -524,6 +529,18 @@ test('sequence coordinator drains readers and preserves a committed confirmation
     const journaledConfirmation = await journalSequenceRemovalConfirmation(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, target, writer, read, confirmationInput)
     assert.deepEqual(journaledConfirmation, { state: 'authorized', value: { state: 'confirmation_journaled', recordId: confirmationId, version: '3', coverageVerified: false } })
     assert.deepEqual(versions[1], versions[2])
+    const verifyTransaction = await admin.connect()
+    try {
+      await verifyTransaction.query('BEGIN ISOLATION LEVEL READ COMMITTED')
+      await verifyTransaction.query('SAVEPOINT synthetic_verification')
+      await verifyTransaction.query('SELECT * FROM public.verify_pending_sequence_confirmation($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+        ['firebase:demo-idea-map', subject, operationId, confirmationId, confirmation.value.preparedAt, '3',
+          'dev', target.projectNumber, target.secretId, target.epochId])
+      await verifyTransaction.query('RELEASE SAVEPOINT synthetic_verification')
+      await assert.rejects(verifyTransaction.query('SELECT * FROM public.pending_sequence_confirmation_status($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
+        ['firebase:demo-idea-map', subject, operationId, input.recordId, Buffer.from(saved.payload).toString('utf8'), '1', applied.value.appliedAt,
+          confirmationId, confirmation.value.preparedAt, 'dev', target.projectNumber, target.secretId, target.epochId]), /Pending removal is ambiguous/)
+    } finally { await verifyTransaction.query('ROLLBACK'); verifyTransaction.release() }
     const verify = () => verifySequenceRemovalConfirmation(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, target, read, confirmationInput, '3')
     const runtimePool = pendingRemovalDatabasePool(coordinatorUrl.toString()), originalConnect = runtimePool.connect
     let connected = 0
@@ -542,10 +559,23 @@ test('sequence coordinator drains readers and preserves a committed confirmation
     try { await assert.rejects(verify(), /Pending removal unavailable/) } finally { runtimePool.connect = originalConnect }
     const committed = (await admin.query('SELECT confirmation_generation,confirmation_verified_at FROM public.public_access_pending_decisions WHERE operation_id=$1', [operationId])).rows[0]
     assert.equal(committed.confirmation_generation, '3')
-    const verified = await verify()
+    const verified = await inspectSequenceRemovalConfirmation(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, target, read, confirmationInput)
     assert.equal(verified.state, 'authorized'); assert.equal(verified.value.state, 'confirmation_verified')
     assert.equal(verified.value.verifiedAt, committed.confirmation_verified_at.toISOString())
     assert.deepEqual(await verify(), verified)
+    await assert.rejects(admin.query("UPDATE public.public_access_pending_decisions SET confirmation_verified_transaction_id='1' WHERE operation_id=$1", [operationId]), /immutable/)
+    const legacy = await admin.connect()
+    try {
+      await legacy.query('BEGIN')
+      await legacy.query("SET LOCAL session_replication_role = 'replica'")
+      await legacy.query('UPDATE public.public_access_pending_decisions SET confirmation_verified_transaction_id=NULL WHERE operation_id=$1', [operationId])
+      await assert.rejects(legacy.query('SELECT * FROM public.pending_sequence_confirmation_status($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
+        ['firebase:demo-idea-map', subject, operationId, input.recordId, Buffer.from(saved.payload).toString('utf8'), '1', applied.value.appliedAt,
+          confirmationId, confirmation.value.preparedAt, 'dev', target.projectNumber, target.secretId, target.epochId]), /Pending removal is ambiguous/)
+    } finally { await legacy.query('ROLLBACK'); legacy.release() }
+    assert.deepEqual(await journalSequenceRemovalConfirmation(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier,
+      target, writer, read, confirmationInput), verified)
+    assert.equal(versions.length, 3)
     staleIdea = (await admin.query("INSERT INTO public.ideas(author_contact_id,publication_state) VALUES ($1,'approved') RETURNING id", [contact])).rows[0].id
     staleRevision = (await admin.query("INSERT INTO public.idea_revisions(idea_id,version,content,review_state) VALUES ($1,1,'{}'::jsonb,'approved') RETURNING id", [staleIdea])).rows[0].id
     await admin.query('INSERT INTO public.approved_revisions(idea_id,revision_id) VALUES ($1,$2)', [staleIdea, staleRevision])
