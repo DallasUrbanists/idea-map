@@ -13,6 +13,12 @@ function validTarget(target: Target): boolean {
     typeof target?.projectNumber === 'string' && /^[1-9][0-9]{5,19}$/.test(target.projectNumber)
 }
 
+function remainingTime(deadline: number): number {
+  const remaining = Math.ceil(deadline - performance.now())
+  if (remaining < 1) throw new Error('Journal operation timed out')
+  return remaining
+}
+
 async function verifiedBucket(storage: Storage, target: Target, timeoutMs: number) {
   const bucket = storage.bucket(target.bucket)
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -51,18 +57,21 @@ export async function writeRecoveryJournalRecord(storage: Storage,
     throw new Error('Invalid journal record')
   }
 
+  const deadline = performance.now() + timeoutMs
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const path = `idea-map-v2/${target.environment}/recovery-journal/${recordId}.json`
-    const bucket = await verifiedBucket(storage, target, timeoutMs)
+    const bucket = await verifiedBucket(storage, target, remainingTime(deadline))
+    const remaining = remainingTime(deadline)
     const stream = bucket.file(path).createWriteStream({
-      resumable: false, validation: 'crc32c', timeout: timeoutMs, preconditionOpts: { ifGenerationMatch: 0 },
+      resumable: false, validation: 'crc32c', timeout: remaining, preconditionOpts: { ifGenerationMatch: 0 },
       metadata: { contentType: 'application/json', cacheControl: 'private, no-store' },
     })
     const done = finished(stream)
-    timer = setTimeout(() => stream.destroy(new Error('Journal write timed out')), timeoutMs)
+    timer = setTimeout(() => stream.destroy(new Error('Journal write timed out')), remaining)
     stream.end(bytes)
     await done
+    remainingTime(deadline)
   } catch {
     // A failed or timed-out write may still have reached the provider. Do not
     // leak provider messages or infer that the object was not created.
@@ -78,10 +87,12 @@ export async function readRecoveryJournalRecord(storage: Storage, target: Target
   if (!validTarget(target) || typeof recordId !== 'string' || !recordIdPattern.test(recordId) ||
       typeof generation !== 'string' || !/^[1-9][0-9]*$/.test(generation) ||
       !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 5000) throw new Error('Invalid journal record reference')
+  const deadline = performance.now() + timeoutMs
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const path = `idea-map-v2/${target.environment}/recovery-journal/${recordId}.json`
-    await verifiedBucket(storage, target, timeoutMs)
+    await verifiedBucket(storage, target, remainingTime(deadline))
+    const remaining = remainingTime(deadline)
     const file = exactGenerationFile(storage, target.bucket, path, generation)
     const stream = file.createReadStream({ validation: 'crc32c', decompress: false })
     let checksumAvailable = false
@@ -93,7 +104,7 @@ export async function readRecoveryJournalRecord(storage: Storage, target: Target
           typeof headers['x-goog-hash'] === 'string' && /(?:^|,)\s*crc32c=[A-Za-z0-9+/]{6}==\s*(?:,|$)/.test(headers['x-goog-hash'])
       } catch { checksumAvailable = false }
     })
-    timer = setTimeout(() => stream.destroy(new Error('Journal read timed out')), timeoutMs)
+    timer = setTimeout(() => stream.destroy(new Error('Journal read timed out')), remaining)
     const chunks: Buffer[] = []
     let size = 0
     for await (const chunk of stream) {
@@ -105,6 +116,7 @@ export async function readRecoveryJournalRecord(storage: Storage, target: Target
     const payload = Buffer.concat(chunks)
     if (!checksumAvailable) throw new Error('Journal checksum unavailable')
     validateRecordName(recordId, payload, target.environment)
+    remainingTime(deadline)
     return payload
   } catch {
     // Object names, provider errors, and record contents are private.
@@ -125,12 +137,11 @@ Promise<{ references: { recordId: string, generation: string }[], coverageVerifi
   const prefix = `idea-map-v2/${target.environment}/recovery-journal/`
   const references: { recordId: string, generation: string }[] = []
   const names = new Set<string>()
-  const deadline = Date.now() + 30_000
+  const deadline = performance.now() + 30_000
   try {
-    const bucket = await verifiedBucket(storage, target, 5000)
+    const bucket = await verifiedBucket(storage, target, Math.min(5000, remainingTime(deadline)))
     const listPage = async (mode: 'versions' | 'softDeleted', pageToken?: string) => {
-      const remaining = deadline - Date.now()
-      if (remaining <= 0) throw new Error('Journal inventory timed out')
+      const remaining = remainingTime(deadline)
       let timer: ReturnType<typeof setTimeout> | undefined
       try {
         const result = await Promise.race([
@@ -138,7 +149,7 @@ Promise<{ references: { recordId: string, generation: string }[], coverageVerifi
             autoPaginate: false, maxResults: 1000, ...(pageToken ? { pageToken } : {}) }),
           new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Journal inventory timed out')), Math.min(remaining, 5000)) }),
         ])
-        if (Date.now() > deadline) throw new Error('Journal inventory timed out')
+        remainingTime(deadline)
         return result
       } finally { if (timer) clearTimeout(timer) }
     }
@@ -188,17 +199,18 @@ export async function compareCurrentRecoveryJournalRecord(storage: Storage, targ
       !(expected instanceof Uint8Array) || expected.byteLength < 1 || expected.byteLength > 16_384 ||
       !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 5000) throw new Error('Invalid journal record reference')
   const bytes = Buffer.from(expected)
+  const deadline = performance.now() + timeoutMs
   try {
     decodeRecoveryRecord(bytes, target.environment)
     const path = `idea-map-v2/${target.environment}/recovery-journal/${recordId}.json`
-    const bucket = await verifiedBucket(storage, target, timeoutMs)
+    const bucket = await verifiedBucket(storage, target, remainingTime(deadline))
     const file = bucket.file(path)
     const metadata = async () => {
       let timer: ReturnType<typeof setTimeout> | undefined
       try {
         const [value] = await Promise.race([
           file.getMetadata(),
-          new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Metadata read timed out')), timeoutMs) }),
+          new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Metadata read timed out')), remainingTime(deadline)) }),
         ])
         if (value.bucket !== target.bucket || value.name !== path || typeof value.generation !== 'string' ||
             !/^[1-9][0-9]*$/.test(value.generation) || typeof value.metageneration !== 'string' ||
@@ -212,11 +224,12 @@ export async function compareCurrentRecoveryJournalRecord(storage: Storage, targ
     const checksum = new CRC32C()
     checksum.update(bytes)
     if (!checksum.validate(first.crc32c)) throw new Error('Journal checksum differs')
-    const observed = await readRecoveryJournalRecord(storage, target, recordId, first.generation, timeoutMs)
+    const observed = await readRecoveryJournalRecord(storage, target, recordId, first.generation, remainingTime(deadline))
     if (!Buffer.from(observed).equals(bytes)) throw new Error('Journal record differs')
     const last = await metadata()
     if (last.generation !== first.generation || last.metageneration !== first.metageneration ||
         last.crc32c !== first.crc32c) throw new Error('Journal generation changed')
+    remainingTime(deadline)
     return { generation: first.generation, coverageVerified: false }
   } catch {
     // A comparison cannot prove authorization, completeness, or future availability.

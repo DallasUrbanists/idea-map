@@ -71,6 +71,33 @@ test('journal storage treats provider errors and timeouts as uncertain without l
   }
 })
 
+test('bucket verification and journal upload share one deadline', async t => {
+  let now = 0, streamTimeout, objectRequests = 0
+  t.mock.method(performance, 'now', () => now)
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const storage = { bucket: () => ({ async getMetadata() { now = 19; return bucketMetadata() },
+    file() { objectRequests++; return { createWriteStream(options) {
+      streamTimeout = options.timeout
+      return new Writable({ write() {} })
+    } } },
+  }) }
+  const rejected = assert.rejects(writeRecoveryJournalRecord(storage, target, id, payload, 20), /outcome is uncertain/)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(objectRequests, 1)
+  assert.equal(streamTimeout, 1)
+  t.mock.timers.tick(1)
+  await rejected
+})
+
+test('an expired bucket verification does not start an object write', async t => {
+  let now = 0, objectRequests = 0
+  t.mock.method(performance, 'now', () => now)
+  const storage = { bucket: () => ({ async getMetadata() { now = 20; return bucketMetadata() },
+    file() { objectRequests++; throw new Error('unexpected object access') },
+  }) }
+  await assert.rejects(writeRecoveryJournalRecord(storage, target, id, payload, 20), /outcome is uncertain/)
+  assert.equal(objectRequests, 0)
+})
 test('journal storage rejects invalid destinations, IDs, bodies, and timeouts before writing', async () => {
   const { storage, seen } = fake()
   for (const [destination, recordId, body, timeout] of [
@@ -210,6 +237,19 @@ test('ambiguous write readback requires the same current generation and exact sa
     error => error.message === 'Journal record could not be verified')
 })
 
+test('journal comparison does not restart its deadline after metadata', async t => {
+  let now = 0, objectReads = 0
+  t.mock.method(performance, 'now', () => now)
+  const checksum = new CRC32C(); checksum.update(payload)
+  const path = `idea-map-v2/dev/recovery-journal/${id}.json`
+  const storage = { bucket: () => ({ async getMetadata() { now = 19; return bucketMetadata() }, file: () => ({
+    async getMetadata() { now = 20; return [{ bucket: target.bucket, name: path, generation: '1', metageneration: '1',
+      size: String(payload.length), contentType: 'application/json', crc32c: checksum.toString() }] },
+    createReadStream() { objectReads++; throw new Error('unexpected object read') },
+  }) }) }
+  await assert.rejects(compareCurrentRecoveryJournalRecord(storage, target, id, payload, 20), /could not be verified/)
+  assert.equal(objectReads, 0)
+})
 test('journal inventory discovers bounded exact generations without asserting coverage', async () => {
   const secondId = recoveryConfirmationRecordId(id)
   const prefix = 'idea-map-v2/dev/recovery-journal/'

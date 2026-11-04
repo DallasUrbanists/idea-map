@@ -56,6 +56,9 @@ version-one encoding when extending the format; a failed decode keeps recovery
 isolated. The transport validates the canonical record before writing, bounds
 record size and write time, uses an opaque caller-supplied record ID and a
 create-only precondition, and treats provider errors and timeouts as uncertain.
+Each write, generation read, and comparison has one monotonic deadline that
+includes bucket verification. That is not a deadline for the complete removal
+workflow; SDK metadata requests may continue after the caller times out.
 The summary conservatively identifies ideas in removal and hold-placement
 intents, flags unconfirmed operations and all hold placements and releases for
 authorized review, and reports confirmations without intents. A confirmed hold
