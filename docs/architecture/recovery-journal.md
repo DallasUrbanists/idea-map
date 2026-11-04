@@ -231,9 +231,10 @@ uncertain. A separate-reader helper compares the exact newly appended bytes but
 does not prove effective identity separation. A timed-out request can still finish
 if the injected transport ignores cancellation. Its returned sequence remains
 unverified: callers must establish the actual secret's identity, authenticated
-baseline, writer fence and coverage.
-Only provider fakes are implemented; no real Secret Manager client or credentials
-are connected to a live mutation or recovery.
+baseline, writer fence and coverage. An unwired Google transport targets only
+the Secret Manager API and uses short-lived application credentials; local tests
+inject fake credentials and responses. No live secret, effective permissions,
+mutation path, or recovery path has been tested or connected to this transport.
 The existing bucket-based decision transport remains a separate, unwired
 prototype; do not run both as independent authoritative journals. Choosing and
 integrating one design requires review of its permissions, retention, recovery

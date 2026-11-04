@@ -30,7 +30,7 @@
     "db:generate": "drizzle-kit generate",
     "test:registered-drafts": "tsc --build && node --test test/registered-drafts.test.mjs test/registered-submissions.test.mjs",
     "test:resend": "tsc --build && node --test test/resend.test.mjs",
-    "test:recovery-journal": "tsc --build && node --test test/recovery-journal-storage.test.mjs test/recovery-journal-record.test.mjs test/recovery-journal-plan.test.mjs test/recovery-suppression.test.mjs test/recovery-inventory.test.mjs test/recovery-held-material.test.mjs test/recovery-held-manifest.test.mjs test/recovery-sequence.test.mjs test/recovery-sequence-storage.test.mjs",
+    "test:recovery-journal": "tsc --build && node --test test/recovery-journal-storage.test.mjs test/recovery-journal-record.test.mjs test/recovery-journal-plan.test.mjs test/recovery-suppression.test.mjs test/recovery-inventory.test.mjs test/recovery-held-material.test.mjs test/recovery-held-manifest.test.mjs test/recovery-sequence.test.mjs test/recovery-sequence-storage.test.mjs test/recovery-sequence-google.test.mjs",
     "test:public-access-lease": "tsc --build && node --test test/public-access-lease.integration.mjs test/media-preview-abort.test.mjs",
     "test:media": "tsc --build && node --test test/media-upload.test.mjs",
     "test:outbox": "tsc --build && node --test test/outbox.test.mjs",
