@@ -58,9 +58,13 @@ permissions, all database grants, or Neon role setup. The archive deliberately
 contains an open public-access gate. Before restore, the synthetic target revokes
 `PUBLIC` database connections; after restore, the test verifies that a synthetic
 runtime login cannot connect, then closes the restored gate while the target
-remains isolated. It checks that the restored pending-removal preparation,
-application, confirmation, and verification functions do not grant `PUBLIC`
-execution and that the guard triggers are enabled without `PUBLIC` execution. It
+remains isolated. A second synthetic archive omits the gate table; its restored
+target also rejects the runtime login, and the current lease code rejects the
+missing table. That fixture is not a full historical schema and does not verify
+compatibility with a particular earlier release. The rehearsal checks that the
+restored pending-removal preparation, application, confirmation, and verification
+functions do not grant `PUBLIC` execution and that the guard triggers are enabled
+without `PUBLIC` execution. It
 does not show that an older archive contains a later gate closure. These checks
 do not establish a hosted network or IAM fence.
 

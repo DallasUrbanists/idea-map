@@ -25,6 +25,7 @@ const container = `idea-map-recovery-${id}`
 const source = 'idea_map_test_recovery_source'
 const target = 'idea_map_test_recovery_target'
 const unpreparedTarget = 'idea_map_test_recovery_unprepared'
+const missingGateTarget = 'idea_map_test_recovery_missing_gate'
 const marker = `synthetic-${id}`
 const director = randomUUID()
 const reader = `recovery_reader_${id.replaceAll('-', '')}`
@@ -32,6 +33,7 @@ const runtime = `recovery_runtime_${id.replaceAll('-', '')}`
 const scratchRoot = await realpath(tmpdir())
 const scratch = await mkdtemp(join(scratchRoot, 'idea-map-recovery-'))
 const archive = join(scratch, 'synthetic.pgdump')
+const missingGateArchive = join(scratch, 'synthetic-missing-gate.pgdump')
 let created = false
 
 function start(command, args, options = {}) {
@@ -56,6 +58,14 @@ async function run(command, args, input, options) {
 
 const docker = (...args) => run('docker', args)
 const sql = (database, command) => docker('exec', container, 'psql', '-X', '-qAt', '-v', 'ON_ERROR_STOP=1', '-U', 'idea_map', '-d', database, '-c', command)
+async function assertRuntimeFence(database, port) {
+  const client = new pg.Client({ connectionString: `postgres://${runtime}:synthetic-runtime-only@127.0.0.1:${port}/${database}`,
+    connectionTimeoutMillis: 5000 })
+  let rejected = false
+  try { await client.connect() } catch (error) { rejected = error.code === '42501' }
+  finally { await client.end().catch(() => {}) }
+  if (!rejected) throw new Error('Synthetic database fence did not reject runtime access')
+}
 
 try {
   await docker('create', '--name', container, '--label', `idea-map.recovery-test=${id}`,
@@ -114,6 +124,12 @@ try {
   await exportEncryptedBackup({ environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789', databaseUrl },
     { start: startSyntheticDump, storage, now: new Date('2026-11-03T00:00:00Z') })
   const backupFinished = Date.now()
+  // Model the missing-gate condition of an older archive. This is not a full
+  // historical schema or evidence of compatibility with any specific version.
+  const missingGateDump = start('docker', ['exec', container, 'pg_dump', '-U', 'idea_map', ...dumpArguments,
+    '--exclude-table=public.public_access_gate', source])
+  missingGateDump.child.stdin.end()
+  await Promise.all([pipeline(missingGateDump.child.stdout, createWriteStream(missingGateArchive, { flags: 'wx', mode: 0o600 })), missingGateDump.done])
   await sql(source, `INSERT INTO synthetic_recovery_marker(id) VALUES ('${marker}-after'); INSERT INTO idea_revisions(idea_id,version,content) VALUES ('${ideaId}',2,'{"title":"Synthetic later held material"}'::jsonb); INSERT INTO users(id) VALUES ('${director}'); INSERT INTO identities(user_id,provider,subject) VALUES ('${director}','firebase:demo-idea-map','${marker}'); INSERT INTO moderator_assignments(user_id,granted_by,grant_reason) VALUES ('${director}','${director}','synthetic grant'); INSERT INTO legal_hold_assignments(user_id,authority,authorization_reference,granted_by) VALUES ('${director}','executive_director','synthetic authority','${director}')`)
   const journalTarget = { environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789' }
   const entries = new Map()
@@ -214,6 +230,21 @@ try {
   const unpreparedResults = await Promise.allSettled([pipeline(createReadStream(archive), unprepared.child.stdin), unprepared.done])
   if (unpreparedResults[1].status !== 'rejected' || !unpreparedError.includes(`role \"${reader}\" does not exist`)) throw new Error('Missing synthetic role did not stop the restore')
   await sql(source, `CREATE ROLE ${reader} NOLOGIN`)
+  await docker('exec', container, 'createdb', '-U', 'idea_map', '-T', 'template0', missingGateTarget)
+  await sql(source, `REVOKE CONNECT ON DATABASE ${missingGateTarget} FROM PUBLIC`)
+  const missingGateRestore = start('docker', ['exec', '-i', container, 'pg_restore', '-U', 'idea_map', '--no-owner', '--exit-on-error', '-d', missingGateTarget])
+  missingGateRestore.child.stdout.resume()
+  await Promise.all([pipeline(createReadStream(missingGateArchive), missingGateRestore.child.stdin), missingGateRestore.done])
+  if (await sql(missingGateTarget, "SELECT to_regclass('public.public_access_gate') IS NULL") !== 't') throw new Error('Synthetic gate was not omitted')
+  await assertRuntimeFence(missingGateTarget, port)
+  const missingGatePool = new pg.Pool({ connectionString: `postgres://idea_map:synthetic-local-only@127.0.0.1:${port}/${missingGateTarget}`,
+    max: 1, connectionTimeoutMillis: 5000 })
+  try {
+    let lease
+    try { lease = await acquirePublicAccessLease(missingGatePool) }
+    catch (error) { if (error.message !== 'Public access unavailable') throw error }
+    if (lease) { await lease.release(); throw new Error('A missing gate allowed a synthetic public lease') }
+  } finally { await missingGatePool.end() }
   await docker('exec', container, 'createdb', '-U', 'idea_map', '-T', 'template0', target)
   await sql(source, `REVOKE CONNECT ON DATABASE ${target} FROM PUBLIC`)
   const restore = start('docker', ['exec', '-i', container, 'pg_restore', '-U', 'idea_map', '--no-owner', '--exit-on-error', '-d', target])
@@ -223,12 +254,7 @@ try {
   // isolated before restore, so a runtime identity cannot connect at this point.
   const originallyOpenGate = await sql(target, 'SELECT is_open FROM public.public_access_gate WHERE singleton=true')
   if (originallyOpenGate !== 't') throw new Error('Synthetic archive did not contain an open gate')
-  const blockedRuntime = new pg.Client({ connectionString: `postgres://${runtime}:synthetic-runtime-only@127.0.0.1:${port}/${target}`,
-    connectionTimeoutMillis: 5000 })
-  let rejectedByFence = false
-  try { await blockedRuntime.connect() } catch (error) { rejectedByFence = error.code === '42501' }
-  finally { await blockedRuntime.end().catch(() => {}) }
-  if (!rejectedByFence) throw new Error('Synthetic database fence did not reject runtime access')
+  await assertRuntimeFence(target, port)
   // Keep the database gate closed for all subsequent reconciliation. The
   // external fence remains in place and is still required for older schemas.
   const closedGate = await sql(target, 'UPDATE public.public_access_gate SET is_open=false WHERE singleton=true RETURNING is_open')
@@ -355,7 +381,7 @@ try {
     syntheticPreviewSuppressed: true, heldEvidenceRequiresReconciliation: true,
     holdAuthorityRequiresReconciliation: true,
     journalCoverageVerified: false, syntheticGrantAndRevocationRestored: true, missingRoleRejected: true,
-    restoredOpenGateFenced: true, databaseAccessFenced: true }))
+    restoredOpenGateFenced: true, missingGateFenced: true, databaseAccessFenced: true }))
 } finally {
   try {
     if (created) {
