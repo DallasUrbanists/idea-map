@@ -17,6 +17,10 @@ variables {
 run "bounded_private_foundation" {
   command = plan
   assert {
+    condition     = alltrue([for service in google_cloud_run_v2_service.runtime : service.scaling[0].min_instance_count == 0 && service.template[0].scaling[0].min_instance_count == 0])
+    error_message = "Services and revisions must both scale to zero."
+  }
+  assert {
     condition     = google_cloud_run_v2_service.runtime["web"].template[0].scaling[0].max_instance_count == 2 && google_cloud_run_v2_service.runtime["worker"].template[0].scaling[0].max_instance_count == 1
     error_message = "Web and worker instance maxima must remain bounded."
   }

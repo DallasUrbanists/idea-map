@@ -23,6 +23,12 @@ resource "google_cloud_run_v2_service" "runtime" {
   deletion_protection = true
   ingress             = "INGRESS_TRAFFIC_INTERNAL_ONLY"
 
+  # Declare the service-level default so provider refreshes do not plan to
+  # remove Cloud Run's returned zero-minimum scaling block on every run.
+  scaling {
+    min_instance_count = 0
+  }
+
   template {
     service_account                  = google_service_account.runtime[each.key].email
     max_instance_request_concurrency = each.value.concurrency
