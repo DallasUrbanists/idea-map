@@ -60,11 +60,18 @@ Operators should keep `enable_task_delivery` off during initial review. When an
 operator has separate authorization to configure test delivery, review a plan with it enabled
 and verify that the scheduler is paused, invocation is restricted to the two
 distinct identities, queue creation and full-view access are scoped, and task
-payloads contain only job identifiers. Do not unpause the scheduler or connect
-real assessment data before the rollout gates are accepted. See the
+payloads contain only job identifiers. Do not enable scheduled repair for live
+assessment data before the rollout gates are accepted. See the
 [Google Cloud task guide](../architecture/google-cloud.md#tasks-and-reconciliation)
 for runtime settings and the [recovery procedure](../architecture/postgresql-postgis-drizzle.md#outbox-recovery)
 for the provider checks required before rearming a delivery.
+
+A manual Cloud Scheduler run also requires the job to be enabled. For a
+separately authorized synthetic test, operators should review a bounded window,
+confirm that the queue and outbox contain only test-owned work, and restore the
+scheduler to paused afterward. A failed repair can be retried, and a request
+already in flight can finish after the scheduler is paused; inspect those
+outcomes before recovery or cleanup.
 
 ## Prepare a synthetic worker database
 
