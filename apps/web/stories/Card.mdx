@@ -1,0 +1,59 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './Card.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Card usage
+
+You can group related content in a flat card. Cards use the card surface, the Foundation card radius, and relationship-based gaps. Floating surfaces carry elevation; ordinary cards stay flat.
+
+## Content and actions
+
+The header, default, and footer slots organize a card. You should choose headings by the surrounding document structure and put actions in native links or Buttons inside the card.
+
+```html
+<Card>
+  <template #header><h2>Shade for the bus stop</h2></template>
+  <p>A community idea for a cooler place to wait.</p>
+  <template #footer><Button variant="secondary">Preview idea</Button></template>
+</Card>
+```
+
+<Canvas of={Stories.UsageDefault} sourceState="none" />
+
+## Empty content
+
+You can use empty to center a brief explanation and a useful next step. An empty state means there is no content; a failed request belongs in ErrorState.
+
+```html
+<Card empty>
+  <template #header><h2>No saved ideas</h2></template>
+  <p>Save an idea to find it here later.</p>
+</Card>
+```
+
+<Canvas of={Stories.UsageEmpty} sourceState="none" />
+
+## Boundary on matching surfaces
+
+You can add hairline when the card needs a decorative boundary against a similar surface. Cards should not nest inside other cards.
+
+```html
+<Card hairline>Workshop details</Card>
+```
+
+<Canvas of={Stories.UsageHairline} sourceState="none" />
+
+## Component contract
+
+The Boolean `empty` and `hairline` props default to false. Slots are `header`, default content, and `footer`. Card has no events or implicit control semantics. You should keep each action independently focusable.
+
+## Foundations and reference
+
+The examples follow Idea Map's [color](/docs/foundations-color--docs),
+[typography](/docs/foundations-typography--docs),
+[size and space](/docs/foundations-size-and-space--docs), and
+[container](/docs/foundations-containers--docs) requirements.
+The component pattern is informed by [Signal's card reference](https://signal.chitransit.app/components/card);
+Idea Map's Foundation tokens and interaction requirements determine this implementation.
+

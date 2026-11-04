@@ -1,0 +1,78 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './Input.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Input usage
+
+You can collect text with Input and a visible label. Input provides a native control, stable identifiers, validation associations, and v-model behavior.
+
+## Text and labels
+
+You should keep the label visible and use hint for supporting instructions. The placeholder supplies an example, not the accessible name.
+
+```html
+<Input v-model="title" label="Idea title" name="title"
+  hint="Describe the improvement briefly." placeholder="A shaded bus stop" />
+```
+
+<Canvas of={Stories.UsageDefault} sourceState="none" />
+
+## Search
+
+You can set type to search for a native search field with a decorative leading glyph. The parent owns search timing, results, and empty states.
+
+```html
+<Input v-model="query" type="search" label="Search ideas"
+  placeholder="Search by title or place" />
+```
+
+<Canvas of={Stories.UsageSearch} sourceState="none" />
+
+## Validation
+
+You should supply an actionable error and preserve the entered value. Error text is linked to the control and sets aria-invalid.
+
+```html
+<Input v-model="title" label="Idea title" required :error="error" />
+```
+
+<Canvas of={Stories.UsageError} sourceState="none" />
+
+## Disabled field
+
+You should explain why a field is unavailable in visible hint text. Disabled
+fields leave the Tab order and keep their label and saved value visible.
+
+```html
+<Input model-value="Workshop closed" label="Idea title" disabled
+  hint="Editing is unavailable after the workshop closes." />
+```
+
+<Canvas of={Stories.UsageDisabled} sourceState="none" />
+
+## Longer text
+
+You can set multiline for a resizable textarea. The label, hint, validation,
+and controlled value follow the same contract as the single-line field.
+
+```html
+<Input v-model="description" label="Description" multiline
+  hint="Explain who the change helps." />
+```
+
+<Canvas of={Stories.UsageMultiline} sourceState="none" />
+
+## Component contract
+
+Required props are `label` and string `modelValue`. Optional props are `id`, `hint`, `error`, `required`, `disabled`, `multiline`, and `type` (`text` by default, `email`, `password`, `search`, `tel`, or `url`). Events are `update:modelValue(string)` and `blur(FocusEvent)`. Native attributes such as `name`, `autocomplete`, `maxlength`, and `readonly` reach the control. There are no slots. The parent owns validation timing and submission.
+
+## Foundations and reference
+
+The examples follow Idea Map's [color](/docs/foundations-color--docs),
+[typography](/docs/foundations-typography--docs),
+[size and space](/docs/foundations-size-and-space--docs), and
+[container](/docs/foundations-containers--docs) requirements.
+The component pattern is informed by [Signal's input reference](https://signal.chitransit.app/components/input);
+Idea Map's Foundation tokens and interaction requirements determine this implementation.
+

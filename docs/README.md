@@ -70,10 +70,10 @@ details about each platform in these guides:
 
 ## Design
 
-The [design system](design/design-system.md) brings together tokens, themes,
-component contracts, and accessibility expectations. The
-[browser specimen](design/specimen.html) demonstrates those visual choices using
-the project stylesheet.
+[Storybook](architecture/storybook.md) is the source of truth for design system
+decisions, including tokens, themes, component contracts, and accessibility
+expectations. Its Foundations and Components pages document and demonstrate
+those decisions.
 
 ## Policies and procedures
 

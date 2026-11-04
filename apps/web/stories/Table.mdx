@@ -1,0 +1,60 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './Table.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Table usage
+
+You can present related rows and columns in a semantic Table. A visible caption names the data, column and row headers establish relationships, and the bounded region scrolls horizontally on narrow screens.
+
+## Rows and columns
+
+You should supply unique column keys and row IDs. Foundation typography keeps every header and cell left-aligned and uses tabular figures for numbers.
+
+```html
+<Table caption="Workshop ideas"
+  :columns="[{ key: 'title', label: 'Idea' }, { key: 'supporters', label: 'Supporters' }]"
+  :rows="[{ id: 'shade', title: 'Shade at the bus stop', supporters: 42 }]" />
+```
+
+<Canvas of={Stories.UsageDefault} sourceState="none" />
+
+## Empty results
+
+You can explain missing results with emptyLabel. A request failure should use ErrorState with recovery instead of appearing as an empty data set.
+
+```html
+<Table caption="Saved ideas" :columns="columns" :rows="[]"
+  empty-label="No saved ideas. Save an idea to see it here." />
+```
+
+<Canvas of={Stories.UsageEmpty} sourceState="none" />
+
+## Custom cells
+
+You can use the cell slot for a status or another semantic value. The table retains the header relationship around the slot content.
+
+```html
+<Table caption="Workshop ideas" :columns="columns" :rows="rows">
+  <template #cell="{ row, column }">
+    <Status v-if="column.key === 'status'" variant="pill">{{ row.status }}</Status>
+    <template v-else>{{ row[column.key] }}</template>
+  </template>
+</Table>
+```
+
+<Canvas of={Stories.UsageCells} sourceState="none" />
+
+## Component contract
+
+Required props are `caption`, `columns` (unique `key` and visible `label`), and `rows` (unique string `id` plus string or numeric cells). Optional `emptyLabel` defaults to `No results to show.` The `cell` slot receives `{ row, column }`; Table has no events. You can focus the scroll region and use arrow keys to scroll. Sorting and pagination belong to the parent.
+
+## Foundations and reference
+
+The examples follow Idea Map's [color](/docs/foundations-color--docs),
+[typography](/docs/foundations-typography--docs),
+[size and space](/docs/foundations-size-and-space--docs), and
+[container](/docs/foundations-containers--docs) requirements.
+The component pattern is informed by [Signal's table reference](https://signal.chitransit.app/components/table);
+Idea Map's Foundation tokens and interaction requirements determine this implementation.
+

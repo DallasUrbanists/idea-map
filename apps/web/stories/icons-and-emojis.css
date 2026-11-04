@@ -1,0 +1,27 @@
+.emoji-samples {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+  gap: var(--gap-standard);
+}
+
+.emoji-sample {
+  margin: 0;
+  padding: var(--gap-standard);
+  display: grid;
+  justify-items: center;
+  gap: var(--gap-compact);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-small);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.emoji-sample img {
+  width: 2rem;
+  height: 2rem;
+}
+
+.emoji-sample figcaption {
+  font-size: var(--font-small);
+}

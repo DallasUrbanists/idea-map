@@ -5,7 +5,7 @@ interface behavior, such as dialogs and menus. These building blocks help with
 interactions such as keyboard access and focus, while project-owned components
 provide the appearance and content. This guide explains how to choose and wrap
 them; the
-[design system](../design/design-system.md) covers component contracts, visual
+[Storybook design system](storybook.md) covers component contracts, visual
 tokens, and accessibility expectations.
 
 The following contents links navigate within this guide:
@@ -35,7 +35,7 @@ You can use this table to choose a primitive and see which behavior to check:
 
 | Primitive | Project responsibility | Required behavior |
 | --- | --- | --- |
-| [Dialog](https://reka-ui.com/docs/components/dialog) | Focused modal tasks through `IdeaDialog` | Focus containment, Escape dismissal, trigger-focus restoration, viewport bounds, and scrolling |
+| [Dialog](https://reka-ui.com/docs/components/dialog) | Focused modal tasks through `Dialog` | Focus containment, Escape dismissal, trigger-focus restoration, viewport bounds, and scrolling |
 | [Popover](https://reka-ui.com/docs/components/popover) | Brief anchored interaction | Keyboard activation, Escape, focus return, collision handling, touch access, and bounded size |
 | [Dropdown menu](https://reka-ui.com/docs/components/dropdown-menu) | Action menus with menu semantics | Arrow navigation, activation, Escape, focus restoration, and adequate touch targets |
 | [Select](https://reka-ui.com/docs/components/select) | Choices requiring documented custom presentation | Visible labels, arrow navigation, selection, long-option handling, and mobile scrolling |

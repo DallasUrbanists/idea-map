@@ -1,0 +1,32 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './Spinner.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Spinner usage
+
+You can show Spinner while a request is pending and its amount of progress is unknown. A visible status label names the work, including when motion is reduced.
+
+## Named work
+
+You should avoid flashing a spinner for very brief work. For an initial list load, Skeleton better preserves the shape of the coming content; known progress belongs in Progress.
+
+```html
+<Spinner label="Saving your idea…" />
+```
+
+<Canvas of={Stories.UsageDefault} sourceState="none" />
+
+## Component contract
+
+The optional `label` prop defaults to `Loading`. Spinner has no events or slots. Its ring uses the shared spin timing and stops under reduced motion; the label remains visible in a status region. The parent mounts and removes the spinner around the request.
+
+## Foundations and reference
+
+The examples follow Idea Map's [color](/docs/foundations-color--docs),
+[typography](/docs/foundations-typography--docs),
+[size and space](/docs/foundations-size-and-space--docs), and
+[container](/docs/foundations-containers--docs) requirements.
+The component pattern is informed by [Signal's spinner reference](https://signal.chitransit.app/components/spinner);
+Idea Map's Foundation tokens and interaction requirements determine this implementation.
+

@@ -1,0 +1,21 @@
+import { Meta } from '@storybook/addon-docs/blocks'
+
+<Meta title="Foundations/Theming" />
+
+# Theming
+
+The system follows the operating system by default. The Storybook toolbar can select light or dark explicitly; components read the same semantic roles in each theme.
+
+## Color palettes
+
+A palette starts with background, text, and accent. Derive supporting surfaces and tints from those roles, then check text and interactive boundaries for contrast. Custom palette generation is not yet implemented.
+
+## Overriding a component
+
+Prefer semantic tokens and scoped custom properties when a component needs a local variation. For example, set `--button-radius` on one button or a containing element; `--button-background`, `--button-border`, and `--button-color` are also available for the primary button. Check the variation in both themes and preserve its focus and disabled states.
+
+## Surface roles
+
+Control surfaces such as sheets and toolbars use the chrome role. Content within them uses the card surface role. On the web these resolve to opaque paper and card colors.
+
+This approach is adapted from [Signal's theming guidance](https://signal.chitransit.app/foundations/theming).

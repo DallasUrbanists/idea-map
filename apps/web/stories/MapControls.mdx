@@ -1,0 +1,46 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './MapControls.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Map controls usage
+
+You can compose named map actions in an opaque floating control surface. The map remains the canvas, while a list or another non-map view provides access to the same information.
+
+## Zoom, layers, and recenter
+
+You should bind zoom to the map adapter, handle recenter, and update layer visibility after a layer event. The story uses synthetic state and does not request location or load a basemap.
+
+```html
+<MapControls v-model:zoom="zoom" :following="following"
+  :layers="layers" @recenter="recenter"
+  @layer="setLayerVisibility" @attribution="showAttribution" />
+```
+
+<Canvas of={Stories.UsageDefault} sourceState="none" />
+
+## Limits, loading, and unavailable location
+
+The zoom buttons disable at minZoom and maxZoom. You can set locating during a location request and provide a visible error with a recovery option if it fails.
+
+```html
+<MapControls :zoom="12" :locating="locating"
+  error="Location is unavailable. Allow location access or choose a place on the map."
+  @recenter="recenter" />
+```
+
+<Canvas of={Stories.UsageError} sourceState="none" />
+
+## Component contract
+
+Required numeric `zoom` is controlled by `update:zoom(number)`. Optional props are `minZoom` (1), `maxZoom` (20), `following`, `locating`, `error`, and `layers` (items with unique `value`, visible `label`, Boolean `checked`, and optional `disabled`). Events are `recenter`, `layer(value, checked)`, and `attribution`. The parent should supply finite ordered zoom bounds and own geolocation permission, attribution content, and map announcements. The stack contains three buttons with at least 44 px targets; layers use the shared Menu.
+
+## Foundations and reference
+
+The examples follow Idea Map's [color](/docs/foundations-color--docs),
+[typography](/docs/foundations-typography--docs),
+[size and space](/docs/foundations-size-and-space--docs), and
+[container](/docs/foundations-containers--docs) requirements.
+The component pattern is informed by [Signal's map controls reference](https://signal.chitransit.app/components/map-controls);
+Idea Map's Foundation tokens and interaction requirements determine this implementation.
+
