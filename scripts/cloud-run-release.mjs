@@ -98,11 +98,11 @@ export function release(config, run) {
   if (before !== config.expectedRevision) throw new Error('Current revision changed since review')
   let target
   if (config.operation === 'prepare') {
-    requireMatch(config.suffix, /^r[0-9]+-[0-9]+$/, 'revision suffix')
-    target = `${serviceName}-${config.suffix}`
-    requireMatch(target, revisionPattern, 'candidate revision')
-    run(['run', 'services', 'update', serviceName, `--image=${config.image}`,
-      `--revision-suffix=${config.suffix}`, '--no-traffic', ...common], false)
+    const prepared = run(['run', 'services', 'update', serviceName, `--image=${config.image}`,
+      '--no-traffic', ...common, '--format=json'], true)
+    target = requireMatch(prepared?.status?.latestCreatedRevisionName, revisionPattern, 'candidate revision')
+    if (prepared.metadata?.name !== serviceName || !target.startsWith(`${serviceName}-`) || target === before ||
+        reconciledStatus(prepared) !== 'True') throw new Error('Prepared service did not return a reconciled candidate')
     checkedRevision(revision(target), serviceName, target, resolvedImage, config.project)
     if (current() !== before) throw new Error('Traffic changed while preparing candidate')
   } else {
@@ -144,8 +144,7 @@ async function main(env) {
   const config = { environment: env.RELEASE_ENVIRONMENT, service: env.RELEASE_SERVICE,
     operation: env.RELEASE_OPERATION, project: env.GCP_PROJECT_ID, region: env.GCP_RUN_REGION,
     imageRepository: env.RELEASE_IMAGE_REPOSITORY, image: env.RELEASE_IMAGE,
-    revision: env.RELEASE_REVISION, expectedRevision: env.EXPECTED_REVISION,
-    suffix: `r${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}` }
+    revision: env.RELEASE_REVISION, expectedRevision: env.EXPECTED_REVISION }
   validateConfig(config)
   const result = await releaseChecked(config, gcloud, url => {
     const credentials = spawnSync('gcloud', ['auth', 'print-access-token', '--quiet'], { encoding: 'utf8' })

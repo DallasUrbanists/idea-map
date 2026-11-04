@@ -70,10 +70,17 @@ does not grant access to media. Review existing resources and state before a
 plan or apply; an existing bucket must not be adopted or recreated implicitly.
 
 After service creation, the [release workflow](../contributor-guides/cloud-run-release.md)
-owns image and traffic changes. Terraform ignores those fields during updates;
-the image variables supply bootstrap values only. Operators should review the
-live image, traffic, and the impact of any other revision-template change before
-applying a plan.
+owns image, traffic, and client attribution. Terraform ignores those fields
+during updates; the image variables supply bootstrap values only. Operators
+should review the live image, traffic, and the impact of any other
+revision-template change before applying a plan.
+
+Release preparation uses provider-generated revision names. Keep the template
+revision name under Terraform management so an approved configuration change
+can request a fresh revision; ignoring it can reuse an immutable name and fail
+the update. The [provider's revision discussion](https://github.com/hashicorp/terraform-provider-google/issues/17218)
+describes that conflict. Inspect a plan after each release for unexpected
+service changes.
 
 The worker runtime option requires `enable_task_delivery`, an exact
 `worker_origin`, an existing `worker_database_secret_id`, and a numeric

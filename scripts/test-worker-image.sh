@@ -24,7 +24,7 @@ address=$(docker port "$worker_id" 8080/tcp)
 [[ "$address" =~ ^127\.0\.0\.1:[0-9]+$ ]]
 ready=false
 for _ in {1..40}; do
-  if curl --silent --fail "http://$address/healthz" >/dev/null; then ready=true; break; fi
+  if curl --silent --fail "http://$address/health" >/dev/null; then ready=true; break; fi
   sleep 0.25
 done
 [[ "$ready" == true ]]

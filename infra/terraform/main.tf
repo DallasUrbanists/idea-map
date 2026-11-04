@@ -95,9 +95,9 @@ resource "google_cloud_run_v2_service" "runtime" {
     }
   }
   lifecycle {
-    # Release automation owns image and traffic after the initial bootstrap.
+    # Release automation owns image, traffic, and its client attribution.
     # Keep all other revision configuration under Terraform management.
-    ignore_changes = [template[0].containers[0].image, traffic]
+    ignore_changes = [client, client_version, template[0].containers[0].image, traffic]
     precondition {
       condition     = var.resend_webhook_secret_version == "" || var.enable_resend_secrets
       error_message = "Enable the Resend secrets before selecting a webhook secret version."

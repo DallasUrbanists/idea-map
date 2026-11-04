@@ -68,10 +68,18 @@ and destination write access.
 
 Terraform creates the services using bootstrap image digests, their runtime
 identities, configuration, scaling, and ingress. After creation, the release
-workflow owns image and traffic changes; Terraform ignores those fields to
-avoid silently reverting a release. Operators should review a real Terraform
-plan before every separately authorized apply, and check which revision and
-traffic will remain active when other service configuration changes.
+workflow owns image, traffic, and client attribution. Terraform ignores those
+fields to avoid silently reverting a release. Operators should review a real
+Terraform plan before every separately authorized apply, and check which
+revision and traffic will remain active when other service configuration changes.
+
+Preparation uses Cloud Run's generated revision name and records the returned
+name in the receipt. Do not add a revision suffix or traffic tag to preparation:
+an explicit template revision can cause Terraform to plan another revision,
+while ignoring that field can prevent later configuration updates. Preparation
+stops if Cloud Run returns the currently serving revision instead of a distinct
+candidate; inspect the image and service before deciding whether another release
+is needed.
 
 If the worker's generated URI is not yet known, the
 [Terraform guide](../architecture/terraform.md#resource-definitions) describes
