@@ -10,6 +10,8 @@ const hold = { kind: 'hold_placement', caseReference: 'synthetic case', reason: 
   authorizationReference: 'synthetic authority', scope: 'synthetic scope' }
 const intent = (id, decision) => encodeRecoveryIntent({ ...base, operationId: operation(id), decision })
 const confirmation = id => encodeRecoveryConfirmation(operation(id), 'dev', '2026-11-03T12:01:00.000Z')
+const assignment = { actorId: base.actorId, authority: 'executive_director', grantedBy: base.actorId,
+  grantedAt: '2026-11-03T11:59:00.000000Z', authorizationReference: 'synthetic authority' }
 
 test('recovery summary protects uncertain removals and holds and never applies a release', () => {
   const records = [
@@ -45,11 +47,11 @@ test('hold placement confirmations preserve the committed hold ID and reject amb
   const holdId = '44444444-4444-4444-8444-444444444444'
   const authority = '55555555-5555-4555-8555-555555555555'
   const placedAt = '2026-11-03T12:00:00.123456Z'
-  const held = id => encodeRecoveryHoldConfirmation(operation(id), 'dev', '2026-11-03T12:01:00.000Z', holdId, authority, placedAt)
+  const held = id => encodeRecoveryHoldConfirmation(operation(id), 'dev', '2026-11-03T12:01:00.000Z', holdId, authority, placedAt, assignment)
   assert.deepEqual(summarizeUnverifiedRecovery([intent(1, hold), confirmation(1)], 'dev').reviewOperations, [operation(1)])
   const result = summarizeUnverifiedRecovery([intent(1, hold), held(1)], 'dev')
   assert.deepEqual(result.reviewOperations, [operation(1)])
-  assert.deepEqual(result.holdIdentities, [{ operationId: operation(1), ideaId: idea, holdId, placementAuthorityId: authority, placedAt }])
+  assert.deepEqual(result.holdIdentities, [{ operationId: operation(1), ideaId: idea, holdId, placementAuthorityId: authority, placedAt, authorityEvidence: assignment }])
   assert.equal(result.coverageVerified, false)
   assert.throws(() => summarizeUnverifiedRecovery([intent(1, hold), held(1), intent(2, hold), held(2)], 'dev'), /ambiguous/)
   assert.throws(() => summarizeUnverifiedRecovery([intent(1, { kind: 'removal', classification: 'other', reason: 'synthetic' }), held(1)], 'dev'), /ambiguous/)
@@ -60,7 +62,7 @@ test('conflicting idea associations for a hold ID fail closed in either record o
   const otherIdea = '55555555-5555-4555-8555-555555555555'
   const release = { ...hold, kind: 'hold_release', holdId, legalReviewReference: null }
   const otherRelease = encodeRecoveryIntent({ ...base, ideaId: otherIdea, operationId: operation(2), decision: release })
-  const placement = [intent(1, hold), encodeRecoveryHoldConfirmation(operation(1), 'dev', '2026-11-03T12:01:00.000Z', holdId, '66666666-6666-4666-8666-666666666666', '2026-11-03T12:00:00.000000Z')]
+  const placement = [intent(1, hold), encodeRecoveryHoldConfirmation(operation(1), 'dev', '2026-11-03T12:01:00.000Z', holdId, '66666666-6666-4666-8666-666666666666', '2026-11-03T12:00:00.000000Z', assignment)]
   assert.throws(() => summarizeUnverifiedRecovery([...placement, otherRelease], 'dev'), /ambiguous/)
   assert.throws(() => summarizeUnverifiedRecovery([otherRelease, ...placement], 'dev'), /ambiguous/)
   assert.throws(() => summarizeUnverifiedRecovery([intent(1, release), otherRelease], 'dev'), /ambiguous/)
@@ -70,7 +72,7 @@ test('conflicting idea associations for a hold ID fail closed in either record o
 test('unmatched confirmations identify operations needing review without inventing affected ideas', () => {
   const holdId = '44444444-4444-4444-8444-444444444444'
   const result = summarizeUnverifiedRecovery([
-    encodeRecoveryHoldConfirmation(operation(2), 'dev', '2026-11-03T12:01:00.000Z', holdId, '66666666-6666-4666-8666-666666666666', '2026-11-03T12:00:00.000000Z'),
+    encodeRecoveryHoldConfirmation(operation(2), 'dev', '2026-11-03T12:01:00.000Z', holdId, '66666666-6666-4666-8666-666666666666', '2026-11-03T12:00:00.000000Z', assignment),
     confirmation(1),
   ], 'dev')
   assert.deepEqual(result.reviewOperations, [operation(1), operation(2)])
@@ -101,12 +103,18 @@ test('hold evidence identifies the original authority and placement time for rev
   const holdId = '44444444-4444-4444-8444-444444444444'
   const authority = '55555555-5555-4555-8555-555555555555'
   const placedAt = '2026-11-03T12:00:00.123456Z'
-  const evidence = encodeRecoveryHoldConfirmation(operation(1), 'dev', '2026-11-03T12:01:00.000Z', holdId, authority, placedAt)
+  const evidence = encodeRecoveryHoldConfirmation(operation(1), 'dev', '2026-11-03T12:01:00.000Z', holdId, authority, placedAt, assignment)
   const result = summarizeUnverifiedRecovery([intent(1, hold), evidence], 'dev')
   assert.deepEqual(result.holdIdentities, [{ operationId: operation(1), ideaId: idea, holdId,
-    placementAuthorityId: authority, placedAt }])
+    placementAuthorityId: authority, placedAt, authorityEvidence: assignment }])
   assert.deepEqual(result.reviewOperations, [operation(1)])
   assert.equal(result.coverageVerified, false)
-  const premature = encodeRecoveryHoldConfirmation(operation(1), 'dev', '2026-11-03T12:01:00.000Z', holdId, authority, '2026-11-03T11:59:59.999999Z')
+  const premature = encodeRecoveryHoldConfirmation(operation(1), 'dev', '2026-11-03T12:01:00.000Z', holdId, authority, '2026-11-03T11:59:59.999999Z', assignment)
   assert.throws(() => summarizeUnverifiedRecovery([intent(1, hold), premature], 'dev'), /ambiguous/)
+  for (const changed of [{ ...assignment, actorId: '66666666-6666-4666-8666-666666666666' },
+    { ...assignment, authorizationReference: 'different authority' }]) {
+    const inconsistent = encodeRecoveryHoldConfirmation(operation(1), 'dev', '2026-11-03T12:01:00.000Z',
+      holdId, authority, placedAt, changed)
+    assert.throws(() => summarizeUnverifiedRecovery([intent(1, hold), inconsistent], 'dev'), /ambiguous/)
+  }
 })

@@ -63,9 +63,10 @@ also checks that the initially closed gate is present; it does not show that an
 older archive contains a later gate closure. These checks do not establish a
 hosted network or IAM fence.
 
-The rehearsal records the synthetic hold's committed assignment ID and exact
-placement time in a version-two confirmation; it cannot recreate the missing
-assignment or held content from those references. It also compares its journal
+The rehearsal records the synthetic hold's committed assignment facts and exact
+placement time in a version-two confirmation. These facts do not authenticate
+the person or written delegation, recreate missing referenced rows, or preserve
+held content. It also compares its journal
 inventory with an earlier fixture checkpoint and detects a deliberately omitted
 reference. That fixture is
 not an independently protected checkpoint and does not establish coverage.

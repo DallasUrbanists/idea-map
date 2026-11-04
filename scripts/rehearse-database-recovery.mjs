@@ -166,6 +166,7 @@ try {
   let committedHoldId
   let committedAuthorityId
   let committedPlacedAt
+  let committedAuthority
   let syntheticCheckpoint
   const authorizedAt = new Date().toISOString()
   const base = { environment: 'dev', ideaId, actorId: director, authorizedAt }
@@ -187,10 +188,13 @@ try {
     if (!/^[0-9a-f-]{36}$/.test(committedHoldId)) throw new Error('Synthetic hold identity is ambiguous')
     committedAuthorityId = await sql(source, `SELECT placement_authority_id FROM legal_holds WHERE id='${committedHoldId}'`)
     committedPlacedAt = await sql(source, `SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') FROM legal_holds WHERE id='${committedHoldId}'`)
+    committedAuthority = JSON.parse(await sql(source, `SELECT json_build_object('actorId', user_id, 'authority', authority,
+      'grantedBy', granted_by, 'grantedAt', to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+      'authorizationReference', authorization_reference)::text FROM legal_hold_assignments WHERE id='${committedAuthorityId}'`))
     const confirmedAt = await sql(source, `SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`)
     await writeRecoveryJournalRecord(journal, journalTarget, recoveryConfirmationRecordId(removalOperation), encodeRecoveryConfirmation(removalOperation, 'dev', confirmedAt))
     await writeRecoveryJournalRecord(journal, journalTarget, recoveryConfirmationRecordId(holdOperation),
-      encodeRecoveryHoldConfirmation(holdOperation, 'dev', confirmedAt, committedHoldId, committedAuthorityId, committedPlacedAt))
+      encodeRecoveryHoldConfirmation(holdOperation, 'dev', confirmedAt, committedHoldId, committedAuthorityId, committedPlacedAt, committedAuthority))
   } finally {
     if (previousEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
     else process.env.STORAGE_EMULATOR_HOST = previousEmulator
@@ -262,7 +266,8 @@ try {
       summary.holdReviewIdeas.length !== 1 || summary.holdReviewIdeas[0] !== ideaId || summary.holdIdentities.length !== 1 ||
       summary.holdIdentities[0].operationId !== holdOperation || summary.holdIdentities[0].ideaId !== ideaId ||
       summary.holdIdentities[0].holdId !== committedHoldId || summary.holdIdentities[0].placementAuthorityId !== committedAuthorityId ||
-      summary.holdIdentities[0].placedAt !== committedPlacedAt || summary.reviewOperations.length !== 1 ||
+      summary.holdIdentities[0].placedAt !== committedPlacedAt ||
+      JSON.stringify(summary.holdIdentities[0].authorityEvidence) !== JSON.stringify(committedAuthority) || summary.reviewOperations.length !== 1 ||
       summary.reviewOperations[0] !== holdOperation || summary.unmatchedConfirmations !== 0) {
     throw new Error('Synthetic journal summary failed verification')
   }

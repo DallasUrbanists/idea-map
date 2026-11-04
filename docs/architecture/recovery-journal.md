@@ -235,9 +235,13 @@ The hold ID alone is not enough to recreate a database hold. The hold also refer
 to an idea, a person, and a legal-authority assignment, and records its placement
 time. An older archive may lack any of those rows or the assignment that was valid
 at placement. A version-two confirmation preserves the committed assignment ID
-and exact microsecond placement time. Its caller must obtain both from the known
-committed hold; an ID does not preserve the assignment's authority evidence or
-the actor's identity. A version-one confirmation does not contain these fields.
+and exact microsecond placement time, together with the assignment's actor,
+authority type, grantor, grant time, and non-sensitive authorization reference.
+Its caller must obtain these facts from the known committed hold and assignment.
+The summary rejects an assignment actor or authorization reference that differs
+from the intent. These records do not independently authenticate the person,
+the written delegation, or the stored facts. A version-one confirmation does not
+contain these fields.
 Preserve and verify the necessary authorization and referenced records through a
 reviewed recovery design; do not synthesize an assignment or substitute a new
 hold ID to make a restore pass. Keep the target

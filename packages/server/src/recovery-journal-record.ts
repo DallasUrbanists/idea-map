@@ -20,8 +20,11 @@ export type RecoveryIntent = {
 }
 type IntentRecord = RecoveryIntent & { version: 1, recordType: 'intent' }
 type ConfirmationRecord = { version: 1, recordType: 'commit_confirmation', operationId: string, environment: 'dev' | 'prod', confirmedAt: string }
+export type HoldAuthorityEvidence = { actorId: string, authority: 'executive_director' | 'delegate', grantedBy: string,
+  grantedAt: string, authorizationReference: string }
 type HoldConfirmationRecord = { version: 2, recordType: 'hold_commit_confirmation', operationId: string,
-  environment: 'dev' | 'prod', confirmedAt: string, holdId: string, placementAuthorityId: string, placedAt: string }
+  environment: 'dev' | 'prod', confirmedAt: string, holdId: string, placementAuthorityId: string, placedAt: string,
+  authorityEvidence: HoldAuthorityEvidence }
 
 function text(value: unknown, maxBytes: number): value is string {
   return typeof value === 'string' && value.trim().length > 0 && Buffer.byteLength(value) <= maxBytes &&
@@ -87,23 +90,30 @@ export function encodeRecoveryConfirmation(operationId: string, environment: 'de
   return Buffer.from(JSON.stringify({ version: 1, recordType: 'commit_confirmation', operationId, environment, confirmedAt }))
 }
 
-/**
- * Preserve the committed authority ID and the database's microsecond placement
- * time. These references do not themselves prove authority or preserve content.
- */
+function microsecondTimestamp(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(value)) return false
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 19) === value.slice(0, 19)
+}
+
+/** Record committed hold and authority facts without asserting their authenticity. */
 export function encodeRecoveryHoldConfirmation(operationId: string, environment: 'dev' | 'prod', confirmedAt: string,
-  holdId: string, placementAuthorityId: string, placedAt: string): Uint8Array {
+  holdId: string, placementAuthorityId: string, placedAt: string, authorityEvidence: HoldAuthorityEvidence): Uint8Array {
   if (typeof operationId !== 'string' || !operationIdPattern.test(operationId) || !['dev', 'prod'].includes(environment) ||
       !timestamp(confirmedAt) || typeof holdId !== 'string' || !uuid.test(holdId) ||
-      typeof placementAuthorityId !== 'string' || !uuid.test(placementAuthorityId) ||
-      typeof placedAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(placedAt)) {
-    throw new Error('Invalid recovery confirmation')
-  }
-  const milliseconds = Date.parse(placedAt)
-  if (!Number.isFinite(milliseconds) || new Date(milliseconds).toISOString().slice(0, 19) !== placedAt.slice(0, 19) ||
-      milliseconds > Date.parse(confirmedAt)) throw new Error('Invalid recovery confirmation')
+      typeof placementAuthorityId !== 'string' || !uuid.test(placementAuthorityId) || !microsecondTimestamp(placedAt) ||
+      Date.parse(placedAt) > Date.parse(confirmedAt) || !authorityEvidence || typeof authorityEvidence !== 'object' ||
+      !keys(authorityEvidence, ['actorId', 'authority', 'grantedBy', 'grantedAt', 'authorizationReference']) ||
+      typeof authorityEvidence.actorId !== 'string' || !uuid.test(authorityEvidence.actorId) ||
+      !['executive_director', 'delegate'].includes(authorityEvidence.authority) ||
+      typeof authorityEvidence.grantedBy !== 'string' || !uuid.test(authorityEvidence.grantedBy) ||
+      !microsecondTimestamp(authorityEvidence.grantedAt) || authorityEvidence.grantedAt > placedAt ||
+      !text(authorityEvidence.authorizationReference, 300)) throw new Error('Invalid recovery confirmation')
+  const authority = { actorId: authorityEvidence.actorId, authority: authorityEvidence.authority,
+    grantedBy: authorityEvidence.grantedBy, grantedAt: authorityEvidence.grantedAt,
+    authorizationReference: authorityEvidence.authorizationReference }
   return Buffer.from(JSON.stringify({ version: 2, recordType: 'hold_commit_confirmation', operationId, environment,
-    confirmedAt, holdId, placementAuthorityId, placedAt }))
+    confirmedAt, holdId, placementAuthorityId, placedAt, authorityEvidence: authority }))
 }
 
 /** Reject noncanonical, wrong-environment, or incompatible records during recovery. */
@@ -125,9 +135,9 @@ export function decodeRecoveryRecord(payload: Uint8Array, environment: 'dev' | '
       if (!keys(record, ['version', 'recordType', 'operationId', 'environment', 'confirmedAt'])) throw new Error('Invalid record')
       canonical = encodeRecoveryConfirmation(record.operationId, record.environment, record.confirmedAt)
     } else if (record.version === 2 && record.recordType === 'hold_commit_confirmation') {
-      if (!keys(record, ['version', 'recordType', 'operationId', 'environment', 'confirmedAt', 'holdId', 'placementAuthorityId', 'placedAt'])) throw new Error('Invalid record')
+      if (!keys(record, ['version', 'recordType', 'operationId', 'environment', 'confirmedAt', 'holdId', 'placementAuthorityId', 'placedAt', 'authorityEvidence'])) throw new Error('Invalid record')
       canonical = encodeRecoveryHoldConfirmation(record.operationId, record.environment, record.confirmedAt, record.holdId,
-        record.placementAuthorityId, record.placedAt)
+        record.placementAuthorityId, record.placedAt, record.authorityEvidence)
     } else throw new Error('Invalid record')
     if (!Buffer.from(payload).equals(Buffer.from(canonical))) throw new Error('Invalid record')
     return record

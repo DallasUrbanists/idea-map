@@ -1,4 +1,4 @@
-import { decodeRecoveryRecord } from './recovery-journal-record.js'
+import { decodeRecoveryRecord, type HoldAuthorityEvidence } from './recovery-journal-record.js'
 
 /**
  * Summarize decoded records conservatively. This does not prove the inventory
@@ -30,7 +30,8 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
     if (existing !== undefined && existing !== ideaId) throw new Error('Recovery inventory is ambiguous')
     holdIdeas.set(holdId, ideaId)
   }
-  const holdIdentities: { operationId: string, ideaId: string, holdId: string, placementAuthorityId: string, placedAt: string }[] = []
+  const holdIdentities: { operationId: string, ideaId: string, holdId: string,
+    placementAuthorityId: string, placedAt: string, authorityEvidence: HoldAuthorityEvidence }[] = []
   for (const [operationId, intent] of intents) {
     const confirmation = confirmations.get(operationId)
     if (confirmation && Date.parse(confirmation.confirmedAt) < Date.parse(intent.authorizedAt)) throw new Error('Recovery inventory is ambiguous')
@@ -38,11 +39,13 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
       if (intent.decision.kind !== 'hold_placement' || placedHoldIds.has(confirmation.holdId)) throw new Error('Recovery inventory is ambiguous')
       placedHoldIds.add(confirmation.holdId)
       checkHoldIdea(confirmation.holdId, intent.ideaId)
-      if (Date.parse(confirmation.placedAt) < Date.parse(intent.authorizedAt)) {
+      if (Date.parse(confirmation.placedAt) < Date.parse(intent.authorizedAt) ||
+          confirmation.authorityEvidence.actorId !== intent.actorId ||
+          confirmation.authorityEvidence.authorizationReference !== intent.decision.authorizationReference) {
         throw new Error('Recovery inventory is ambiguous')
       }
       holdIdentities.push({ operationId, ideaId: intent.ideaId, holdId: confirmation.holdId,
-        placementAuthorityId: confirmation.placementAuthorityId, placedAt: confirmation.placedAt })
+        placementAuthorityId: confirmation.placementAuthorityId, placedAt: confirmation.placedAt, authorityEvidence: confirmation.authorityEvidence })
     }
     if (intent.decision.kind === 'removal') removals.add(intent.ideaId)
     if (intent.decision.kind === 'hold_placement') holdPlacements.add(intent.ideaId)
