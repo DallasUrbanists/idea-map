@@ -215,6 +215,31 @@ permissions, retention, and restore procedures; it has not been implemented.
 The existing bucket journal does not implement the sequence fence;
 do not use it as proof of complete coverage.
 
+An unwired sequence codec explores another option: retain decision bytes in the
+existing bucket and put only their exact object IDs, generations, and SHA-256
+digests in numbered Secret Manager versions. This would use the existing Secret
+Manager service but require a separately owned secret and distinct permissions;
+it is an index, not a second copy of the decision content. A baseline entry
+contains a checkpoint digest, and a recovery fence uses an opaque nonce. The
+codec checks supplied version numbers from one through a selected fence, rejects
+missing or conflicting entries, and tolerates identical retries. A matching
+sequence does not authenticate its source or baseline, prove all writers used
+the index, establish the fence, or allow access to reopen. The codec is not a
+Secret Manager client and is not connected to any live mutation or recovery.
+Choosing this two-store approach needs an architecture review against the
+single-store alternative above, including what happens if either service is
+unavailable and how both stores' permissions and retention are enforced.
+
+Secret Manager charges for enabled and disabled versions, not only requests.
+As one illustrative scenario, 10 new versions per day retained for 90 days
+would reach about 900 active versions, or roughly $54 per month at the published
+$0.06 per active version-month before the shared free tier. This excludes other
+operations, locations, taxes, retries and other services, and actual costs are
+prorated. Review [current pricing](https://cloud.google.com/secret-manager/pricing),
+expected volume, retention and safe rollover before adopting or provisioning
+either sequence design. Do not destroy versions needed by a retained backup or
+an active hold merely to reduce cost.
+
 The checkpoint needs a coordinated boundary, not merely a timestamp. Suspend
 all covered mutations, drain in-flight transactions and journal writes, verify
 the current decision state and writer restrictions, and record the checkpoint
