@@ -4,6 +4,7 @@ import { after, test } from 'node:test'
 import { CRC32C } from '@google-cloud/storage'
 import { encodeRecoveryIntent } from '../dist/recovery-journal-record.js'
 import { prepareUnverifiedRecoveryInventory } from '../dist/recovery-inventory.js'
+import { suppressKnownRemovalsFromJournal } from '../dist/recovery-suppression.js'
 
 const target = { environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789' }
 const id = '11111111-1111-4111-8111-111111111111'
@@ -94,4 +95,28 @@ test('record bytes must match the checksum in the inventoried generation', async
     actorId: '33333333-3333-4333-8333-333333333333', authorizedAt: '2026-11-03T12:00:00.000Z',
     decision: { kind: 'removal', classification: 'other', reason: 'different synthetic reason' } })
   await assert.rejects(prepareUnverifiedRecoveryInventory(fake({ streamBody: altered }), target), /unavailable/)
+})
+
+test('suppression uses a stable inventory and never claims coverage', async () => {
+  const statements = []
+  const pool = { async connect() { return {
+    async query(sql, parameters) {
+      statements.push({ sql, parameters })
+      return sql.includes('suppress_restored_removals') ? { rows: [{ matched: 1, absent: 0 }] } : { rows: [] }
+    },
+    release() {},
+  } } }
+  assert.deepEqual(await suppressKnownRemovalsFromJournal(fake(), target, pool),
+    { matched: 1, absent: 0, reviewOperations: 1, coverageVerified: false })
+  assert.deepEqual(statements.find(item => item.sql.includes('suppress_restored_removals')).parameters,
+    [['22222222-2222-4222-8222-222222222222']])
+  assert.equal(statements.at(-1).sql, 'COMMIT')
+})
+
+test('unstable inventory prevents database access during suppression', async () => {
+  let connected = false
+  const pool = { async connect() { connected = true; throw new Error('should not connect') } }
+  await assert.rejects(suppressKnownRemovalsFromJournal(fake({ onSecondList: objects => objects.delete(id) }), target, pool),
+    error => error.message === 'Recovery inventory unavailable' && !error.message.includes('private'))
+  assert.equal(connected, false)
 })

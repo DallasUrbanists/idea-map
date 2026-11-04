@@ -283,6 +283,12 @@ locks the matching ideas, and reports counts for present and absent IDs. Repeati
 it is safe, and an uncertain intent is suppressed as well. The function has no
 `PUBLIC` execute grant; only a separately authorized recovery coordinator should
 receive access after the independent network and writer fences are verified.
+An unwired coordinator helper first reads a stable journal inventory, then invokes
+this suppression primitive. A stable inventory still cannot detect a missing tail
+or authenticate its records and does not establish either fence. Its deadline
+bounds waiting for storage only; the caller must also configure a database
+connection timeout. Database lock and statement timeouts bound the suppression
+transaction. Neither helper opens the gate.
 It does not authenticate the records, establish complete coverage, restore hold
 evidence, reconcile moderation and trust records, update external projections or
 caches, delete primary data, or open the gate. Keep the target isolated until
