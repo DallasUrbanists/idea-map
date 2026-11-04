@@ -407,6 +407,17 @@ an uncertain outcome without reopening the gate. It does not remove content or
 confirm a database mutation. Keep the returned bytes private and do not infer
 success from a failed or uncertain call.
 
+For the alternative numbered-sequence design, an unwired database function can
+pin the pending removal to one project number, secret ID and journal epoch while
+the gate is closed. It rechecks the original moderator and saved intent; retries
+must use the same target. A trigger prevents changing the pin or applying a
+removal in the same transaction that created it. The coordinator must confirm the
+pin transaction committed before any external append; a lost commit response
+requires reconciliation. Existing applied rows without a pin cannot be pinned
+automatically. The pin does not verify the secret, effective access, baseline or
+coverage, and the older bucket-based coordinator does not enforce it. No runtime
+role receives this function, and neither path is ready for live use.
+
 An unwired application step accepts the saved intent and uses a separately
 authorized journal reader and database coordinator. It verifies the current
 moderator before reading the journal, compares the exact canonical intent and

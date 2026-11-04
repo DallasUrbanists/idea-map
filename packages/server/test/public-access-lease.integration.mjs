@@ -244,10 +244,36 @@ test('authorized pending removal closes the gate atomically and retries without 
     assert.equal(limited.state, 'authorized')
     assert.equal(limited.value.state, 'pending')
     assert.equal(limited.value.recordId, secondRecordId)
+    const epoch = randomUUID()
+    const pinSql = 'SELECT public.pin_pending_removal_sequence($1,$2,$3,$4,$5,$6,$7,$8) AS outcome'
+    const pinArgs = ['firebase:demo-idea-map', session.uid, secondOperationId, secondRecordId,
+      Buffer.from(limited.value.payload).toString('utf8'), '123456789', 'synthetic-journal', epoch]
+    assert.equal((await pool.query("SELECT has_function_privilege('public','public.pin_pending_removal_sequence(text,text,uuid,uuid,text,text,text,uuid)','EXECUTE') AS allowed")).rows[0].allowed, false)
+    await assert.rejects(restrictedPool.query(pinSql, pinArgs), { code: '42501' })
+    await assert.rejects(pool.query('UPDATE public.public_access_pending_decisions SET journal_project_number=$1 WHERE operation_id=$2',
+      ['123456789', secondOperationId]), { code: '23514' })
+    await assert.rejects(pool.query(pinSql, [...pinArgs.slice(0, 4), 'synthetic wrong intent', ...pinArgs.slice(5)]), /ambiguous/)
+    assert.equal((await pool.query(pinSql, pinArgs)).rows[0].outcome, 'pinned')
+    assert.equal((await pool.query(pinSql, pinArgs)).rows[0].outcome, 'pinned')
+    await assert.rejects(pool.query(pinSql, [...pinArgs.slice(0, 6), 'other-journal', pinArgs[7]]), /ambiguous/)
+    await assert.rejects(pool.query('UPDATE public.public_access_pending_decisions SET journal_epoch_id=$1 WHERE operation_id=$2',
+      [randomUUID(), secondOperationId]), /immutable/)
+    assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate WHERE singleton=true')).rows[0].is_open, false)
     const concurrent = Array.from({ length: 2 }, () => ({ operationId: randomUUID(), recordId: randomUUID() }))
     concurrentOperations.push(...concurrent.map(item => item.operationId))
     const outcomes = await Promise.all(concurrent.map(item => prepare(verifier, item)))
     assert.ok(outcomes.every(result => result.state === 'authorized' && result.value.state === 'pending'))
+    const transaction = await pool.connect()
+    try {
+      await transaction.query('BEGIN')
+      await transaction.query(pinSql, ['firebase:demo-idea-map', session.uid, concurrent[0].operationId, concurrent[0].recordId,
+        Buffer.from(outcomes[0].value.payload).toString('utf8'), '123456789', 'synthetic-journal', epoch])
+      await transaction.query('SAVEPOINT after_pin')
+      await assert.rejects(transaction.query('UPDATE public.public_access_pending_decisions SET journal_generation=$1, applied_at=clock_timestamp() WHERE operation_id=$2',
+        ['1', concurrent[0].operationId]), /must commit before application/)
+    } finally { await transaction.query('ROLLBACK'); transaction.release() }
+    assert.equal((await pool.query('SELECT journal_project_number FROM public.public_access_pending_decisions WHERE operation_id=$1',
+      [concurrent[0].operationId])).rows[0].journal_project_number, null)
     assert.equal((await pool.query('SELECT count(*)::int AS count FROM public.public_access_pending_decisions')).rows[0].count,
       1 + journalOperations.length + 1 + concurrentOperations.length)
     assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
