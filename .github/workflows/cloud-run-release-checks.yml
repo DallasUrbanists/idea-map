@@ -7,6 +7,7 @@ on:
       - 'scripts/cloud-run-release*.mjs'
       - 'scripts/release-ci-gate*.mjs'
       - 'scripts/release-evidence*.mjs'
+      - 'scripts/release-image-manifest*.mjs'
       - '.github/workflows/*release*.yml'
   push:
     branches: [main]
@@ -15,6 +16,7 @@ on:
       - 'scripts/cloud-run-release*.mjs'
       - 'scripts/release-ci-gate*.mjs'
       - 'scripts/release-evidence*.mjs'
+      - 'scripts/release-image-manifest*.mjs'
       - '.github/workflows/*release*.yml'
 
 permissions:
@@ -38,7 +40,7 @@ jobs:
           terraform -chdir=infra/terraform validate
           terraform -chdir=infra/terraform test
       - name: Test release guards
-        run: node --test scripts/cloud-run-release.test.mjs scripts/release-ci-gate.test.mjs scripts/release-evidence.test.mjs
+        run: node --test scripts/cloud-run-release.test.mjs scripts/release-ci-gate.test.mjs scripts/release-evidence.test.mjs scripts/release-image-manifest.test.mjs
       - name: Lint release workflows
         run: |
           docker run --rm -v "$PWD:/repo" -w /repo \
