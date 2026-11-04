@@ -111,12 +111,12 @@ test('hold evidence identifies the original authority and placement time for rev
   assert.equal(result.coverageVerified, false)
   const premature = encodeRecoveryHoldConfirmation(operation(1), 'dev', '2026-11-03T12:01:00.000Z', holdId, authority, '2026-11-03T11:59:59.999999Z', assignment)
   assert.throws(() => summarizeUnverifiedRecovery([intent(1, hold), premature], 'dev'), /ambiguous/)
-  for (const changed of [{ ...assignment, actorId: '66666666-6666-4666-8666-666666666666' },
-    { ...assignment, authorizationReference: 'different authority' }]) {
-    const inconsistent = encodeRecoveryHoldConfirmation(operation(1), 'dev', '2026-11-03T12:01:00.000Z',
-      holdId, authority, placedAt, changed)
-    assert.throws(() => summarizeUnverifiedRecovery([intent(1, hold), inconsistent], 'dev'), /ambiguous/)
-  }
+  const wrongActor = encodeRecoveryHoldConfirmation(operation(1), 'dev', '2026-11-03T12:01:00.000Z',
+    holdId, authority, placedAt, { ...assignment, actorId: '66666666-6666-4666-8666-666666666666' })
+  assert.throws(() => summarizeUnverifiedRecovery([intent(1, hold), wrongActor], 'dev'), /ambiguous/)
+  const differentReference = encodeRecoveryHoldConfirmation(operation(1), 'dev', '2026-11-03T12:01:00.000Z',
+    holdId, authority, placedAt, { ...assignment, authorizationReference: 'different assignment reference' })
+  assert.deepEqual(summarizeUnverifiedRecovery([intent(1, hold), differentReference], 'dev').reviewOperations, [operation(1)])
 })
 
 test('one immutable authority assignment cannot describe conflicting grant facts', () => {

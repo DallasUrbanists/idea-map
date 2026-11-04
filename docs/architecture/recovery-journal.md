@@ -238,10 +238,11 @@ at placement. A version-two confirmation preserves the committed assignment ID
 and exact microsecond placement time, together with the assignment's actor,
 authority type, grantor, grant time, and non-sensitive authorization reference.
 Its caller must obtain these facts from the known committed hold and assignment.
-The summary rejects an assignment actor or authorization reference that differs
-from the intent, and rejects conflicting immutable facts for the same assignment
-ID across holds. These records do not independently authenticate the person,
-the written delegation, or the stored facts. A version-one confirmation does not
+The summary rejects an assignment actor that differs from the intent and
+conflicting immutable facts for the same assignment ID across holds. An action's
+authorization reference and its assignment's delegation reference can differ;
+both require authorized review. These records do not independently authenticate
+the person, the written delegation, or the stored facts. A version-one confirmation does not
 contain these fields.
 Preserve and verify the necessary authorization and referenced records through a
 reviewed recovery design; do not synthesize an assignment or substitute a new

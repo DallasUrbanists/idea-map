@@ -43,7 +43,7 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
       const evidence = confirmation.authorityEvidence
       const previous = assignments.get(confirmation.placementAuthorityId)
       if (Date.parse(confirmation.placedAt) < Date.parse(intent.authorizedAt) ||
-          evidence.actorId !== intent.actorId || evidence.authorizationReference !== intent.decision.authorizationReference ||
+          evidence.actorId !== intent.actorId ||
           (previous && (previous.actorId !== evidence.actorId || previous.authority !== evidence.authority ||
             previous.grantedBy !== evidence.grantedBy || previous.grantedAt !== evidence.grantedAt ||
             previous.authorizationReference !== evidence.authorizationReference))) {
