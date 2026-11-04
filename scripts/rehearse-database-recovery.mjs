@@ -28,6 +28,7 @@ const unpreparedTarget = 'idea_map_test_recovery_unprepared'
 const marker = `synthetic-${id}`
 const director = randomUUID()
 const reader = `recovery_reader_${id.replaceAll('-', '')}`
+const runtime = `recovery_runtime_${id.replaceAll('-', '')}`
 const scratchRoot = await realpath(tmpdir())
 const scratch = await mkdtemp(join(scratchRoot, 'idea-map-recovery-'))
 const archive = join(scratch, 'synthetic.pgdump')
@@ -86,7 +87,7 @@ try {
   const ideaId = await sql(source, `SELECT i.id FROM ideas i JOIN contacts c ON c.id=i.author_contact_id WHERE c.normalized_email='${marker}@example.invalid'`)
   const revisionId = await sql(source, `SELECT r.id FROM idea_revisions r WHERE r.idea_id='${ideaId}'`)
   const previewId = await sql(source, `INSERT INTO media_previews(idea_id,revision_id,object_name,generation,content_type,published) VALUES ('${ideaId}','${revisionId}','synthetic-preview','1','image/png',true) RETURNING id`)
-  await sql(source, `CREATE ROLE ${reader} NOLOGIN; GRANT EXECUTE ON FUNCTION public.place_legal_hold_outcome(text,text,uuid,text,text) TO ${reader}`)
+  await sql(source, `CREATE ROLE ${reader} NOLOGIN; CREATE ROLE ${runtime} LOGIN PASSWORD 'synthetic-runtime-only'; GRANT EXECUTE ON FUNCTION public.place_legal_hold_outcome(text,text,uuid,text,text) TO ${reader}; UPDATE public_access_gate SET is_open=true WHERE singleton=true`)
   const captured = await sql(source, `SELECT extract(epoch FROM recorded_at) * 1000 FROM synthetic_recovery_marker WHERE id='${marker}-before'`)
   const dumpStarted = Date.now()
   const storage = { bucket: () => ({ async getMetadata() { return [{ name: 'synthetic-private-backups', projectNumber: '123456789',
@@ -218,6 +219,20 @@ try {
   const restore = start('docker', ['exec', '-i', container, 'pg_restore', '-U', 'idea_map', '--no-owner', '--exit-on-error', '-d', target])
   restore.child.stdout.resume()
   await Promise.all([pipeline(createReadStream(archive), restore.child.stdin), restore.done])
+  // An older archive can contain an open gate. The replacement is independently
+  // isolated before restore, so a runtime identity cannot connect at this point.
+  const originallyOpenGate = await sql(target, 'SELECT is_open FROM public.public_access_gate WHERE singleton=true')
+  if (originallyOpenGate !== 't') throw new Error('Synthetic archive did not contain an open gate')
+  const blockedRuntime = new pg.Client({ connectionString: `postgres://${runtime}:synthetic-runtime-only@127.0.0.1:${port}/${target}`,
+    connectionTimeoutMillis: 5000 })
+  let rejectedByFence = false
+  try { await blockedRuntime.connect() } catch (error) { rejectedByFence = error.code === '42501' }
+  finally { await blockedRuntime.end().catch(() => {}) }
+  if (!rejectedByFence) throw new Error('Synthetic database fence did not reject runtime access')
+  // Keep the database gate closed for all subsequent reconciliation. The
+  // external fence remains in place and is still required for older schemas.
+  const closedGate = await sql(target, 'UPDATE public.public_access_gate SET is_open=false WHERE singleton=true RETURNING is_open')
+  if (closedGate !== 'f') throw new Error('Synthetic gate could not be closed')
   const restored = await sql(target, `SELECT count(*) FROM synthetic_recovery_marker WHERE id='${marker}-before'`)
   const excluded = await sql(target, `SELECT count(*) FROM synthetic_recovery_marker WHERE id='${marker}-after'`)
   const postgis = await sql(target, 'SELECT count(*) FROM pg_extension WHERE extname = \'postgis\'')
@@ -339,7 +354,8 @@ try {
     migrations: Number(migrations), postgisRestored: true, syntheticRemovalSuppressed: true,
     syntheticPreviewSuppressed: true, heldEvidenceRequiresReconciliation: true,
     holdAuthorityRequiresReconciliation: true,
-    journalCoverageVerified: false, syntheticGrantAndRevocationRestored: true, missingRoleRejected: true, databaseAccessFenced: true }))
+    journalCoverageVerified: false, syntheticGrantAndRevocationRestored: true, missingRoleRejected: true,
+    restoredOpenGateFenced: true, databaseAccessFenced: true }))
 } finally {
   try {
     if (created) {

@@ -54,14 +54,15 @@ synthetic role fails, then prepares that role and restores to another database.
 It checks that one protected security-definer function retains its synthetic
 named-role grant and `PUBLIC` revocation in the restore. The fake
 stores only synthetic data and does not test Cloud Storage encryption or
-permissions, all database grants, or Neon role setup. The synthetic target
-also revokes `PUBLIC` database connections and verifies that its test role
-cannot connect. It checks that the restored pending-removal preparation,
+permissions, all database grants, or Neon role setup. The archive deliberately
+contains an open public-access gate. Before restore, the synthetic target revokes
+`PUBLIC` database connections; after restore, the test verifies that a synthetic
+runtime login cannot connect, then closes the restored gate while the target
+remains isolated. It checks that the restored pending-removal preparation,
 application, confirmation, and verification functions do not grant `PUBLIC`
 execution and that the guard triggers are enabled without `PUBLIC` execution. It
-also checks that the initially closed gate is present; it does not show that an
-older archive contains a later gate closure. These checks do not establish a
-hosted network or IAM fence.
+does not show that an older archive contains a later gate closure. These checks
+do not establish a hosted network or IAM fence.
 
 The rehearsal records the synthetic hold's committed assignment facts and exact
 placement time in a version-two confirmation. These facts do not authenticate
