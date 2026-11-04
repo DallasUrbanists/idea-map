@@ -12,7 +12,7 @@ import { dumpArguments, exportEncryptedBackup } from '../apps/worker/ops/export-
 import { decodeRecoveryRecord, encodeRecoveryConfirmation, encodeRecoveryHoldConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../packages/server/dist/recovery-journal-record.js'
 import { compareUnverifiedRecoveryCheckpoint } from '../packages/server/dist/recovery-journal-plan.js'
 import { prepareUnverifiedRecoveryInventory } from '../packages/server/dist/recovery-inventory.js'
-import { suppressUnverifiedRestoredRemovals } from '../packages/server/dist/recovery-suppression.js'
+import { suppressKnownRemovalsFromJournal, suppressUnverifiedRestoredRemovals } from '../packages/server/dist/recovery-suppression.js'
 import { listUnverifiedRecoveryJournal, writeRecoveryJournalRecord } from '../packages/server/dist/recovery-journal-storage.js'
 import { acquirePublicAccessLease } from '../packages/server/dist/public-access-lease.js'
 import { readPublishedIdea } from '../packages/server/dist/published-ideas.js'
@@ -358,8 +358,25 @@ try {
       return decoded.recordType === 'intent' && decoded.operationId === removalOperation
     })
     if (!removalIntent) throw new Error('Synthetic removal intent is missing')
+    const coordinatorEmulator = process.env.STORAGE_EMULATOR_HOST
+    delete process.env.STORAGE_EMULATOR_HOST
+    try {
+      const coordinated = await suppressKnownRemovalsFromJournal(journal, journalTarget, recoveryPool)
+      if (JSON.stringify(coordinated) !== JSON.stringify({ matched: 1, absent: 0, reviewOperations: 1, coverageVerified: false }) ||
+          (await sql(target, visibleQuery)) !== '0') throw new Error('Synthetic inventory did not suppress the restored removal')
+      if (await sql(target, 'SELECT is_open FROM public.public_access_gate WHERE singleton=true') !== 'f') {
+        throw new Error('Synthetic inventory and suppression opened the public gate')
+      }
+    } finally {
+      if (coordinatorEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
+      else process.env.STORAGE_EMULATOR_HOST = coordinatorEmulator
+    }
+    // Recreate the pre-suppression state only inside the independently fenced
+    // synthetic target to exercise an unconfirmed intent separately.
+    await sql(target, `UPDATE ideas SET publication_state='approved' WHERE id='${ideaId}'; UPDATE media_previews SET published=true WHERE id='${previewId}'`)
     const uncertain = await suppressUnverifiedRestoredRemovals(recoveryPool, [removalIntent], 'dev')
-    if (JSON.stringify(uncertain) !== JSON.stringify({ matched: 1, absent: 0, reviewOperations: 1, coverageVerified: false })) {
+    if (JSON.stringify(uncertain) !== JSON.stringify({ matched: 1, absent: 0, reviewOperations: 1, coverageVerified: false }) ||
+        (await sql(target, visibleQuery)) !== '0') {
       throw new Error('Synthetic uncertain removal was not suppressed for review')
     }
     const suppressed = await suppressUnverifiedRestoredRemovals(recoveryPool, recoveryRecords, 'dev')
