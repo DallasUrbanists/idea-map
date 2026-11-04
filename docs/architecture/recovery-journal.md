@@ -349,6 +349,12 @@ removal. A retry must use the same version. A separately granted legacy
 application function does not enforce this target: it must be retired or
 restricted before any sequence path is enabled. Neither the exact read nor the
 database check authenticates the journal baseline, writer fence or permissions.
+After an uncertain application commit, an unwired status check can find the
+committed version for the same actor, intent and pinned target, and a separate
+reader must still compare its exact bytes. It refuses an uncommitted pin or
+application, including through a savepoint. An unavailable read leaves the
+outcome uncertain. A sequential retry checks that status before appending;
+concurrent retries may still append identical versions and need reconciliation.
 An unwired confirmation step rechecks the pinned target and commits the stable
 confirmation before appending it. It compares the exact numbered entry through
 a reader, then records verification only for the same target and a version

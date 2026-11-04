@@ -57,12 +57,16 @@ export async function journalPendingRemovalSequence(databaseUrl: string, project
   verifier: RegisteredSessionVerifier, target: { environment: 'dev' | 'prod', projectNumber: string, secretId: string, epochId: string },
   writer: RecoverySequenceTransport, reader: RecoverySequenceTransport,
   input: { operationId: string, recordId: string, payload: Uint8Array }): Promise<ModeratorAccess<
-    'journal_uncertain' | { state: 'journaled', version: string, coverageVerified: false }>> {
+    'journal_uncertain' | { state: 'journaled', version: string, coverageVerified: false } |
+    { state: 'applied', recordId: string, version: string, appliedAt: string }>> {
   if (!target || !input || !(input.payload instanceof Uint8Array)) throw new Error('Invalid pending removal')
   const destination = { ...target }
   const saved = { operationId: input.operationId, recordId: input.recordId, payload: Buffer.from(input.payload) }
   const pin = await pinPendingRemovalSequence(databaseUrl, projectId, cookie, verifier, destination, saved)
   if (pin.state !== 'authorized') return pin
+  const status = await inspectSequenceRemoval(databaseUrl, projectId, cookie, verifier, destination, reader, saved)
+  if (status.state !== 'authorized') return status
+  if (status.value !== 'pending') return { state: 'authorized', value: status.value }
   try {
     const entry = encodeRecoverySequenceEntry({ kind: 'decision', environment: destination.environment,
       epochId: destination.epochId, recordId: saved.recordId, data: saved.payload.toString('base64') })
@@ -110,6 +114,48 @@ export async function applySequenceJournaledRemoval(databaseUrl: string, project
       if (row?.outcome !== 'applied' || !(row.applied_at instanceof Date) || !Number.isFinite(row.applied_at.getTime()) ||
           row.verified_generation !== saved.version) throw new Error('Pending removal is ambiguous')
       return { state: 'applied' as const, recordId: saved.recordId, version: saved.version, appliedAt: row.applied_at.toISOString() }
+    }, pendingRemovalDatabasePool(databaseUrl))
+  } catch { throw new Error('Pending removal unavailable') }
+}
+
+/** Reconcile a lost application response without appending a new version. */
+export async function inspectSequenceRemoval(databaseUrl: string, projectId: string, cookie: string,
+  verifier: RegisteredSessionVerifier, target: { environment: 'dev' | 'prod', projectNumber: string, secretId: string, epochId: string },
+  reader: RecoverySequenceTransport, input: { operationId: string, recordId: string, payload: Uint8Array }): Promise<ModeratorAccess<
+    'pending' | 'journal_uncertain' | { state: 'applied', recordId: string, version: string, appliedAt: string }>> {
+  if (typeof databaseUrl !== 'string' || !databaseUrl || !target || !input ||
+      typeof input.operationId !== 'string' || !uuid4.test(input.operationId) ||
+      typeof input.recordId !== 'string' || !uuid4.test(input.recordId) || !(input.payload instanceof Uint8Array) ||
+      input.payload.byteLength < 1 || input.payload.byteLength > 16_384) throw new Error('Invalid pending removal')
+  const destination = { ...target }
+  const saved = { operationId: input.operationId, recordId: input.recordId, payload: Buffer.from(input.payload) }
+  let record, expected: Uint8Array
+  try {
+    record = decodeRecoveryRecord(saved.payload, destination.environment)
+    if (record.recordType !== 'intent' || record.operationId !== saved.operationId || record.decision.kind !== 'removal') throw new Error('Invalid')
+    expected = encodeRecoverySequenceEntry({ kind: 'decision', environment: destination.environment,
+      epochId: destination.epochId, recordId: saved.recordId, data: saved.payload.toString('base64') })
+  } catch { throw new Error('Invalid pending removal') }
+  try {
+    return await withVerifiedModerator(databaseUrl, projectId, cookie, verifier, async (client, actor, subject) => {
+      if (record.actorId !== actor) throw new Error('Pending removal is ambiguous')
+      await client.query("SET LOCAL lock_timeout = '5s'")
+      await client.query("SET LOCAL statement_timeout = '10s'")
+      const result = await client.query<{ outcome: string, applied_at: Date | null, verified_version: string | null }>(
+        'SELECT * FROM public.pending_sequence_removal_status($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+        [`firebase:${projectId}`, subject, saved.operationId, saved.recordId, saved.payload.toString('utf8'),
+          destination.environment, destination.projectNumber, destination.secretId, destination.epochId])
+      const row = result.rows[0]
+      if (row?.outcome === 'pending' && row.applied_at === null && row.verified_version === null) return 'pending' as const
+      if (row?.outcome !== 'applied' || !(row.applied_at instanceof Date) || !Number.isFinite(row.applied_at.getTime()) ||
+          typeof row.verified_version !== 'string' || !/^[1-9][0-9]{0,4}$/.test(row.verified_version) || Number(row.verified_version) > 10_000) {
+        throw new Error('Pending removal is ambiguous')
+      }
+      try {
+        const observed = await readRecoverySequenceVersion(reader, destination, row.verified_version)
+        if (!Buffer.from(observed).equals(expected)) throw new Error('Sequence differs')
+      } catch { return 'journal_uncertain' as const }
+      return { state: 'applied' as const, recordId: saved.recordId, version: row.verified_version, appliedAt: row.applied_at.toISOString() }
     }, pendingRemovalDatabasePool(databaseUrl))
   } catch { throw new Error('Pending removal unavailable') }
 }

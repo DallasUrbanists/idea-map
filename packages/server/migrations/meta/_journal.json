@@ -288,6 +288,13 @@
       "when": 1793832959321,
       "tag": "0040_sequence_confirmation_verification",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1793834736334,
+      "tag": "0041_sequence_removal_status",
+      "breakpoints": true
     }
   ]
 }

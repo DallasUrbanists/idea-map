@@ -5,7 +5,7 @@ import { test } from 'node:test'
 import pg from 'pg'
 import { CRC32C } from '@google-cloud/storage'
 import { acquirePublicAccessLease, publicAccessLeaseClient } from '../dist/public-access-lease.js'
-import { applySequenceJournaledRemoval, journalPendingRemovalSequence, journalSequenceRemovalConfirmation, pinPendingRemovalSequence, preparePendingRemoval, prepareRemovalConfirmation, verifySequenceRemovalConfirmation } from '../dist/pending-removal.js'
+import { applySequenceJournaledRemoval, inspectSequenceRemoval, journalPendingRemovalSequence, journalSequenceRemovalConfirmation, pinPendingRemovalSequence, preparePendingRemoval, prepareRemovalConfirmation, verifySequenceRemovalConfirmation } from '../dist/pending-removal.js'
 import { decodeRecoveryRecord, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
 import { pendingRemovalDatabasePool, runtimeDatabasePool } from '../dist/runtime-database.js'
 
@@ -240,6 +240,10 @@ test('authorized pending removal closes the gate atomically and retries without 
       await transaction.query(pinSql, ['firebase:demo-idea-map', session.uid, concurrent[0].operationId, concurrent[0].recordId,
         Buffer.from(outcomes[0].value.payload).toString('utf8'), '123456789', 'synthetic-journal', epoch])
       await transaction.query('SAVEPOINT after_pin')
+      await assert.rejects(transaction.query('SELECT * FROM public.pending_sequence_removal_status($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+        ['firebase:demo-idea-map', session.uid, concurrent[0].operationId, concurrent[0].recordId,
+          Buffer.from(outcomes[0].value.payload).toString('utf8'), 'dev', '123456789', 'synthetic-journal', epoch]), /Pending removal is ambiguous/)
+      await transaction.query('ROLLBACK TO SAVEPOINT after_pin')
       await assert.rejects(transaction.query('SELECT * FROM public.apply_pending_sequence_removal($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
         ['firebase:demo-idea-map', session.uid, concurrent[0].operationId, concurrent[0].recordId, '1',
           Buffer.from(outcomes[0].value.payload).toString('utf8'), 'dev', '123456789', 'synthetic-journal', epoch]), /Pending removal is ambiguous/)
@@ -423,7 +427,7 @@ test('sequence coordinator drains readers and preserves a committed confirmation
     preview = (await admin.query("INSERT INTO public.media_previews(idea_id,revision_id,object_name,generation,content_type,published) VALUES ($1,$2,$3,'1','image/png',true) RETURNING id", [idea, revision, `synthetic/${suffix}`])).rows[0].id
     await admin.query(`CREATE ROLE "${role}" LOGIN PASSWORD 'synthetic-only'`); roleCreated = true
     await admin.query(`GRANT USAGE ON SCHEMA public TO "${role}"`)
-    await admin.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text), public.prepare_pending_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text), public.pin_pending_removal_sequence(text,text,uuid,uuid,text,text,text,uuid), public.apply_pending_sequence_removal(text,text,uuid,uuid,text,text,text,text,text,uuid), public.prepare_pending_removal_confirmation(text,text,uuid,uuid,text,text,timestamptz,uuid), public.verify_pending_sequence_confirmation(text,text,uuid,uuid,timestamptz,text,text,text,text,uuid) TO "${role}"`)
+    await admin.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text), public.prepare_pending_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text), public.pin_pending_removal_sequence(text,text,uuid,uuid,text,text,text,uuid), public.apply_pending_sequence_removal(text,text,uuid,uuid,text,text,text,text,text,uuid), public.pending_sequence_removal_status(text,text,uuid,uuid,text,text,text,text,uuid), public.prepare_pending_removal_confirmation(text,text,uuid,uuid,text,text,timestamptz,uuid), public.verify_pending_sequence_confirmation(text,text,uuid,uuid,timestamptz,text,text,text,text,uuid) TO "${role}"`)
     const session = { uid: subject, email: `${suffix}@example.invalid`, email_verified: true, firebase: { sign_in_provider: 'password' } }
     const verifier = { async verifySessionCookie() { return session }, async getUser() { return { uid: subject, email: session.email, emailVerified: true, disabled: false } } }
     const input = { operationId: randomUUID(), recordId: randomUUID(), ideaId: idea, approvedRevisionId: revision,
@@ -438,6 +442,11 @@ test('sequence coordinator drains readers and preserves a committed confirmation
     const saved = { operationId, recordId: input.recordId, payload: prepared.value.payload }
     const journaled = await journalPendingRemovalSequence(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, target, writer, read, saved)
     assert.deepEqual(journaled, { state: 'authorized', value: { state: 'journaled', version: '1', coverageVerified: false } })
+    const inspect = (source = read, destination = target) => inspectSequenceRemoval(coordinatorUrl.toString(),
+      'demo-idea-map', 'synthetic-cookie', verifier, destination, source, saved)
+    assert.deepEqual(await inspect(denied), { state: 'authorized', value: 'pending' })
+    await assert.rejects(inspect(read, { ...target, epochId: randomUUID() }), /Pending removal unavailable/)
+    assert.equal((await admin.query("SELECT has_function_privilege('public','public.pending_sequence_removal_status(text,text,uuid,uuid,text,text,text,text,uuid)','EXECUTE') AS allowed")).rows[0].allowed, false)
     const limited = new pg.Pool({ connectionString: coordinatorUrl.toString() })
     try {
       await assert.rejects(limited.query('SELECT public.remove_published_idea($1,$2,$3,$4,$5,$6)',
@@ -470,12 +479,33 @@ test('sequence coordinator drains readers and preserves a committed confirmation
           'dev', target.projectNumber, target.secretId, target.epochId])).rows[0]
       assert.equal(interim.outcome, 'applied')
       await transaction.query('RELEASE SAVEPOINT synthetic_application')
+      await transaction.query('SAVEPOINT after_application')
+      await assert.rejects(transaction.query('SELECT * FROM public.pending_sequence_removal_status($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+        ['firebase:demo-idea-map', subject, operationId, input.recordId, Buffer.from(saved.payload).toString('utf8'),
+          'dev', target.projectNumber, target.secretId, target.epochId]), /Pending removal is ambiguous/)
+      await transaction.query('ROLLBACK TO SAVEPOINT after_application')
       await assert.rejects(transaction.query('SELECT * FROM public.prepare_pending_removal_confirmation($1,$2,$3,$4,$5,$6,$7,$8)',
         ['firebase:demo-idea-map', subject, operationId, input.recordId, '1', Buffer.from(saved.payload).toString('utf8'),
           interim.applied_at, recoveryConfirmationRecordId(operationId)]), /must commit before confirmation/)
     } finally { await transaction.query('ROLLBACK'); transaction.release() }
-    const applied = await execute()
+    const applicationPool = pendingRemovalDatabasePool(coordinatorUrl.toString()), applicationConnect = applicationPool.connect
+    applicationPool.connect = async function (...args) {
+      const client = await applicationConnect.apply(this, args), originalQuery = client.query
+      client.query = async function (...queryArgs) {
+        const value = await originalQuery.apply(this, queryArgs)
+        if (queryArgs[0] === 'COMMIT') { client.query = originalQuery; throw new Error('synthetic lost application response') }
+        return value
+      }
+      return client
+    }
+    try { await assert.rejects(execute(), /Pending removal unavailable/) } finally { applicationPool.connect = applicationConnect }
+    assert.deepEqual(await inspect(denied), { state: 'authorized', value: 'journal_uncertain' })
+    const applied = await inspect()
     assert.equal(applied.state, 'authorized'); assert.equal(applied.value.state, 'applied')
+    assert.equal(applied.value.version, '1'); assert.equal(versions.length, 1)
+    assert.deepEqual(await journalPendingRemovalSequence(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier,
+      target, writer, read, saved), applied)
+    assert.equal(versions.length, 1)
     assert.deepEqual(await execute(), applied)
     assert.equal((await admin.query('SELECT publication_state FROM public.ideas WHERE id=$1', [idea])).rows[0].publication_state, 'withdrawn')
     assert.equal((await admin.query('SELECT published FROM public.media_previews WHERE id=$1', [preview])).rows[0].published, false)
