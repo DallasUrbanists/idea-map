@@ -424,6 +424,14 @@ retry uses the same saved bytes and target. This does not prove coverage or
 apply the removal. The older bucket-based coordinator does not enforce the pin.
 No runtime role receives this function, and neither path is ready for live use.
 
+An unwired sequence application step reads the exact numbered intent again,
+then checks the saved bytes, original moderator, committed pin and matching
+project, secret and epoch under the closed gate before applying the existing
+removal. A retry must use the same version. A separately granted legacy
+application function does not enforce this target: it must be retired or
+restricted before any sequence path is enabled. Neither the exact read nor the
+database check authenticates the journal baseline, writer fence or permissions.
+
 An unwired application step accepts the saved intent and uses a separately
 authorized journal reader and database coordinator. It verifies the current
 moderator before reading the journal, compares the exact canonical intent and

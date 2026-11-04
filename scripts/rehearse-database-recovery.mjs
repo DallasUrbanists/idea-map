@@ -460,6 +460,8 @@ try {
   const restoredSuppressionPublicExecute = await sql(target, suppressionPrivilege)
   const pinPrivilege = "SELECT has_function_privilege('public','public.pin_pending_removal_sequence(text,text,uuid,uuid,text,text,text,uuid)','EXECUTE')"
   const restoredPinPublicExecute = await sql(target, pinPrivilege)
+  const sequenceApplyPrivilege = "SELECT has_function_privilege('public','public.apply_pending_sequence_removal(text,text,uuid,uuid,text,text,text,text,text,uuid)','EXECUTE')"
+  const restoredSequenceApplyPublicExecute = await sql(target, sequenceApplyPrivilege)
   const pinTriggerPrivilege = "SELECT has_function_privilege('public','public.protect_pending_sequence_target()','EXECUTE')"
   const restoredPinTriggerPublicExecute = await sql(target, pinTriggerPrivilege)
   const restoredPinTrigger = await sql(target, "SELECT count(*) FROM pg_catalog.pg_trigger WHERE tgrelid='public.public_access_pending_decisions'::regclass AND tgname='protect_pending_sequence_target' AND NOT tgisinternal AND tgenabled='O'")
@@ -469,7 +471,7 @@ try {
   const namedConnect = await sql(source, `SELECT has_database_privilege('${reader}','${target}','CONNECT')`)
   if (restored !== '1' || excluded !== '0' || postgis !== '1' || ideas !== '1' || Number(migrations) < 1 || sourceVisible !== '0' || restoredVisible !== '1' || reconciledVisible !== '0' || sourceHolds !== '1' || restoredHolds !== '0' || sourceAuthority !== '1' || restoredAuthority !== '0' || sourceActor !== '1' || restoredActor !== '0' || sourceLaterRevision !== '1' || restoredLaterRevision !== '0' || sourcePublicExecute !== 'f' || restoredPublicExecute !== 'f' || restoredPendingPublicExecute !== 'f' || restoredApplyPublicExecute !== 'f' || restoredConfirmationPublicExecute !== 'f' || restoredTriggerPublicExecute !== 'f' || restoredApplicationTrigger !== '1' ||
       restoredVerificationPublicExecute !== 'f' || restoredVerificationTriggerPublicExecute !== 'f' ||
-      restoredVerificationTrigger !== '1' || restoredSuppressionPublicExecute !== 'f' || restoredPinPublicExecute !== 'f' ||
+      restoredVerificationTrigger !== '1' || restoredSuppressionPublicExecute !== 'f' || restoredPinPublicExecute !== 'f' || restoredSequenceApplyPublicExecute !== 'f' ||
       restoredPinTriggerPublicExecute !== 'f' || restoredPinTrigger !== '1' || restoredGateOpen !== 'f' || sourceNamedExecute !== 't' || restoredNamedExecute !== 't' || publicConnect !== 'f' || namedConnect !== 'f') throw new Error('Restored synthetic database failed verification')
   const lossMs = Number(latest) - Number(captured)
   if (!Number.isFinite(lossMs) || lossMs < 0) throw new Error('Synthetic data-loss interval could not be measured')
