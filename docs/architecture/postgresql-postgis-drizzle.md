@@ -294,7 +294,12 @@ From the repository root, the operator should build the worker with
 `pnpm exec tsc --build`, configure `WORKER_PROVIDER_MODE=provider`,
 `WORKER_DATABASE_URL`, and `CLOUD_TASKS_QUEUE`
 through the approved environment, and use short-lived application-default
-credentials with queue inspection access. The operator should then run:
+credentials with queue inspection access. The database credential must have
+the reviewed access needed to read the job and outbox and update the outbox
+generation, dispatch, publication, and lease fields. The staging worker's
+restricted reconciliation role cannot update the delivery generation; use a
+separately authorized operator connection rather than widening that runtime
+role. The operator should then run:
 
 ```sh
 node apps/worker/dist/recover-cli.js --queue REVIEWED_QUEUE --job JOB_UUID --generation GENERATION --confirm-reviewed-recovery
