@@ -272,8 +272,13 @@ node apps/worker/ops/inspect-backup-retention.mjs
 ```
 
 The command lists live and noncurrent versions and, separately, soft-deleted
-objects under the daily, weekly, and completion prefixes. It does not inspect
-the recovery journal. It reports older noncurrent versions awaiting deletion and
+objects under the daily, weekly, and completion prefixes. The inventory fails
+when soft delete is disabled: previously soft-deleted objects can remain
+recoverable under their [original policy](https://cloud.google.com/storage/docs/use-soft-delete).
+The [soft-deleted listing](https://cloud.google.com/storage/docs/json_api/v1/objects/list)
+requires an enabled policy. Review the bucket's policy history and retained
+objects separately. It does not inspect the recovery journal. It reports older
+noncurrent versions awaiting deletion and
 fails if a recent backup unexpectedly becomes noncurrent. It produces a plan,
 never deletes an object, and fails on incomplete,
 unexpected, or ambiguous inventories. Each prefix and listing mode is limited to

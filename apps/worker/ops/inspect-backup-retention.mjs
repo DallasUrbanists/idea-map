@@ -108,12 +108,16 @@ export async function inspectBackupRetention(storage, target, now, options = {})
   const bucket = storage.bucket(target.bucket)
   const [metadata] = await beforeDeadline(deadline, () => bucket.getMetadata())
   verifyBackupBucket(metadata, target)
+  // Disabling soft delete does not remove generations already retained under an
+  // earlier policy, while the softDeleted listing requires an enabled policy.
+  if (Number(metadata.softDeletePolicy.retentionDurationSeconds) === 0) {
+    throw new Error('Soft-deleted inventory cannot be verified')
+  }
   const prefix = `idea-map-v2/${target.environment}/`
   // The bucket also contains recovery records. Never list or inspect them as backups.
   const backupPrefixes = ['daily', 'weekly', 'completion'].map(kind => `${prefix}${kind}/`)
   const objects = (await Promise.all(backupPrefixes.map(objectPrefix => listAll(bucket, { prefix: objectPrefix, versions: true }, deadline)))).flat()
-  const softDeleted = Number(metadata.softDeletePolicy.retentionDurationSeconds) > 0
-    ? (await Promise.all(backupPrefixes.map(objectPrefix => listAll(bucket, { prefix: objectPrefix, softDeleted: true }, deadline)))).flat() : []
+  const softDeleted = (await Promise.all(backupPrefixes.map(objectPrefix => listAll(bucket, { prefix: objectPrefix, softDeleted: true }, deadline)))).flat()
   now ??= new Date()
   if (!Number.isFinite(now.getTime())) throw new Error('Invalid inventory time')
   const normalized = objects.map(object => {

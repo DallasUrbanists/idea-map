@@ -249,3 +249,12 @@ test('inventory bounds bucket and listing waits under a shared deadline', async 
   await assert.rejects(inspectBackupRetention({ bucket: () => slowBoth }, target, now, { timeoutMs: 300 }), /timed out/)
   assert.ok(calls > 0)
 })
+
+test('a disabled soft-delete policy cannot prove older retained versions are absent', async () => {
+  let listed = false
+  const bucket = { async getMetadata() {
+    return [{ ...metadata, softDeletePolicy: { retentionDurationSeconds: '0' } }]
+  }, async getFiles() { listed = true; return [[], null] } }
+  await assert.rejects(inspectBackupRetention({ bucket: () => bucket }, target, now), /cannot be verified/)
+  assert.equal(listed, false)
+})
