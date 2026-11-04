@@ -285,20 +285,18 @@ try {
   const inventoryEmulator = process.env.STORAGE_EMULATOR_HOST
   delete process.env.STORAGE_EMULATOR_HOST
   try {
-    const inventory = await listUnverifiedRecoveryJournal(journal, journalTarget)
-    if (inventory.coverageVerified !== false || inventory.softDeletedChecked !== true || inventory.references.length !== 4) {
+    const preparedInventory = await prepareUnverifiedRecoveryInventory(journal, journalTarget)
+    if (preparedInventory.coverageVerified !== false || preparedInventory.references.length !== 4) {
       throw new Error('Synthetic journal inventory failed verification')
     }
-    const comparison = compareUnverifiedRecoveryCheckpoint(syntheticCheckpoint, inventory.references)
+    const comparison = compareUnverifiedRecoveryCheckpoint(syntheticCheckpoint, preparedInventory.references)
     if (comparison.coverageVerified !== false || comparison.missing.length || comparison.changed.length ||
         comparison.additional.length !== 2) throw new Error('Synthetic checkpoint comparison failed')
-    const withoutCheckpointRecord = inventory.references.filter(reference => reference.recordId !== syntheticCheckpoint[0].recordId)
+    const withoutCheckpointRecord = preparedInventory.references.filter(reference => reference.recordId !== syntheticCheckpoint[0].recordId)
     const missing = compareUnverifiedRecoveryCheckpoint(syntheticCheckpoint, withoutCheckpointRecord)
     if (missing.coverageVerified !== false || missing.missing.length !== 1 || missing.missing[0] !== syntheticCheckpoint[0].recordId) {
       throw new Error('Synthetic missing checkpoint record was not detected')
     }
-    const preparedInventory = await prepareUnverifiedRecoveryInventory(journal, journalTarget)
-    if (preparedInventory.coverageVerified !== false) throw new Error('Synthetic journal coverage was incorrectly asserted')
     recoveryRecords = preparedInventory.records
     summary = preparedInventory.summary
   } finally {

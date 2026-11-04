@@ -19,7 +19,7 @@ after(() => {
   else process.env.STORAGE_EMULATOR_HOST = originalEmulator
 })
 
-function fake({ onSecondList, failRead = false, replaceDuringRead = false } = {}) {
+function fake({ onSecondList, failRead = false, replaceDuringRead = false, streamBody } = {}) {
   const objects = new Map([[id, { body: Buffer.from(intent), generation: '90071992547409931234', metageneration: '1' }]])
   let versionLists = 0, bucketGeneration = '10'
   const storage = { bucket(bucket) { return {
@@ -44,8 +44,9 @@ function fake({ onSecondList, failRead = false, replaceDuringRead = false } = {}
         if (!object || request.qs.generation !== object.generation || request.qs.ifGenerationMatch !== object.generation) {
           throw new Error('Synthetic generation mismatch')
         }
-        const crc = new CRC32C(); crc.update(object.body)
-        const stream = Readable.from([object.body])
+        const body = streamBody ?? object.body
+        const crc = new CRC32C(); crc.update(body)
+        const stream = Readable.from([body])
         process.nextTick(() => stream.emit('response', { toJSON: () => ({ headers: {
           'x-goog-stored-content-encoding': 'identity', 'x-goog-hash': `crc32c=${crc.toString()}`,
         } }) }))
@@ -60,6 +61,10 @@ function fake({ onSecondList, failRead = false, replaceDuringRead = false } = {}
 test('stable inventory reads exact generations but never claims coverage', async () => {
   const result = await prepareUnverifiedRecoveryInventory(fake(), target)
   assert.deepEqual(result.records, [intent])
+  assert.equal(result.references[0].recordId, id)
+  assert.equal(result.references[0].generation, '90071992547409931234')
+  assert.equal(result.bucketGeneration, '10')
+  assert.equal(result.bucketMetageneration, '1')
   assert.deepEqual(result.summary.removals, ['22222222-2222-4222-8222-222222222222'])
   assert.equal(result.summary.reviewOperations.length, 1)
   assert.equal(result.coverageVerified, false)
@@ -82,4 +87,11 @@ test('failed reads and expired deadlines fail without disclosing provider detail
   const storage = fake({ onSecondList() { now = 120_000 } })
   await assert.rejects(prepareUnverifiedRecoveryInventory(storage, target), /unavailable/)
   await assert.rejects(prepareUnverifiedRecoveryInventory(storage, target, 0), /Invalid/)
+})
+
+test('record bytes must match the checksum in the inventoried generation', async () => {
+  const altered = encodeRecoveryIntent({ operationId: id, environment: 'dev', ideaId: '22222222-2222-4222-8222-222222222222',
+    actorId: '33333333-3333-4333-8333-333333333333', authorizedAt: '2026-11-03T12:00:00.000Z',
+    decision: { kind: 'removal', classification: 'other', reason: 'different synthetic reason' } })
+  await assert.rejects(prepareUnverifiedRecoveryInventory(fake({ streamBody: altered }), target), /unavailable/)
 })

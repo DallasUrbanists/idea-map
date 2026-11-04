@@ -165,8 +165,10 @@ metadata change during the inventory; it does not establish writer fencing,
 effective permissions, or journal coverage.
 
 An unwired inventory reader combines the reference listing with exact-generation
-record reads, then lists again and rejects missing, changed, or additional
-references. It bounds concurrency, total bytes, and elapsed waiting time; an SDK
+record reads, checks their bytes against the inventoried checksums, then lists
+again and rejects missing, changed, or additional references and bucket changes.
+Checksums detect corruption, not unauthorized replacement. It bounds concurrency,
+total bytes, and elapsed waiting time; an SDK
 request may still finish after its caller stops waiting. The returned records and
 summary contain private information. Even a stable result does not detect a tail
 that disappeared before the first listing, authenticate a baseline, or prove that

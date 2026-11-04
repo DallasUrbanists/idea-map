@@ -1,4 +1,4 @@
-import type { Storage } from '@google-cloud/storage'
+import { CRC32C, type Storage } from '@google-cloud/storage'
 import { compareUnverifiedRecoveryCheckpoint, summarizeUnverifiedRecovery } from './recovery-journal-plan.js'
 import { listUnverifiedRecoveryJournal, readRecoveryJournalRecord } from './recovery-journal-storage.js'
 
@@ -28,6 +28,9 @@ export async function prepareUnverifiedRecoveryInventory(storage: Storage, targe
         if (!reference) return
         try {
           const record = await readRecoveryJournalRecord(storage, target, reference.recordId, reference.generation, remaining(5000))
+          const checksum = new CRC32C()
+          checksum.update(Buffer.from(record))
+          if (!checksum.validate(reference.crc32c)) throw new Error('Recovery inventory checksum differs')
           totalBytes += record.byteLength
           if (totalBytes > 32 * 1024 * 1024) throw new Error('Recovery inventory is too large')
           records[index] = record
@@ -44,7 +47,8 @@ export async function prepareUnverifiedRecoveryInventory(storage: Storage, targe
     }
     const summary = summarizeUnverifiedRecovery(records, target.environment)
     remaining(1)
-    return { records, summary, coverageVerified: false as const }
+    return { records, references: before.references, bucketGeneration: before.bucketGeneration,
+      bucketMetageneration: before.bucketMetageneration, summary, coverageVerified: false as const }
   } catch {
     // Provider responses and journal bodies can contain private information.
     throw new Error('Recovery inventory unavailable')
