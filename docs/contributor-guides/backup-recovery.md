@@ -42,13 +42,16 @@ decisions, records the synthetic committed hold's ID, and discovers their exact
 generations through a paginated fake inventory and checks a separate empty
 soft-deleted listing. It reads those generations, compares a second inventory,
 identifies the synthetic idea for hold review, and uses the suppression primitive
-for the known removal in the isolated restore. It verifies that an open gate
+for the known removal in the isolated restore. It also stores and reads back one
+synthetic title from the later revision as a bounded held-material artifact. That
+single value is not a complete hold scope or a reconstruction of the revision.
+It verifies that an open gate
 blocks suppression and that a retry is idempotent. With
 the gate still closed, it checks
 the existing internal idea and preview reads before and after suppression; the
 preview uses synthetic bytes from a fake storage client. These checks do not test
 the hosted delivery path or caches. The rehearsal does not prove journal coverage,
-reapply the hold, reconstruct its authority, or preserve held material. The
+reapply the hold, reconstruct its authority, or preserve all held material. The
 service must stay isolated until those remaining decisions and evidence are
 reconciled. The rehearsal
 first confirms that restoring without a required

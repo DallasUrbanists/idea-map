@@ -6,7 +6,8 @@ import { Readable } from 'node:stream'
 import { test } from 'node:test'
 import { exportEncryptedBackup } from '../ops/export-encrypted-backup.mjs'
 import { inspectBackupRetention } from '../ops/inspect-backup-retention.mjs'
-import { compareCurrentRecoveryJournalRecord, listUnverifiedRecoveryJournal, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../../../packages/server/dist/recovery-journal-storage.js'
+import { compareCurrentRecoveryJournalRecord, listUnverifiedRecoveryJournal, readRecoveryJournalRecord, readUnverifiedHeldMaterial,
+  writeRecoveryJournalRecord, writeUnverifiedHeldMaterial } from '../../../packages/server/dist/recovery-journal-storage.js'
 import { encodeRecoveryConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../../../packages/server/dist/recovery-journal-record.js'
 
 const require = createRequire(import.meta.url)
@@ -177,8 +178,15 @@ test('storage client sends create-only archives, completion metadata, and journa
     await assert.rejects(writeRecoveryJournalRecord(storage, target, recordId, changedRecord),
       /Journal write outcome is uncertain/)
     assert.deepEqual(payloads.get(recordName), record)
+    const heldId = '77777777-7777-4777-8777-777777777777'
+    const heldBytes = Buffer.from('synthetic held material')
+    const held = await writeUnverifiedHeldMaterial(storage, target, heldId, heldBytes)
+    assert.equal(held.coverageVerified, false)
+    assert.deepEqual(Buffer.from(await readUnverifiedHeldMaterial(storage, target, heldId, held)), heldBytes)
+    const heldName = `idea-map-v2/dev/held-material/${heldId}.bin`
+    assert.equal(objects.get(heldName).metadata, undefined)
     assert.equal(errors.length, 0)
-    assert.equal(requests.filter(item => item.method === 'POST').length, 6)
+    assert.equal(requests.filter(item => item.method === 'POST').length, 7)
     assert.deepEqual(new Set(requests.filter(item => item.path.endsWith('/o') && item.method === 'GET').map(item => item.query.prefix)),
       new Set(['daily', 'weekly', 'completion', 'recovery-journal'].map(kind => `idea-map-v2/dev/${kind}/`)))
     assert.ok(requests.every(item => ['GET', 'POST'].includes(item.method)))

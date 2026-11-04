@@ -13,7 +13,8 @@ import { decodeRecoveryRecord, encodeRecoveryConfirmation, encodeRecoveryHoldCon
 import { compareUnverifiedRecoveryCheckpoint } from '../packages/server/dist/recovery-journal-plan.js'
 import { prepareUnverifiedRecoveryInventory } from '../packages/server/dist/recovery-inventory.js'
 import { suppressKnownRemovalsFromJournal, suppressUnverifiedRestoredRemovals } from '../packages/server/dist/recovery-suppression.js'
-import { listUnverifiedRecoveryJournal, writeRecoveryJournalRecord } from '../packages/server/dist/recovery-journal-storage.js'
+import { listUnverifiedRecoveryJournal, readUnverifiedHeldMaterial, writeRecoveryJournalRecord,
+  writeUnverifiedHeldMaterial } from '../packages/server/dist/recovery-journal-storage.js'
 import { acquirePublicAccessLease } from '../packages/server/dist/public-access-lease.js'
 import { readPublishedIdea } from '../packages/server/dist/published-ideas.js'
 import { readMediaPreview } from '../packages/server/dist/media-preview.js'
@@ -145,7 +146,8 @@ try {
           (query.pageToken !== undefined && query.pageToken !== 'second')) throw new Error('Unexpected synthetic journal inventory')
       if (query.softDeleted === true && query.versions === undefined && query.pageToken === undefined) return [[], null]
       if (query.versions !== true || query.softDeleted !== undefined) throw new Error('Unexpected synthetic journal inventory')
-      const objects = [...entries.values()].sort((a, b) => a.metadata.name.localeCompare(b.metadata.name))
+      const objects = [...entries.values()].filter(entry => entry.metadata.name.startsWith(query.prefix))
+        .sort((a, b) => a.metadata.name.localeCompare(b.metadata.name))
       return query.pageToken ? [objects.slice(2), null] : [objects.slice(0, 2), objects.length > 2 ? { pageToken: 'second' } : null]
     }, file(name) {
       const file = { interceptors: [], createWriteStream(options) {
@@ -157,8 +159,9 @@ try {
             const body = Buffer.concat(chunks)
             const checksum = new CRC32C()
             checksum.update(body)
-            entries.set(name, { body, metadata: { name, bucket, generation: String(90071992547409931234n + BigInt(entries.size)),
-              metageneration: '1', size: String(body.length), contentType: 'application/json', crc32c: checksum.toString() } })
+            file.metadata = { name, bucket, generation: String(90071992547409931234n + BigInt(entries.size)),
+              metageneration: '1', size: String(body.length), contentType: options.metadata?.contentType ?? 'application/json', crc32c: checksum.toString() }
+            entries.set(name, { body, metadata: file.metadata })
             callback()
           } })
       }, createReadStream(options) {
@@ -182,11 +185,13 @@ try {
   } }
   const removalOperation = randomUUID()
   const holdOperation = randomUUID()
+  const heldArtifact = randomUUID()
   let committedHoldId
   let committedAuthorityId
   let committedPlacedAt
   let committedAuthority
   let syntheticCheckpoint
+  let heldReference
   const authorizedAt = new Date().toISOString()
   const base = { environment: 'dev', ideaId, actorId: director, authorizedAt }
   const previousEmulator = process.env.STORAGE_EMULATOR_HOST
@@ -214,6 +219,8 @@ try {
     await writeRecoveryJournalRecord(journal, journalTarget, recoveryConfirmationRecordId(removalOperation), encodeRecoveryConfirmation(removalOperation, 'dev', confirmedAt))
     await writeRecoveryJournalRecord(journal, journalTarget, recoveryConfirmationRecordId(holdOperation),
       encodeRecoveryHoldConfirmation(holdOperation, 'dev', confirmedAt, committedHoldId, committedAuthorityId, committedPlacedAt, committedAuthority))
+    const heldTitle = await sql(source, `SELECT content->>'title' FROM idea_revisions WHERE idea_id='${ideaId}' AND version=2`)
+    heldReference = await writeUnverifiedHeldMaterial(journal, journalTarget, heldArtifact, Buffer.from(heldTitle))
   } finally {
     if (previousEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
     else process.env.STORAGE_EMULATOR_HOST = previousEmulator
@@ -299,6 +306,10 @@ try {
     }
     recoveryRecords = preparedInventory.records
     summary = preparedInventory.summary
+    const heldTitle = await readUnverifiedHeldMaterial(journal, journalTarget, heldArtifact, heldReference)
+    if (heldReference.coverageVerified !== false || Buffer.from(heldTitle).toString() !== 'Synthetic later held material') {
+      throw new Error('Synthetic held material readback failed')
+    }
   } finally {
     if (inventoryEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
     else process.env.STORAGE_EMULATOR_HOST = inventoryEmulator

@@ -506,6 +506,19 @@ with the idea and retention locks so deletion or replacement cannot silently rac
 it; a missing generation, interrupted capture, or ambiguous completion requires
 an explicit hold on deletion and authorized follow-up. Do not place raw content
 in decision records or extend a hold to unrelated material by default.
+An unwired storage primitive can write one already-scoped private artifact to the
+existing backup bucket under a caller-supplied UUIDv4, then read its exact generation
+and check its size and SHA-256 digest. It uses a create-only write and returns
+uncertain on a failed response; a failed write can still leave an object behind.
+Each artifact is limited to 16 MiB, so larger material cannot be captured by this
+primitive. The caller must generate a random, opaque ID and keep IDs, references,
+hashes, and bytes private. The caller
+must establish authority and scope, capture every required revision and media
+generation under the appropriate locks, and protect the references separately.
+This primitive does none of those things and does not implement a manifest,
+retention, legal-hold release, disposition, or complete recovery. Do not use it
+to authorize deletion or enable a live hold workflow. Review permissions for the
+separate `held-material` prefix before any live integration.
 The retention and disposition work in
 [#56](https://github.com/DallasUrbanists/idea-map/issues/56) owns application-data
 lifecycle integration. Coordinate its guarded mutation paths and scoped evidence
