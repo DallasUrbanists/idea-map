@@ -230,3 +230,22 @@ test('inventory bounds pagination even when each empty page supplies a new token
   await assert.rejects(inspectBackupRetention({ bucket: () => bucket }, target, now), /too many pages/)
   assert.ok(pages <= 300)
 })
+
+test('inventory bounds bucket and listing waits under a shared deadline', async () => {
+  let listings = 0
+  const stalledMetadata = { async getMetadata() { return new Promise(() => {}) },
+    async getFiles() { listings++; return [[], null] } }
+  await assert.rejects(inspectBackupRetention({ bucket: () => stalledMetadata }, target, now, { timeoutMs: 20 }), /timed out/)
+  assert.equal(listings, 0)
+
+  const stalledListing = { async getMetadata() { return [metadata] },
+    async getFiles() { return new Promise(() => {}) } }
+  await assert.rejects(inspectBackupRetention({ bucket: () => stalledListing }, target, now, { timeoutMs: 20 }), /timed out/)
+  await assert.rejects(inspectBackupRetention({ bucket: () => stalledListing }, target, now, { timeoutMs: 0 }), /timeout/)
+
+  let calls = 0
+  const slowBoth = { async getMetadata() { await new Promise(resolve => setTimeout(resolve, 200)); return [metadata] },
+    async getFiles() { calls++; await new Promise(resolve => setTimeout(resolve, 200)); return [[], null] } }
+  await assert.rejects(inspectBackupRetention({ bucket: () => slowBoth }, target, now, { timeoutMs: 300 }), /timed out/)
+  assert.ok(calls > 0)
+})

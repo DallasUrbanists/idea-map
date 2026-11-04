@@ -274,8 +274,10 @@ fails if a recent backup unexpectedly becomes noncurrent. It produces a plan,
 never deletes an object, and fails on incomplete,
 unexpected, or ambiguous inventories. Each prefix and listing mode is limited to
 100 pages of up to 1,000 objects; exceeding that limit fails the inventory for
-review. The listing has no end-to-end deadline, so operators must also monitor
-for a stalled provider request. The plan retains all copies in the latest
+review. Bucket verification and both listing modes share a 60-second deadline.
+The deadline stops waiting but does not cancel a storage SDK request already in
+flight; monitor stalled requests and process termination separately. The plan
+retains all copies in the latest
 14 daily dates and eight weekly periods, requires those periods to be consecutive,
 and applies additional
 15-day and 63-day minimum ages, and excludes held objects. It reports old or

@@ -6,14 +6,31 @@ import { planBackupRetention } from './plan-backup-retention.mjs'
 
 const backupObjectPattern = /^(daily|weekly|completion)\/(\d{4}-\d{2}-\d{2})\/([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})\.(pgdump|complete)$/
 
-async function listAll(bucket, query) {
+// Bounding this wait does not cancel an SDK request already in flight.
+async function beforeDeadline(deadline, action) {
+  const remaining = Math.ceil(deadline - performance.now())
+  if (remaining < 1) throw new Error('Backup inventory timed out')
+  let timer
+  try {
+    const result = await Promise.race([
+      action(),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Backup inventory timed out')), remaining) }),
+    ])
+    if (performance.now() >= deadline) throw new Error('Backup inventory timed out')
+    return result
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function listAll(bucket, query, deadline) {
   const items = []
   const tokens = new Set()
   let next = { ...query, autoPaginate: false, maxResults: 1000 }
   let pages = 0
   while (next) {
     if (++pages > 100) throw new Error('Inventory has too many pages')
-    const [page, following] = await bucket.getFiles(next)
+    const [page, following] = await beforeDeadline(deadline, () => bucket.getFiles(next))
     if (page.some(file => !file.metadata?.name?.startsWith(query.prefix))) throw new Error('Inventory prefix is ambiguous')
     items.push(...page.map(file => file.metadata))
     if (items.length > 100_000) throw new Error('Inventory is too large')
@@ -83,17 +100,20 @@ export function confirmCompletedExports(objects, environment, now) {
 }
 
 /** Inspect all live, noncurrent, and soft-deleted backup generations; never delete. */
-export async function inspectBackupRetention(storage, target, now) {
+export async function inspectBackupRetention(storage, target, now, options = {}) {
+  const timeoutMs = options?.timeoutMs ?? 60_000
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000) throw new Error('Invalid inventory timeout')
+  const deadline = performance.now() + timeoutMs
   const fixedTime = now !== undefined
   const bucket = storage.bucket(target.bucket)
-  const [metadata] = await bucket.getMetadata()
+  const [metadata] = await beforeDeadline(deadline, () => bucket.getMetadata())
   verifyBackupBucket(metadata, target)
   const prefix = `idea-map-v2/${target.environment}/`
   // The bucket also contains recovery records. Never list or inspect them as backups.
   const backupPrefixes = ['daily', 'weekly', 'completion'].map(kind => `${prefix}${kind}/`)
-  const objects = (await Promise.all(backupPrefixes.map(objectPrefix => listAll(bucket, { prefix: objectPrefix, versions: true })))).flat()
+  const objects = (await Promise.all(backupPrefixes.map(objectPrefix => listAll(bucket, { prefix: objectPrefix, versions: true }, deadline)))).flat()
   const softDeleted = Number(metadata.softDeletePolicy.retentionDurationSeconds) > 0
-    ? (await Promise.all(backupPrefixes.map(objectPrefix => listAll(bucket, { prefix: objectPrefix, softDeleted: true })))).flat() : []
+    ? (await Promise.all(backupPrefixes.map(objectPrefix => listAll(bucket, { prefix: objectPrefix, softDeleted: true }, deadline)))).flat() : []
   now ??= new Date()
   if (!Number.isFinite(now.getTime())) throw new Error('Invalid inventory time')
   const normalized = objects.map(object => {
