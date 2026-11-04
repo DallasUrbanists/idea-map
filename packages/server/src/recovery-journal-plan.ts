@@ -25,6 +25,7 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
   const reviewOperations = new Set<string>()
   const placedHoldIds = new Set<string>()
   const holdIdeas = new Map<string, string>()
+  const assignments = new Map<string, HoldAuthorityEvidence>()
   function checkHoldIdea(holdId: string, ideaId: string) {
     const existing = holdIdeas.get(holdId)
     if (existing !== undefined && existing !== ideaId) throw new Error('Recovery inventory is ambiguous')
@@ -39,11 +40,16 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
       if (intent.decision.kind !== 'hold_placement' || placedHoldIds.has(confirmation.holdId)) throw new Error('Recovery inventory is ambiguous')
       placedHoldIds.add(confirmation.holdId)
       checkHoldIdea(confirmation.holdId, intent.ideaId)
+      const evidence = confirmation.authorityEvidence
+      const previous = assignments.get(confirmation.placementAuthorityId)
       if (Date.parse(confirmation.placedAt) < Date.parse(intent.authorizedAt) ||
-          confirmation.authorityEvidence.actorId !== intent.actorId ||
-          confirmation.authorityEvidence.authorizationReference !== intent.decision.authorizationReference) {
+          evidence.actorId !== intent.actorId || evidence.authorizationReference !== intent.decision.authorizationReference ||
+          (previous && (previous.actorId !== evidence.actorId || previous.authority !== evidence.authority ||
+            previous.grantedBy !== evidence.grantedBy || previous.grantedAt !== evidence.grantedAt ||
+            previous.authorizationReference !== evidence.authorizationReference))) {
         throw new Error('Recovery inventory is ambiguous')
       }
+      assignments.set(confirmation.placementAuthorityId, evidence)
       holdIdentities.push({ operationId, ideaId: intent.ideaId, holdId: confirmation.holdId,
         placementAuthorityId: confirmation.placementAuthorityId, placedAt: confirmation.placedAt, authorityEvidence: confirmation.authorityEvidence })
     }

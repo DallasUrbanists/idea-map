@@ -118,3 +118,16 @@ test('hold evidence identifies the original authority and placement time for rev
     assert.throws(() => summarizeUnverifiedRecovery([intent(1, hold), inconsistent], 'dev'), /ambiguous/)
   }
 })
+
+test('one immutable authority assignment cannot describe conflicting grant facts', () => {
+  const authority = '55555555-5555-4555-8555-555555555555'
+  const make = (n, holdId, facts) => encodeRecoveryHoldConfirmation(operation(n), 'dev', '2026-11-03T12:01:00.000Z',
+    holdId, authority, '2026-11-03T12:00:00.123456Z', facts)
+  const first = [intent(1, hold), make(1, '44444444-4444-4444-8444-444444444444', assignment)]
+  const secondIntent = intent(2, hold)
+  const secondHold = '77777777-7777-4777-8777-777777777777'
+  assert.doesNotThrow(() => summarizeUnverifiedRecovery([...first, secondIntent, make(2, secondHold, assignment)], 'dev'))
+  const inconsistent = { ...assignment, grantedBy: '66666666-6666-4666-8666-666666666666' }
+  assert.throws(() => summarizeUnverifiedRecovery([...first, secondIntent, make(2, secondHold, inconsistent)], 'dev'), /ambiguous/)
+  assert.throws(() => summarizeUnverifiedRecovery([secondIntent, make(2, secondHold, inconsistent), ...first], 'dev'), /ambiguous/)
+})
