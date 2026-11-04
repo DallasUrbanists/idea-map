@@ -73,6 +73,9 @@ test('hold evidence preserves the authority reference and exact microsecond plac
   assert.deepEqual(decodeRecoveryRecord(result, 'dev'), { version: 2, recordType: 'hold_commit_confirmation',
     operationId: base.operationId, environment: 'dev', confirmedAt: '2026-11-03T12:00:00.123Z',
     holdId, placementAuthorityId: authority, placedAt })
+  const original = Buffer.from(result).toString('utf8')
+  assert.throws(() => decodeRecoveryRecord(Buffer.from(original.replace('"version":2', '"version":3')), 'dev'), /invalid or incompatible/)
+  assert.throws(() => decodeRecoveryRecord(Buffer.from(original.replace(`,"placementAuthorityId":"${authority}"`, '')), 'dev'), /invalid or incompatible/)
   assert.throws(() => encodeRecoveryHoldConfirmation(base.operationId, 'dev', base.authorizedAt, holdId, authority, '2026-02-30T12:00:00.000000Z'))
   assert.throws(() => encodeRecoveryHoldConfirmation(base.operationId, 'dev', base.authorizedAt, holdId, authority, '2026-11-03T12:00:01.000000Z'))
   assert.throws(() => encodeRecoveryHoldConfirmation(base.operationId, 'dev', base.authorizedAt, holdId, 'invalid', '2026-11-03T12:00:00.000000Z'))
