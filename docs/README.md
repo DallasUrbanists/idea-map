@@ -25,6 +25,7 @@ for project work:
 | [Agent operating guide](../AGENTS.md) | Shared rules for coding agents working on the project |
 | [Development guide](contributor-guides/development-guide.md) | Setup, configuration, native/container sessions, shutdown, and troubleshooting |
 | [Testing guide](contributor-guides/testing-guide.md) | Required checks, package/database tests, and manual/automated authentication checks |
+| [Reuse rights guide](contributor-guides/reuse-rights-guide.md) | Check permissions, attribution, and notices for material used or distributed |
 | [SSR staging guide](contributor-guides/ssr-staging.md) | Operate and validate the isolated server-rendering staging environment |
 | [Pull-request review guide](contributor-guides/pull-request-review-guide.md) | Check behavior, documentation, and evidence, and leave actionable feedback |
 | [Documentation style guide](contributor-guides/documentation-style-guide.md) | Mandatory writing rules, audience boundaries, and documentation review |
@@ -65,10 +66,10 @@ details about each platform in these guides:
 
 ## Design
 
-The [design system](design/design-system.md) brings together tokens, themes,
-component contracts, and accessibility expectations. The
-[browser specimen](design/specimen.html) demonstrates those visual choices using
-the project stylesheet.
+[Storybook](architecture/storybook.md) is the source of truth for design system
+decisions, including tokens, themes, component contracts, and accessibility
+expectations. Its Foundations and Components pages document and demonstrate
+those decisions.
 
 ## Policies and procedures
 

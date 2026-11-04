@@ -1,5 +1,10 @@
-.sbdocs [aria-label="Container classes"] th {
+.sbdocs .container-table th {
   white-space: nowrap;
+}
+
+.container-table {
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .container-sample {

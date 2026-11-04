@@ -130,7 +130,13 @@
   --weight-semibold: 600;
   --weight-bold: 700;
   --weight-heavy: 750;
-  /* Existing component aliases preserve their spacing while moving to Signal's scale. */
+  /* Relationship-based spacing for new work. */
+  --gap-tight: 4px;
+  --gap-compact: 8px;
+  --gap-standard: 12px;
+  --gap-paragraph: 1em;
+  --gap-spread: 24px;
+  /* Existing spacing aliases remain available to current components. */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -292,12 +298,16 @@
   --size-tab-minimum-width-compact: 56px;
   --size-side-sheet-short-fraction: 0.48;
   --size-bottom-dock-maximum: 620px;
-  --radius-small: 9px;
-  --radius-medium: 12px;
-  --radius-large: 18px;
+  --radius-square: 0;
+  --radius-control: 4px;
+  --radius-card: 12px;
+  /* Compatibility aliases for existing specimen and layout styles. */
+  --radius-small: var(--radius-control);
+  --radius-medium: var(--radius-card);
+  --radius-large: var(--radius-card);
   --radius-sheet: 28px;
   --radius-line-bar: 3px;
-  --radius-chip: 3px;
+  --radius-chip: var(--radius-control);
   --radius-segment: 8px;
   --radius-pill: 999px;
   --radius-route-icon-bus-mini: 5px;
@@ -305,11 +315,14 @@
   --radius-route-icon-bus-large: 9px;
   --shadow-sheet: 0 -10px 30px rgb(16 26 46 / 16%);
   --shadow-floating: 0 6px 16px rgb(16 26 46 / 24%);
-  --shadow-control: 0 1px 4px rgb(16 26 46 / 18%);
+  --shadow-grounded: none;
+  --shadow-glow: 0 1px 4px rgb(16 26 46 / 18%);
+  --shadow-control: var(--shadow-glow);
   --shadow-card: 0 8px 24px rgb(16 26 46 / 13%);
   --shadow-map-control: 0 2px 10px rgb(16 26 46 / 14%);
   --shadow-frame: 0 0 0 transparent;
-  --shadow-drag-lift: 0 6px 12px rgb(16 26 46 / 18%);
+  --shadow-drag: 0 4px 4px rgb(16 26 46 / 18%);
+  --shadow-drag-lift: var(--shadow-drag);
   --motion-page: 170ms;
   --motion-detail: 390ms;
   --motion-sheet: 420ms;
@@ -462,10 +475,12 @@
   }
 }
 
-/* Container shapes and elevation roles. */
-.contain-card { border-radius: var(--radius-small); box-shadow: none; }
-.contain-chip { border-radius: var(--radius-chip); box-shadow: none; }
-.contain-control { border-radius: var(--radius-small); box-shadow: var(--shadow-control); }
-.contain-dialog { border-radius: var(--radius-large); box-shadow: var(--shadow-floating); }
-.contain-floating { border-radius: var(--radius-small); box-shadow: var(--shadow-floating); }
-.contain-pill { border-radius: var(--radius-pill); box-shadow: none; }
+/* Corners and shadows are independent: combine one class from each group. */
+.corner-square { border-radius: var(--radius-square); }
+.corner-control { border-radius: var(--radius-control); }
+.corner-card { border-radius: var(--radius-card); }
+.corner-pill { border-radius: var(--radius-pill); }
+.shadow-grounded { box-shadow: var(--shadow-grounded); }
+.shadow-glow { box-shadow: var(--shadow-glow); }
+.shadow-drag { box-shadow: var(--shadow-drag); }
+.shadow-floating { box-shadow: var(--shadow-floating); }

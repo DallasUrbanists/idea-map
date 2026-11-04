@@ -63,18 +63,18 @@ test('controls keep readable sizing and action emphasis in a smaller parent', as
 
 for (const theme of ['light', 'dark']) {
   for (const width of [1280, 390]) {
-    test(`${theme} at ${width}px: accessible specimens and no overflow`, async ({ page }) => {
+    test(`${theme} at ${width}px: accessible specimens and no overflow`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width, height: 900 })
       await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' })
       await page.goto(specimen)
+      if (process.env.CAPTURE_SPECIMENS) {
+        await page.screenshot({ path: testInfo.outputPath(`controls-${theme}-${width}.png`), fullPage: true })
+      }
       const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
       expect(results.violations).toEqual([])
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
       const targets = page.locator('button, input:not([type="checkbox"]), select')
       for (const control of await targets.all()) expect((await control.boundingBox()).height).toBeGreaterThanOrEqual(44)
-      if (process.env.CAPTURE_SPECIMENS) {
-        await page.screenshot({ path: `../../docs/design/screenshots/controls-${theme}-${width}.png`, fullPage: true })
-      }
     })
   }
 }

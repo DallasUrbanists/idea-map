@@ -1,0 +1,72 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as TooltipStories from './Tooltip.stories.js'
+
+<Meta of={TooltipStories} name="Usage" />
+
+# Tooltip usage
+
+Use a tooltip for a short, supplemental hint on a focusable trigger. Hover or
+focus the examples below to see them. Essential instructions must also be
+visible to touch users; do not put the only explanation in a tooltip.
+
+## Default
+
+Use the default variant to clarify an action. Provide the hint in `label` and
+place one focusable trigger in the default slot.
+
+```html
+<Tooltip label="Opens a preview of your draft">
+  <Button variant="secondary">Preview</Button>
+</Tooltip>
+```
+
+<Canvas of={TooltipStories.UsageDefault} sourceState="none" story={{ inline: false, height: '140px' }} />
+
+## Longer text
+
+Tooltips have a maximum width of 20 rem and shrink to fit narrow viewports.
+Long text wraps with `text-wrap: pretty` where supported. Keep hints concise;
+essential explanations belong in visible content.
+
+```html
+<Tooltip label="Preview your draft before sharing it. You can check the title, location, and description, then return to editing if anything needs to change.">
+  <Button variant="secondary">About preview</Button>
+</Tooltip>
+```
+
+<Canvas of={TooltipStories.UsageLongText} sourceState="none" story={{ inline: false, height: '220px' }} />
+
+Tooltips open on hover and keyboard focus. Escape, blur, and activation close
+them; a touch press does not leave one open. Set `:enabled="false"` to render
+the trigger without a tooltip. Disabled buttons cannot open a tooltip, so
+explain unavailable actions in visible text.
+
+Icon-only `Button` components automatically show their `aria-label` as a
+tooltip. Use that label to name the action, including during loading.
+
+## Automatic positioning
+
+The tooltip positions itself relative to its trigger. It starts above the
+trigger, then shifts along the viewport edge or flips to another side when
+space is limited. Its content is rendered outside the trigger's ancestors so
+an overflow-clipping container does not cut it off. No positioning or portal
+configuration is needed on the parent.
+
+The tooltip stays within the available viewport where space allows. Keep hints
+short so they remain readable on small screens. Focus or hover the button below
+to see the hint extend outside its clipped container; the Light and Dark stories
+also demonstrate all four viewport corners.
+
+<Canvas of={TooltipStories.UsageClipping} sourceState="none" story={{ inline: false, height: '160px' }} />
+
+## Component contract and reference
+
+The required `label` supplies the hint. Optional `enabled` defaults to true;
+`variant` is default or warning. The default slot supplies one focusable trigger.
+Tooltip has no public events. Reka provides its interaction and positioning.
+
+The supplemental hint pattern follows
+[Signal's tooltip reference](https://signal.chitransit.app/components/tooltip).
+Idea Map's [typography](/docs/foundations-typography--docs),
+[size and space](/docs/foundations-size-and-space--docs), and
+[floating container](/docs/foundations-containers--docs) define the surface.

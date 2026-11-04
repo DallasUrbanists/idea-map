@@ -6,6 +6,56 @@ const docs = [
   'containers', 'theming',
 ]
 
+test('Fluent Emoji samples load with attribution', async ({ page }) => {
+  await page.goto('/iframe.html?id=components-emojis--docs&viewMode=docs')
+  const images = page.locator('.emoji-sample img')
+  await expect(images).toHaveCount(100)
+  await expect.poll(() => images.evaluateAll(elements => elements.every(image => image.complete && image.naturalWidth > 0))).toBe(true)
+  await expect(page.getByText('Fluent Emoji artwork is by Microsoft Corporation', { exact: false })).toBeVisible()
+  await page.getByText('Fluent Emoji license', { exact: true }).click()
+  await expect(page.getByText('Copyright (c) Microsoft Corporation.', { exact: false })).toBeVisible()
+})
+
+test('source blocks follow toolbar and system theme changes', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' })
+  await page.goto('/?path=/docs/components-icons--docs&globals=theme:light')
+  const frame = page.frameLocator('#storybook-preview-iframe')
+  const source = frame.locator('.docblock-source').first()
+  await expect(source).toBeVisible()
+  const check = async (dark) => {
+    await expect(source).toHaveCSS('background-color', dark ? 'rgb(48, 62, 78)' : 'rgb(232, 237, 243)')
+    await expect(source.locator('pre')).toHaveCSS('color', dark ? 'rgb(242, 244, 246)' : 'rgb(40, 50, 62)')
+    await expect(source.locator('.token.keyword').first()).toHaveCSS('color', dark ? 'rgb(158, 181, 255)' : 'rgb(56, 89, 199)')
+    await expect(source.getByRole('button', { name: 'Copy' })).toHaveCSS('color', dark ? 'rgb(242, 244, 246)' : 'rgb(40, 50, 62)')
+  }
+  await check(false)
+  for (const theme of ['dark', 'light', 'system']) {
+    await page.getByRole('button', { name: /Color theme for the component preview/ }).click()
+    await page.getByRole('option', { name: theme, exact: true }).click()
+    await expect(frame.locator('html')).toHaveAttribute('data-theme', theme)
+    await check(theme === 'dark')
+  }
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await check(true)
+})
+
+test('icons and emojis docs link to each other and all source tokens are readable', async ({ page }) => {
+  for (const [name, other] of [['icons', 'Emojis'], ['emojis', 'Icons']]) {
+    await page.goto(`/?path=/docs/components-${name}--docs&globals=theme:dark`)
+    const frame = page.frameLocator('#storybook-preview-iframe')
+    await expect(frame.locator('h1')).toHaveText(new RegExp(name, 'i'))
+    const link = frame.locator('.sbdocs-content > p').first().getByRole('link', { name: other })
+    await expect(link).toHaveAttribute('href', `./?path=/docs/components-${other.toLowerCase()}--docs`)
+    await expect(frame.locator('.docblock-source pre span').first()).toBeVisible()
+    const colors = await frame.locator('.docblock-source pre span').evaluateAll(elements =>
+      [...new Set(elements.filter(el => el.textContent.trim()).map(el => getComputedStyle(el).color))])
+    expect(colors.length).toBeGreaterThan(0)
+    expect(colors.every(color => ['rgb(242, 244, 246)', 'rgb(158, 181, 255)'].includes(color))).toBe(true)
+    await link.click()
+    await expect(page).toHaveURL(new RegExp(`components-${other.toLowerCase()}--docs`))
+  }
+})
+
 test('foundation docs follow the selected theme and shared typography', async ({ page }) => {
   test.setTimeout(120000)
   for (const theme of ['light', 'dark']) {
@@ -178,6 +228,23 @@ test('typography tables show the font tokens with their intended sizes', async (
   ])
 })
 
+test('button and tooltip usage pages show variant examples', async ({ page }) => {
+  await page.goto('/iframe.html?id=components-button--usage&viewMode=docs')
+  await expect(page.getByRole('heading', { name: 'Button usage' })).toBeVisible()
+  for (const name of ['Primary', 'Secondary', 'Warning', 'Transparent', 'Icons and accessible names', 'Loading and disabled']) {
+    await expect(page.locator('h2').filter({ hasText: name })).toBeVisible()
+  }
+  await expect(page.locator('.docs-story')).toHaveCount(6)
+  await expect(page.getByRole('button', { name: 'Add idea' })).toBeVisible()
+
+  await page.goto('/iframe.html?id=components-tooltip--usage&viewMode=docs')
+  await expect(page.getByRole('heading', { name: 'Tooltip usage' })).toBeVisible()
+  await expect(page.locator('.docs-story')).toHaveCount(4)
+  const warning = page.frameLocator('iframe').nth(1)
+  await warning.getByRole('button', { name: 'Review', exact: true }).focus()
+  await expect(warning.getByRole('tooltip')).toHaveText('Warning: review before continuing')
+})
+
 test('spacing and container samples use sorted token values', async ({ page }) => {
   for (const theme of ['light', 'dark']) {
     await page.goto(`/iframe.html?id=foundations-size-and-space--docs&viewMode=docs&globals=theme:${theme}`)
@@ -188,54 +255,71 @@ test('spacing and container samples use sorted token values', async ({ page }) =
       value: row.cells[2].innerText.trim(),
       actual: getComputedStyle(document.documentElement).getPropertyValue(row.querySelector('th code').textContent).trim(),
       sample: getComputedStyle(row.querySelector('.spacing-sample')).width,
+      fontSize: getComputedStyle(row.querySelector('.spacing-sample')).fontSize,
       hidden: row.querySelector('.spacing-sample').getAttribute('aria-hidden'),
     })))
-    expect(rows).toHaveLength(21)
+    expect(rows).toHaveLength(5)
     const names = rows.map(row => row.token)
-    expect(names).toEqual([...names].sort())
+    expect(names).toEqual(['--gap-compact', '--gap-paragraph', '--gap-spread', '--gap-standard', '--gap-tight'])
+    expect(rows.map(row => row.value)).toEqual(['8px', '1em', '24px', '12px', '4px'])
     for (const row of rows) {
       expect(row.value).toBe(row.actual)
-      expect(row.sample).toBe(row.actual)
+      expect(row.sample).toBe(row.actual === '1em' ? row.fontSize : row.actual)
       expect(row.hidden).toBe('true')
     }
     await expect(page.getByRole('region', { name: 'Radius tokens' })).toHaveCount(0)
     await page.goto(`/iframe.html?id=foundations-containers--docs&viewMode=docs&globals=theme:${theme}`)
-    const containers = page.getByRole('region', { name: 'Container classes' }).locator('table')
-    await expect(containers).toBeVisible()
-    await expect(containers.locator('thead th')).toHaveText(['Class', 'Sample', 'Radius', 'Shadow', 'Use'])
-    const containerRows = await containers.locator('tbody tr').evaluateAll(elements => elements.map(row => {
-      const sample = row.querySelector('.container-sample')
-      const probe = document.createElement('span')
-      probe.style.boxShadow = row.cells[3].innerText.trim()
-      document.body.appendChild(probe)
-      const expectedShadow = getComputedStyle(probe).boxShadow
-      probe.remove()
-      return {
-        name: row.querySelector('th code').textContent,
-        hasClass: sample.matches(row.querySelector('th code').textContent),
-        radius: row.cells[2].innerText.trim(),
-        sampleRadius: getComputedStyle(sample).borderTopLeftRadius,
-        sampleShadow: getComputedStyle(sample).boxShadow,
-        expectedShadow,
-        hidden: sample.getAttribute('aria-hidden'),
-        use: row.cells[4].innerText.trim(),
+    await expect(page.getByRole('heading', { name: /Corners$/ })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /Shadows$/ })).toBeVisible()
+    for (const [region, names, property, expected] of [
+      ['Corner tokens', ['Square', 'Control', 'Card', 'Pill'], 'borderTopLeftRadius', ['0px', '4px', '8px', '999px']],
+      ['Shadow tokens', ['Grounded', 'Glow', 'Drag', 'Floating'], 'boxShadow', null],
+    ]) {
+      const table = page.getByRole('region', { name: region }).locator('table')
+      await expect(table).toBeVisible()
+      await expect(table.locator('tbody th')).toHaveText(names)
+      const rows = await table.locator('tbody tr').evaluateAll((elements, property) => elements.map(row => {
+        const sample = row.querySelector('.container-sample')
+        const token = row.cells[3].textContent
+        const probe = document.createElement('span')
+        probe.style[property] = `var(${token})`
+        document.body.appendChild(probe)
+        const expected = getComputedStyle(probe)[property]
+        probe.remove()
+        return {
+          hasClass: sample.matches(row.cells[1].textContent),
+          actual: getComputedStyle(sample)[property], expected,
+          other: getComputedStyle(sample)[property === 'boxShadow' ? 'borderTopLeftRadius' : 'boxShadow'],
+          hidden: sample.getAttribute('aria-hidden'),
+        }
+      }), property)
+      if (expected) expect(rows.map(row => row.actual)).toEqual(expected)
+      for (const row of rows) {
+        expect(row.hasClass).toBe(true)
+        expect(row.actual).toBe(row.expected)
+        expect(row.other).toBe(property === 'boxShadow' ? '0px' : 'none')
+        expect(row.hidden).toBe('true')
       }
-    }))
-    expect(containerRows).toHaveLength(6)
-    expect(containerRows.map(row => row.name)).toEqual([
-      '.contain-chip', '.contain-card', '.contain-control',
-      '.contain-floating', '.contain-dialog', '.contain-pill',
-    ])
-    for (const heading of await containers.locator('th').all()) {
-      await expect(heading).toHaveCSS('white-space', 'nowrap')
     }
-    for (const row of containerRows) {
-      expect(row.hasClass).toBe(true)
-      expect(row.sampleRadius).toBe(row.radius)
-      expect(row.sampleShadow).toBe(row.expectedShadow)
-      expect(row.hidden).toBe('true')
-      expect(row.use).toMatch(/^Use .+\.$/)
-    }
+    // Every combination retains its independently chosen corners and shadow.
+    expect(await page.evaluate(() => {
+      const probe = document.createElement('div')
+      document.body.appendChild(probe)
+      const radii = ['square', 'control', 'card', 'pill']
+      const shadows = ['grounded', 'glow', 'drag', 'floating']
+      const result = radii.every((corner, i) => shadows.every(shadow => {
+        probe.className = `corner-${corner} shadow-${shadow}`
+        const style = getComputedStyle(probe)
+        const shadowProbe = document.createElement('div')
+        shadowProbe.style.boxShadow = `var(--shadow-${shadow})`
+        document.body.appendChild(shadowProbe)
+        const expectedShadow = getComputedStyle(shadowProbe).boxShadow
+        shadowProbe.remove()
+        return style.borderTopLeftRadius === ['0px', '4px', '8px', '999px'][i] && style.boxShadow === expectedShadow
+      }))
+      probe.remove()
+      return result
+    })).toBe(true)
   }
 })
 
@@ -250,6 +334,50 @@ test('toolbar changes and reloads update standalone docs', async ({ page }) => {
   await page.reload()
   await expect(frame.locator('html')).toHaveAttribute('data-theme', 'dark')
   await expect(frame.locator('.sbdocs-content p').first()).toHaveCSS('color', 'rgb(242, 244, 246)')
+})
+
+test('usage preview cards follow toolbar changes and retain the selected theme after reload', async ({ page }) => {
+  test.setTimeout(90000)
+  for (const component of ['button', 'card', 'tooltip']) {
+    await page.goto(`/?path=/docs/components-${component}--usage&globals=theme:light`)
+    const frame = page.frameLocator('#storybook-preview-iframe')
+    await expect(frame.locator('.sbdocs-content h1')).toBeVisible()
+    const previews = frame.locator('.sbdocs-preview')
+    expect(await previews.count()).toBeGreaterThan(0)
+    for (const theme of ['light', 'dark', 'light']) {
+      if (await frame.locator('html').getAttribute('data-theme') !== theme) {
+        await page.getByRole('button', { name: /Color theme for the component preview/ }).click()
+        await page.getByRole('option', { name: theme, exact: true }).click()
+      }
+      await expect(frame.locator('html')).toHaveAttribute('data-theme', theme)
+      for (const preview of await previews.all()) {
+        await expect(preview).toHaveCSS('background-color', theme === 'dark' ? 'rgb(38, 49, 62)' : 'rgb(255, 255, 255)')
+        await expect(preview).toHaveCSS('color', theme === 'dark' ? 'rgb(242, 244, 246)' : 'rgb(40, 50, 62)')
+        await expect(preview).toHaveCSS('border-color', theme === 'dark' ? 'rgb(70, 84, 99)' : 'rgb(215, 222, 230)')
+        await expect(preview).toHaveCSS('border-radius', '8px')
+        await expect(preview).toHaveCSS('box-shadow', 'none')
+      }
+      if (component === 'button') await expect(frame.getByRole('button', { name: 'Show details', exact: true })).toHaveCSS('color', theme === 'dark' ? 'rgb(242, 244, 246)' : 'rgb(40, 50, 62)')
+      if (component === 'card') await expect(frame.locator('.idea-card').first()).toHaveCSS('background-color', theme === 'dark' ? 'rgb(48, 62, 78)' : 'rgb(232, 237, 243)')
+      if (component === 'tooltip') await expect(frame.frameLocator('iframe').first().locator('html')).toHaveAttribute('data-theme', theme)
+    }
+    await page.getByRole('button', { name: /Color theme for the component preview/ }).click()
+    await page.getByRole('option', { name: 'dark', exact: true }).click()
+    await page.reload()
+    await expect(frame.locator('html')).toHaveAttribute('data-theme', 'dark')
+    await expect(previews.first()).toHaveCSS('background-color', 'rgb(38, 49, 62)')
+  }
+})
+
+test('usage preview cards follow system theme changes without reloading', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.goto('/?path=/docs/components-button--usage&globals=theme:system')
+  const frame = page.frameLocator('#storybook-preview-iframe')
+  await expect(frame.locator('html')).toHaveAttribute('data-theme', 'system')
+  const preview = frame.locator('.sbdocs-preview').first()
+  await expect(preview).toHaveCSS('background-color', 'rgb(38, 49, 62)')
+  await page.emulateMedia({ colorScheme: 'light' })
+  await expect(preview).toHaveCSS('background-color', 'rgb(255, 255, 255)')
 })
 
 test('system theme follows the operating system preference', async ({ page }) => {

@@ -2,6 +2,8 @@
 
 A place to share and explore ideas for improving our communities.
 
+[Animated icons by Lordicon.com](https://lordicon.com/)
+
 Want to help? Start with the [contributing guide](CONTRIBUTING.md).
 The [documentation index](docs/README.md) covers user guidance, contributor
 instructions, architecture, and policies.
@@ -12,7 +14,7 @@ The following documents explain the project:
 
 - [Architecture overview](docs/architecture/architecture-overview.md)
 - [Development guide](docs/contributor-guides/development-guide.md)
-- [Design system](docs/design/design-system.md)
+- [Design system in Storybook](docs/architecture/storybook.md)
 - [API policy](docs/policies/api-policy.md)
 - [Privacy Policy](docs/policies/privacy-policy.md)
 - [Terms of Use](docs/policies/terms-of-use-policy.md)

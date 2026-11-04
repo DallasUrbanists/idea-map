@@ -8,6 +8,10 @@ design and testing. Storybook uses `@storybook/vue3-vite`; its
 [configuration](../../apps/web/.storybook/main.js) loads component stories and
 foundation documentation from `apps/web/stories/`.
 
+Storybook is the source of truth for Idea Map's design system decisions and
+authority. Its Foundations pages define shared visual and interaction choices;
+its Components pages document component contracts, usage, and examples.
+
 The following contents links navigate within this guide:
 
 - [Catalog and styles](#catalog-and-styles)
@@ -23,6 +27,12 @@ actual project-owned components, variants, composition patterns, and loading,
 empty, error, and disabled states.
 Reka primitives do not automatically populate the catalog.
 
+Usage-page preview cards use the shared surface, text, soft-border, and card
+radius tokens, with no elevation. The toolbar updates those cards alongside the
+surrounding documentation, including system-theme changes without a reload.
+Isolated Canvas iframes inherit the owning documentation's theme without
+reloading their examples. A story's explicit theme override takes precedence.
+
 The catalog has two top-level groups: **Foundations** for documentation and
 **Components** for individual controls and composed examples. Document props,
 events, slots, and meaningful examples before creating another overlapping
@@ -35,7 +45,7 @@ motion section also describes transition timing and reduced-motion guidance. The
 catalog, **Foundations / Color**, and **Foundations / Size and space** read the
 stylesheet through a shared JavaScript reader, so values and assignments come
 from the preview's source. Size and space includes spacing samples; Containers
-documents the shared container classes and their radius and shadow values.
+documents independent Corners and Shadows sections, their tokens, and composable classes.
 
 The selected production catalog address is
 [storybook.mapmy.town](https://storybook.mapmy.town/), separate from the
@@ -43,9 +53,11 @@ The selected production catalog address is
 not confirm deployment; local Storybook is the component validation path.
 Existing `ideam.app` staging configuration remains unchanged.
 
-The [controls guide](../design/controls.md) describes the controls and their
-typed APIs, including validation and asynchronous recovery. **Components /
-Dialog** demonstrates the dialog wrapper and its focus behavior.
+The **Components** usage pages describe controls and their APIs, including
+validation and asynchronous recovery. **Components / Dialog** demonstrates the
+dialog wrapper and its focus behavior.
+The [Lordicon reuse record](lordicons.md) identifies the icon artwork and its
+attribution and sharing conditions.
 
 ## Validation boundary
 
@@ -58,7 +70,7 @@ The [development guide](../contributor-guides/development-guide.md) shows how to
 start Storybook locally on port 6006. The package's `build:storybook` script
 produces the static catalog. You should review keyboard access, focus
 restoration, labels, touch targets, long content, contrast, and narrow screens
-using the [design system](../design/design-system.md).
+using the Storybook Foundations and Components pages.
 
 Run `pnpm --filter @idea-map/web test:storybook-docs` to check the foundation
 documentation's theme, typography, tables, and narrow-screen layout. The test

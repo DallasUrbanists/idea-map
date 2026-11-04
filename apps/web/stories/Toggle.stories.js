@@ -1,10 +1,10 @@
-import IdeaToggle from '../app/components/IdeaToggle.vue'
+import Toggle from '../app/components/Toggle.vue'
 
 export default {
   title: 'Components/Toggle',
-  component: IdeaToggle,
+  component: Toggle,
   args: { label: 'Receive idea updates', modelValue: false },
-  render: (args) => ({ components: { IdeaToggle }, setup: () => ({ args }), template: '<IdeaToggle v-bind="args" @update:model-value="args.modelValue = $event" />' }),
+  render: (args) => ({ components: { Toggle }, setup: () => ({ args }), template: '<Toggle v-bind="args" @update:model-value="args.modelValue = $event" />' }),
 }
 export const Default = {}
 export const On = { args: { modelValue: true } }

@@ -1,0 +1,55 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './Toast.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Toast usage
+
+You can report a recent action with a brief Toast. Essential instructions and recovery should also remain on the page. Toast uses Reka's live announcement, timer pause, keyboard access, and dismissal behavior.
+
+## Confirmation
+
+You should keep the title short and place extra detail in description. The parent controls open with v-model:open. The inline prop keeps these examples within the preview; the default positions the notification at the viewport's trailing bottom edge.
+
+```html
+<Button @click="savedToast = true">Show notification</Button>
+<Toast v-model:open="savedToast" title="Idea saved" tone="success"
+  description="Your draft is available in saved ideas." />
+```
+
+<Canvas of={Stories.UsageDefault} sourceState="none" story={{ inline: false, height: '240px' }} />
+
+## One reversible action
+
+You can provide one actionLabel and handle action to undo a reversible operation. The component closes after the action. Hover or focus pauses dismissal; Alt+T focuses notifications and Escape dismisses the current toast.
+
+```html
+<Toast v-model:open="savedToast" title="Idea saved"
+  action-label="Undo" @action="undoSave" />
+```
+
+<Canvas of={Stories.UsageAction} sourceState="none" story={{ inline: false, height: '240px' }} />
+
+## Short pill
+
+You can use pill for a concise confirmation without a description. Longer or essential content belongs in a regular surface on the page.
+
+```html
+<Toast v-model:open="savedToast" title="Draft saved" pill />
+```
+
+<Canvas of={Stories.UsagePill} sourceState="none" story={{ inline: false, height: '180px' }} />
+
+## Component contract
+
+Required props are Boolean `open` and `title`. Optional props are `description`, `tone` (`neutral`, `success`, `warning`, `error`, `info`, or `loading`), `actionLabel`, `duration` (5000 milliseconds by default; Infinity persists), `inline`, and `pill`. Events are `update:open(boolean)` and `action`. Loading persists until the parent changes tone or closes it. Each instance presents one notification and has a Dismiss button with a full touch target; it does not provide an application-wide queue. Static tone stories use infinite durations for review.
+
+## Foundations and reference
+
+The examples follow Idea Map's [color](/docs/foundations-color--docs),
+[typography](/docs/foundations-typography--docs),
+[size and space](/docs/foundations-size-and-space--docs), and
+[container](/docs/foundations-containers--docs) requirements.
+The component pattern is informed by [Signal's toast reference](https://signal.chitransit.app/components/toast);
+Idea Map's Foundation tokens and interaction requirements determine this implementation.
+

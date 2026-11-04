@@ -15,6 +15,15 @@
   overflow-wrap: anywhere;
 }
 
+/* Canvas has a separate Storybook surface from the surrounding docs page. */
+.sbdocs.sbdocs-preview {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-color: var(--color-border-soft);
+  border-radius: var(--radius-card);
+  box-shadow: none;
+}
+
 .sbdocs .sbdocs-content h1,
 .sbdocs .sbdocs-content h2,
 .sbdocs .sbdocs-content h3,
@@ -57,6 +66,27 @@
   font-family: var(--font-mono);
   font-size: var(--font-small);
   overflow-wrap: anywhere;
+}
+/* Storybook's source renderer supplies a separate Prism palette and surface. */
+.sbdocs .docblock-source {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  border-color: var(--color-border-soft);
+}
+.sbdocs .docblock-source pre,
+.sbdocs .sbdocs-content .docblock-source pre.prismjs .token {
+  color: var(--color-text);
+}
+.sbdocs .sbdocs-content .docblock-source pre.prismjs .token.keyword,
+.sbdocs .sbdocs-content .docblock-source pre.prismjs .token.string,
+.sbdocs .sbdocs-content .docblock-source pre.prismjs .token.selector,
+.sbdocs .sbdocs-content .docblock-source pre.prismjs .token.attr-value:not(.punctuation) {
+  color: var(--color-accent);
+}
+.sbdocs .docblock-source button {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-color: var(--color-border-soft);
 }
 .sbdocs .sbdocs-content table th,
 .sbdocs .sbdocs-content table td {

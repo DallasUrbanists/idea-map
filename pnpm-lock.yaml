@@ -23,9 +23,15 @@ importers:
       '@fontsource-variable/figtree':
         specifier: ^5.3.0
         version: 5.3.0
+      '@iconify-json/fluent-emoji':
+        specifier: ^1.2.7
+        version: 1.2.7
       '@idea-map/server':
         specifier: workspace:*
         version: link:../../packages/server
+      '@lordicon/element':
+        specifier: ^3.0.2
+        version: 3.0.2
       firebase:
         specifier: ^13.1.0
         version: 13.1.0
@@ -1118,6 +1124,12 @@ packages:
     engines: {node: '>=6'}
     hasBin: true
 
+  '@iconify-json/fluent-emoji@1.2.7':
+    resolution: {integrity: sha512-D8G6bKAyIsyxP1rzZtIWr/gg/fO4Rg1+DyCWlfqKK4h8W+4Em/Y0P6QYgJUQTlUcagzJvSyg+9OBv4hz4Hc/QA==}
+
+  '@iconify/types@2.0.0':
+    resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
+
   '@internationalized/date@3.12.4':
     resolution: {integrity: sha512-M1dEn4c1U1HsSlaVR8upZtSqvXrTkHDfv18H01uCSJyjVLDxnBR38v/fMxecmlwXKR4i9HeZcmgQAPE6A+aGJQ==}
 
@@ -1156,6 +1168,18 @@ packages:
 
   '@js-sdsl/ordered-map@4.4.2':
     resolution: {integrity: sha512-iUKgm52T8HOE/makSxjqoWhe95ZJA1/G1sYsGev2JDKUSS14KAgg1LHb+Ba+IPow0xflbnSkOsZcO08C7w1gYw==}
+
+  '@lordicon/element@3.0.2':
+    resolution: {integrity: sha512-y6p39HYBHMw155a9LA2XOj3NYCFo3Xx7vhrjKS/LB2+HnnKGKXOEWsykVGfsn+2JBZmajjsXAgdSly1AnR+uJA==}
+    engines: {node: '>=22'}
+
+  '@lordicon/utils-lottie@2.0.0':
+    resolution: {integrity: sha512-qD7kMhl78g9DCshZd62ARZeGpmw6pMhLlymjMt9vaqsMkOOlxCjLXeS+yh/j9EICL1oWVk3+fWiBAE0ayqmYtQ==}
+    engines: {node: '>=20'}
+
+  '@lordicon/web@2.1.0':
+    resolution: {integrity: sha512-T6/QxNCjboQnTYUYEFQGtl9Su3RbmtQk0Rm3//y6V0FP3BzsVqfyJ+QHRXru3/Ji0BJcvrdDuAQFeDNpPl2jJA==}
+    engines: {node: '>=20'}
 
   '@manypkg/find-root@3.1.0':
     resolution: {integrity: sha512-BcSqCyKhBVZ5YkSzOiheMCV41kqAFptW6xGqYSTjkVTl9XQpr+pqHhwgGCOHQtjDCv7Is6EFyA14Sm5GVbVABA==}
@@ -6125,6 +6149,12 @@ snapshots:
       yargs: 17.7.3
     optional: true
 
+  '@iconify-json/fluent-emoji@1.2.7':
+    dependencies:
+      '@iconify/types': 2.0.0
+
+  '@iconify/types@2.0.0': {}
+
   '@internationalized/date@3.12.4':
     dependencies:
       '@swc/helpers': 0.5.23
@@ -6174,6 +6204,16 @@ snapshots:
 
   '@js-sdsl/ordered-map@4.4.2':
     optional: true
+
+  '@lordicon/element@3.0.2':
+    dependencies:
+      '@lordicon/web': 2.1.0
+
+  '@lordicon/utils-lottie@2.0.0': {}
+
+  '@lordicon/web@2.1.0':
+    dependencies:
+      '@lordicon/utils-lottie': 2.0.0
 
   '@manypkg/find-root@3.1.0':
     dependencies:

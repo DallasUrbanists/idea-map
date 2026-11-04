@@ -1,0 +1,98 @@
+import { Meta } from '@storybook/addon-docs/blocks'
+import { useEffect, useRef, useState } from 'react'
+import { defineElement } from '@lordicon/element'
+import './icon-catalog.css'
+
+<Meta title="Components/Icons" />
+
+export const iconFiles = import.meta.glob('../assets/lordicon-collection-839425/*.json', { eager: true, query: '?url', import: 'default' });
+export const iconGroups = Object.entries(iconFiles).reduce((groups, [path, url]) => {
+  const file = path.split('/').pop();
+  const match = file.match(/^(system-(?:solid|outline)-\d+-.+?)-((?:in|hover|loop|morph)-.+)\.json$/);
+  if (!match) throw new Error(`Unrecognized Lordicon filename: ${file}`);
+  (groups[match[1]] ||= []).push({ state: match[2], url });
+  return groups;
+}, {});
+
+export const IconAnimation = ({ id, animation }) => {
+  const player = useRef(null);
+  const [selected, setSelected] = useState(false);
+  const isReveal = animation.state.includes('in-reveal');
+  const isMorph = animation.state.startsWith('morph-');
+  const trigger = isMorph ? 'follow' : /loop|cycle/.test(animation.state) ? 'loop' : animation.state.includes('hover') ? 'loop-on-hover' : undefined;
+  useEffect(() => {
+    const icon = player.current;
+    if (!isReveal || !icon) return;
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (entry.isIntersecting && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) icon.play();
+      }
+    }, { threshold: 0.5 });
+    observer.observe(icon);
+    return () => observer.disconnect();
+  }, [isReveal]);
+  return <button className="icon-animation" type="button" onClick={() => isMorph ? setSelected(value => !value) : player.current?.play()} aria-label={`${isMorph ? 'Toggle' : 'Play'} ${id} ${animation.state}`} aria-pressed={isMorph ? selected : undefined}>
+    <lord-icon ref={player} src={animation.url} trigger={trigger} target={isMorph || trigger === 'loop-on-hover' ? 'button' : undefined} loading="lazy" current-color="" aria-hidden="true" />
+    <span>{animation.state}</span>
+  </button>;
+};
+
+export const IconCatalog = () => {
+  useEffect(() => { defineElement(); }, []);
+  return <div className="icon-catalog">{Object.entries(iconGroups).sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true })).map(([id, animations]) =>
+    <section className="icon-catalog-card" key={id}>
+      <h3>{id}</h3>
+      <div className="icon-animation-grid">{animations.sort((a, b) => a.state.localeCompare(b.state)).map(animation => <IconAnimation key={animation.state} id={id} animation={animation} />)}</div>
+    </section>
+  )}</div>;
+};
+
+# Icons
+
+Use this reference to choose interface icons. For emoji characters in text, see <a href="./?path=/docs/components-emojis--docs" target="_top">Emojis</a>.
+
+## Icon usage
+
+Use only icons identified in the icon catalog for interface components. The
+Lordicon player and the artwork are separate. Each file in this collection
+contains one animation. Register the player once on the client, then import a
+file as a URL and pass it to the element.
+
+```js
+import { defineElement } from '@lordicon/element'
+
+defineElement()
+```
+
+```js
+// From a component in app/components:
+import heartReveal from '../../assets/lordicon-collection-839425/system-solid-20-heart-in-reveal.json?url'
+```
+
+```html
+<lord-icon :src="heartReveal" trigger="in" current-color aria-hidden="true"></lord-icon>
+```
+
+For icons with these states, play Reveal once as the icon enters view and Pinch
+once per press. Do not loop either animation. To play Pinch after Reveal, load
+the corresponding `hover-pinch` file and play it on activation; these exports
+are separate files. Not every icon has both. Respect reduced-motion preferences. Decorative
+icons are hidden from assistive technology; give an icon-only control an
+accessible name.
+
+Use a 20px square icon in standard controls, 16px in compact controls, and 24px
+in large controls. Keep the icon centered and preserve the control's touch target;
+icon size does not determine the target size. Inline icons can use `1em` when
+they need to follow adjacent text.
+
+## Icon catalog
+
+Loop and cycle previews repeat continuously. Hover previews repeat while hovered.
+Reveal previews play once each time they enter view. Select a morph preview to
+toggle between its two appearances; select another preview to play it.
+Reduced-motion preferences limit automatic animation.
+
+<IconCatalog />
+
+[Animated icons by Lordicon.com](https://lordicon.com/)
+

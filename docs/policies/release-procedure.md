@@ -75,6 +75,10 @@ dependencies, and package archive produced by `pnpm pack` in a disposable
 directory. Confirm registry scope, access policy, trusted publishing identity,
 and permission through an approved release plan.
 
+Maintainers should follow the [reuse rights guide](../contributor-guides/reuse-rights-guide.md#review-a-release)
+to verify permissions, attribution, and applicable license and notice texts for
+the actual release artifacts.
+
 Maintainers should remove a `private` guard or publish only with explicit
 authorization. Keep credentials out of changesets, packages, logs, and pull
 requests.

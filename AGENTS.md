@@ -39,8 +39,8 @@ Agents must follow these rules while making changes:
 - Respect the [workspace boundaries](docs/architecture/architecture-overview.md#workspace-boundaries)
     and read the relevant architecture guide before changing infrastructure or
     development helpers.
-- Inspect existing components, Storybook examples, and the
-    [design system](docs/design/design-system.md) before adding interface code.
+- Inspect existing components and the [Storybook design system](docs/architecture/storybook.md)
+    before adding interface code. Storybook is the source of truth for design decisions.
     Reuse documented component APIs and project CSS and tokens; do not add Tailwind.
 - Check keyboard access, responsive layouts, and loading, empty, and error states.
 - Keep shared agent rules in this file and make tool-specific entry points link

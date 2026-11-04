@@ -1,8 +1,8 @@
-import IdeaProgress from '../app/components/IdeaProgress.vue'
+import Progress from '../app/components/Progress.vue'
 
 export default {
   title: 'Components/Progress',
-  component: IdeaProgress,
+  component: Progress,
   args: { label: 'Preparing preview', value: 40, max: 100 },
 }
 export const Default = {}

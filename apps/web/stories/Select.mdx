@@ -1,0 +1,33 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './Select.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Select usage
+
+Use Select for one choice from a fixed list. It uses a native select for keyboard and mobile interaction.
+
+## Choose an option
+
+Provide a visible label and unique option values. Include an empty-value option when a choice is required.
+
+```html
+<Select v-model="category" label="Category" :options="options" />
+```
+
+<Canvas of={Stories.UsageDefault} sourceState="none" />
+
+## Validation and unavailable controls
+
+Provide an actionable error when validation fails. Explain an unavailable control with a visible hint when the reason is not obvious.
+
+<Canvas of={Stories.UsageError} sourceState="none" />
+<Canvas of={Stories.UsageDisabled} sourceState="none" />
+
+## Component contract
+
+Required props are `label`, string `modelValue`, and `options`, an array of objects with `value`, `label`, and optional `disabled`. Optional props are `id`, `hint`, `error`, `required`, and `disabled`. Events are `update:modelValue(string)` and `blur(FocusEvent)`. Native attributes such as `name` reach the select. There are no slots. The parent owns validation and submission.
+
+## Foundations
+
+The examples follow Idea Map's [color](/docs/foundations-color--docs), [typography](/docs/foundations-typography--docs), and [size and space](/docs/foundations-size-and-space--docs) requirements.

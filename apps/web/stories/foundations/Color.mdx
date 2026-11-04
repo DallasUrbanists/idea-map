@@ -59,16 +59,16 @@ export const SemanticColorRows = ({ tokens }) => tokens.map((token) => (
 # Color
 
 Common Ground draws on neighborhood streets, buildings, trees, and public art.
-Neutral surfaces leave room for content, blue identifies primary actions, and
+Neutral surfaces leave room for content, Canopy identifies primary buttons, and
 supporting colors add warmth. This reference follows the section structure of
 [Signal's color guide](https://signal.chitransit.app/foundations/color) and
 documents Idea Map's current tokens.
 
 ## Thematic colors
 
-The base palette remains visible in both themes. Controls use transit blue for
-actions and lilac for selection; dark mode pairs slate surfaces with lighter
-blue actions. Coral, canopy, and marigold add small moments of color.
+The base palette remains visible in both themes. Primary buttons use Canopy,
+links use transit blue, and selection uses lilac. Dark mode pairs slate surfaces
+with lighter blue links.
 
 <table className="color-reference" tabIndex={0} aria-label="Thematic colors">
   <thead>
@@ -115,7 +115,7 @@ blue actions. Coral, canopy, and marigold add small moments of color.
       </th>
       <ColorSwatch token="--palette-transit-blue" fixed />
       <td>
-        Use it for primary actions, underlined links, and light-theme focus;
+        Use it for underlined links and light-theme focus;
         pair solid fills with Daylight text.
       </td>
     </tr>
@@ -140,7 +140,7 @@ blue actions. Coral, canopy, and marigold add small moments of color.
       </th>
       <ColorSwatch token="--palette-canopy" fixed />
       <td>
-        Use it for success fills or small nature-related labels and
+        Use it for primary buttons, success fills, or nature-related labels and
         illustrations; identify success with words or an icon as well.
       </td>
     </tr>
@@ -238,14 +238,14 @@ blue actions. Coral, canopy, and marigold add small moments of color.
 </table>
 
 Use Asphalt text on the supporting coral, traffic cone, canopy, marigold, and lilac fills.
-Keep most of a page neutral, make blue the main action color, and choose
+Keep most of a page neutral, use Canopy for primary buttons, and choose
 supporting accents sparingly. The palette lists available colors rather than
 the proportions of a finished screen.
 
 ## User interface colors
 
 Semantic tokens adapt to the selected or system theme. Dark mode uses slate
-surfaces and lighter blue actions; supporting fills keep Asphalt text in both
+surfaces and lighter blue links; supporting fills keep Asphalt text in both
 themes.
 
 <table className="color-reference" tabIndex={0} aria-label="User interface colors">

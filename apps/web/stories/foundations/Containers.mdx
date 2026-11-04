@@ -4,46 +4,75 @@ import './container-samples.css'
 
 <Meta title="Foundations/Containers" />
 
-export const containers = [
-  { name: 'card', radius: '--radius-small', use: 'Use for flat content cards, panels, and frames.' },
-  { name: 'chip', radius: '--radius-chip', use: 'Use for compact chips that identify a selection or category.' },
-  { name: 'control', radius: '--radius-small', shadow: '--shadow-control', use: 'Use for controls that need a subtle raised appearance.' },
-  { name: 'dialog', radius: '--radius-large', shadow: '--shadow-floating', use: 'Use for dialogs and sheets that appear above the current page.' },
-  { name: 'floating', radius: '--radius-small', shadow: '--shadow-floating', use: 'Use for floating surfaces such as popovers and map controls.' },
-  { name: 'pill', radius: '--radius-pill', use: 'Use for short standalone labels or counts with fully rounded ends.' },
+export const corners = [
+  { name: 'Square', token: '--radius-square', use: 'Use for continuous or joined edges.' },
+  { name: 'Control', token: '--radius-control', use: 'Use for controls and compact surfaces.' },
+  { name: 'Card', token: '--radius-card', use: 'Use for content cards, panels, and dialogs.' },
+  { name: 'Pill', token: '--radius-pill', use: 'Use for fully rounded labels and counts.' },
 ]
 
-export const shadowSize = (token) => token ? Number.parseFloat(getTokenValue(token).split(/\s+/)[2]) || 0 : 0
+export const shadows = [
+  { name: 'Grounded', token: '--shadow-grounded', use: 'Use for surfaces in the page with no shadow.' },
+  { name: 'Glow', token: '--shadow-glow', use: 'Use for a subtle raised appearance, with the control glow.' },
+  { name: 'Drag', token: '--shadow-drag', use: 'Use for temporary elevation while dragging; restore the resting shadow when dragging ends.' },
+  { name: 'Floating', token: '--shadow-floating', use: 'Use for persistent elevation above other content, such as menus and map controls.' },
+]
 
-export const ContainerRows = () => [...containers].sort((a, b) =>
-  Number.parseFloat(getTokenValue(a.radius)) - Number.parseFloat(getTokenValue(b.radius)) ||
-  shadowSize(a.shadow) - shadowSize(b.shadow) || a.name.localeCompare(b.name)
-).map(({ name, radius, shadow, use }) => (
+export const CornerRows = () => corners.map(({ name, token, use }) => (
   <tr key={name}>
-    <th scope="row"><code>{`.contain-${name}`}</code></th>
-    <td><span className={`container-sample contain-${name}`} aria-hidden="true" /></td>
-    <td><code>{getTokenValue(radius)}</code></td>
-    <td><code>{shadow ? getTokenValue(shadow) : 'none'}</code></td>
+    <th scope="row">{name}</th>
+    <td><code>{`.corner-${name.toLowerCase()}`}</code></td>
+    <td><span className={`container-sample corner-${name.toLowerCase()}`} aria-hidden="true" /></td>
+    <td><code>{token}</code></td>
+    <td>{name === 'Pill' ? `Fully rounded (${getTokenValue(token)})` : getTokenValue(token)}</td>
+    <td>{use}</td>
+  </tr>
+))
+
+export const ShadowRows = () => shadows.map(({ name, token, use }) => (
+  <tr key={name}>
+    <th scope="row">{name}</th>
+    <td><code>{`.shadow-${name.toLowerCase()}`}</code></td>
+    <td><span className={`container-sample shadow-${name.toLowerCase()}`} aria-hidden="true" /></td>
+    <td><code>{token}</code></td>
+    <td><code>{getTokenValue(token)}</code></td>
     <td>{use}</td>
   </tr>
 ))
 
 # Containers
 
-Use corner shapes and elevation to give containers a consistent appearance and
-distinguish floating surfaces from content in the page. The container classes
-combine radius and shadow values from the shared token stylesheet, following
-[Signal's radius scale](https://signal.chitransit.app/foundations/radius) and
-[elevation roles](https://signal.chitransit.app/foundations/elevation).
-Different components can share a container class while retaining their own
-behavior and content.
+Choose corners and shadows independently. Combine one `corner-*` class and one
+`shadow-*` class, or use their CSS custom properties in a component's styles.
+Neither class sets surface color, border, spacing, or stacking order.
 
-<div role="region" aria-label="Container classes" tabIndex="0" style={{maxWidth: '100%', overflowX: 'auto'}}>
+## Corners
+
+Corner tokens set shape without changing elevation. Samples use equal-size
+shapes; a pill's visible curve is limited by the shape's dimensions.
+
+<div role="region" aria-label="Corner tokens" tabIndex="0" className="container-table">
 <table>
-  <thead><tr><th scope="col">Class</th><th scope="col">Sample</th><th scope="col">Radius</th><th scope="col">Shadow</th><th scope="col">Use</th></tr></thead>
-  <tbody><ContainerRows /></tbody>
+  <thead><tr><th scope="col">Corner</th><th scope="col">Class</th><th scope="col">Sample</th><th scope="col">Token</th><th scope="col">Radius</th><th scope="col">Use</th></tr></thead>
+  <tbody><CornerRows /></tbody>
 </table>
 </div>
 
-Samples use equal-size shapes to make their corners easy to compare; a pill's
-visible curve is limited by the shape's dimensions.
+## Shadows
+
+Shadow tokens set elevation without changing corners. Grounded is the resting
+choice for content in the page. Glow reuses the subtle control shadow. Apply Drag
+only during a drag operation; Floating stays elevated while its surface is shown.
+Shadows do not replace visible boundaries, selection marks, or keyboard focus.
+
+<div role="region" aria-label="Shadow tokens" tabIndex="0" className="container-table">
+<table>
+  <thead><tr><th scope="col">Shadow</th><th scope="col">Class</th><th scope="col">Sample</th><th scope="col">Token</th><th scope="col">Value</th><th scope="col">Use</th></tr></thead>
+  <tbody><ShadowRows /></tbody>
+</table>
+</div>
+
+For example, use `corner-card shadow-grounded` on a content card,
+`corner-control shadow-glow` on a raised control, and
+`corner-control shadow-floating` on a menu. Changing a shadow class leaves the
+chosen corners intact.

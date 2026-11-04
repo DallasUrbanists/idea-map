@@ -5,27 +5,11 @@ import './size-space-tables.css'
 <Meta title="Foundations/Size and space" />
 
 export const spacingRows = [
-  { token: '--gutter', use: 'Side padding for pages, sheets, dialogs, and settings.' },
-  { token: '--card-padding', use: 'Padding inside a stop card.' },
-  { token: '--arrival-vertical-padding', use: 'Top and bottom padding inside an arrival card.' },
-  { token: '--arrival-horizontal-padding', use: 'Side padding inside an arrival card.' },
-  { token: '--card-stack-gap', use: 'Space between cards in a list.' },
-  { token: '--arrival-stack-gap', use: 'Space between arrival cards.' },
-  { token: '--route-toggle-gap', use: 'Space between route filters.' },
-  { token: '--metadata-control-overlap', use: 'Overlap between adjacent 44 px metadata targets.' },
-  { token: '--metadata-control-vertical-overhang', use: 'Vertical overhang of metadata controls around a caption row.' },
-  { token: '--header-metadata-gap', use: 'Space between a title and its metadata caption.' },
-  { token: '--header-close-vertical-overhang', use: 'Close control overhang beyond the title line.' },
-  { token: '--direction-control-vertical-overhang', use: 'Vertical overhang of a direction control.' },
-  { token: '--section-gap', use: 'Space above a section heading.' },
-  { token: '--gutter-compact', use: 'Page gutter for compact or short layouts.' },
-  { token: '--gutter-narrow', use: 'Page gutter for the narrowest layouts.' },
-  { token: '--map-inset', use: 'Space between the map edge and sheets, docks, or controls.' },
-  { token: '--map-inset-compact', use: 'Map-control inset in compact layouts.' },
-  { token: '--page-top', use: 'Space above content on a padded page.' },
-  { token: '--page-bottom', use: 'Space below content on a padded page.' },
-  { token: '--page-top-compact', use: 'Top page padding in compact layouts.' },
-  { token: '--page-bottom-compact', use: 'Bottom page padding in compact layouts.' },
+  { token: '--gap-tight', use: 'Keep objects nearly touching, such as adjacent buttons.' },
+  { token: '--gap-compact', use: 'Add small, nimble separation, such as padding inside tooltips.' },
+  { token: '--gap-standard', use: 'Use as the default separation in most situations.' },
+  { token: '--gap-paragraph', use: 'Separate text with a gap that adjusts to its font size.' },
+  { token: '--gap-spread', use: 'Separate items that are not related to each other.' },
 ];
 
 export const SpacingRows = () => [...spacingRows]
@@ -41,14 +25,12 @@ export const SpacingRows = () => [...spacingRows]
 
 # Size and space
 
-The scale follows [Signal's spacing and sizes](https://signal.chitransit.app/foundations/spacing). Use the corresponding `--step-*` tokens for new work.
+Choose a gap by the relationship between elements.
 
 ## Spacing
 
-The following reference maps Signal's spacing roles to the corresponding
-Idea Map CSS tokens. The uses describe where the values can apply; existing
-components do not all use these tokens yet. Values come from the shared token stylesheet.
-Each sample bar uses the token as its width.
+The values come from the shared token stylesheet. Each sample bar uses the token
+as its width. The paragraph gap scales with the current font size.
 
 <div role="region" aria-label="Spacing tokens" tabIndex="0" style={{maxWidth: '100%', overflowX: 'auto'}}>
 <table>
@@ -61,4 +43,4 @@ Each sample bar uses the token as its width.
 
 Interactive targets stay at least 44 by 44 px.
 
-Existing components also use `--space-*` compatibility aliases; their suffixes are not pixel values.
+Existing components also use earlier spacing tokens; their suffixes are not always pixel values.

@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test'
 
 export default defineConfig({
   testDir: '.',
-  testMatch: 'docs.spec.mjs',
+  testMatch: ['docs.spec.mjs', 'tooltip.spec.mjs', 'catalog.spec.mjs'],
   use: {
     baseURL: 'http://127.0.0.1:6011',
     browserName: 'chromium',

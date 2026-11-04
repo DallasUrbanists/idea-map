@@ -350,14 +350,20 @@ You should include screenshots when they help a reviewer understand the result.
 If a visual test changes, investigate the difference and get the intended design
 reviewed before updating its baseline.
 
-You should use the [design system](../design/design-system.md) for component and
+You should use the [Storybook design system](../architecture/storybook.md) for component and
 accessibility guidance. The catalog shows what each component does; its stories
 and user journeys show the behavior you can check.
 
 For foundational controls, run `pnpm --filter @idea-map/web test:controls` after
-installing Playwright Chromium. The [controls guide](../design/controls.md#review-the-specimens)
-describes keyboard, SSR, axe, responsive, and screenshot checks; its isolated
-harness needs no database or Firebase services.
+installing Playwright Chromium or setting `CHROME_PATH` to an installed Chromium
+browser. The isolated harness checks server-side rendering, keyboard interaction,
+recovery, progress semantics, accessibility, and responsive layouts; it needs no
+database or Firebase services. Review screen-reader and touch-device behavior separately.
+
+To capture control specimens, set `CAPTURE_SPECIMENS=1` when running that command.
+In PowerShell, set `$env:CAPTURE_SPECIMENS = '1'` first; in Bash, prefix the command
+with `CAPTURE_SPECIMENS=1`. Playwright writes the PNGs under the test output
+directory. These images are review evidence, not approved visual baselines.
 
 For Storybook documentation, run `pnpm --filter @idea-map/web test:storybook-docs`
 to check foundation pages in both themes and at narrow widths. The test starts
