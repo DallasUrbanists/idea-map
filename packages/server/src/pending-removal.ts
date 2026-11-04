@@ -344,3 +344,39 @@ export async function verifySequenceRemovalConfirmation(databaseUrl: string, pro
     }, pendingRemovalDatabasePool(databaseUrl))
   } catch { throw new Error('Pending removal unavailable') }
 }
+
+/**
+ * Run the unwired, retryable sequence through confirmation. The caller must
+ * retain the same operation and record IDs. This never reopens the gate,
+ * proves journal coverage, or replaces the separate recovery fence.
+ */
+export async function coordinateSequenceRemoval(preparationDatabaseUrl: string, coordinatorDatabaseUrl: string,
+  projectId: string, cookie: string, verifier: RegisteredSessionVerifier,
+  target: { environment: 'dev' | 'prod', projectNumber: string, secretId: string, epochId: string },
+  writer: RecoverySequenceTransport, reader: RecoverySequenceTransport, input: PendingRemovalInput): Promise<ModeratorAccess<
+    'stale' | 'journal_uncertain' | 'confirmation_uncertain' | 'reconciliation_required' | 'confirmed'>> {
+  if (!target || !input || typeof input !== 'object') throw new Error('Invalid pending removal')
+  const destination = { ...target }, decision = { ...input }
+  const prepared = await preparePendingRemoval(preparationDatabaseUrl, projectId, cookie, verifier, destination.environment, decision)
+  if (prepared.state !== 'authorized') return prepared
+  if (prepared.value === 'stale') return { state: 'authorized', value: 'stale' }
+  const saved = { operationId: decision.operationId, recordId: prepared.value.recordId, payload: Buffer.from(prepared.value.payload) }
+  const journaled = await journalPendingRemovalSequence(coordinatorDatabaseUrl, projectId, cookie, verifier, destination, writer, reader, saved)
+  if (journaled.state !== 'authorized') return journaled
+  if (journaled.value === 'journal_uncertain') return { state: 'authorized', value: 'journal_uncertain' }
+  const applied = journaled.value.state === 'applied' ? { state: 'authorized' as const, value: journaled.value } : await applySequenceJournaledRemoval(
+    coordinatorDatabaseUrl, projectId, cookie, verifier, destination, reader, { ...saved, version: journaled.value.version })
+  if (applied.state !== 'authorized') return applied
+  if (applied.value === 'stale') return { state: 'authorized', value: 'reconciliation_required' }
+  if (applied.value === 'journal_uncertain') return { state: 'authorized', value: 'journal_uncertain' }
+  const confirmationInput = { ...saved, generation: applied.value.version, appliedAt: applied.value.appliedAt }
+  const confirmation = await journalSequenceRemovalConfirmation(coordinatorDatabaseUrl, projectId, cookie, verifier,
+    destination, writer, reader, confirmationInput)
+  if (confirmation.state !== 'authorized') return confirmation
+  if (confirmation.value === 'confirmation_uncertain') return { state: 'authorized', value: 'confirmation_uncertain' }
+  if (confirmation.value.state === 'confirmation_verified') return { state: 'authorized', value: 'confirmed' }
+  const verified = await verifySequenceRemovalConfirmation(coordinatorDatabaseUrl, projectId, cookie, verifier,
+    destination, reader, confirmationInput, confirmation.value.version)
+  if (verified.state !== 'authorized') return verified
+  return { state: 'authorized', value: verified.value === 'confirmation_uncertain' ? 'confirmation_uncertain' : 'confirmed' }
+}

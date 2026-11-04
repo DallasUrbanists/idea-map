@@ -5,7 +5,7 @@ import { test } from 'node:test'
 import pg from 'pg'
 import { CRC32C } from '@google-cloud/storage'
 import { acquirePublicAccessLease, publicAccessLeaseClient } from '../dist/public-access-lease.js'
-import { applySequenceJournaledRemoval, inspectSequenceRemoval, inspectSequenceRemovalConfirmation, journalPendingRemovalSequence, journalSequenceRemovalConfirmation, pinPendingRemovalSequence, preparePendingRemoval, prepareRemovalConfirmation, verifySequenceRemovalConfirmation } from '../dist/pending-removal.js'
+import { applySequenceJournaledRemoval, coordinateSequenceRemoval, inspectSequenceRemoval, inspectSequenceRemovalConfirmation, journalPendingRemovalSequence, journalSequenceRemovalConfirmation, pinPendingRemovalSequence, preparePendingRemoval, prepareRemovalConfirmation, verifySequenceRemovalConfirmation } from '../dist/pending-removal.js'
 import { decodeRecoveryRecord, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
 import { pendingRemovalDatabasePool, runtimeDatabasePool } from '../dist/runtime-database.js'
 
@@ -404,13 +404,17 @@ test('a limited read role detects a waiting closer without permission to update 
 
 test('sequence coordinator drains readers and preserves a committed confirmation across uncertain responses', async () => {
   const admin = new pg.Pool({ connectionString: url.toString(), max: 6, connectionTimeoutMillis: 2000 })
-  const suffix = randomUUID().replaceAll('-', ''), role = `sequence_coordinator_${suffix}`, subject = `sequence-${suffix}`
+  const suffix = randomUUID().replaceAll('-', ''), role = `sequence_coordinator_${suffix}`
+  const preparationRole = `sequence_preparer_${suffix}`, subject = `sequence-${suffix}`
   const coordinatorUrl = new URL(url)
   coordinatorUrl.username = role; coordinatorUrl.password = 'synthetic-only'
+  const preparationUrl = new URL(url)
+  preparationUrl.username = preparationRole; preparationUrl.password = 'synthetic-only'
   const target = { environment: 'dev', projectNumber: '123456789', secretId: 'synthetic-journal', epochId: randomUUID() }
   const parent = `projects/${target.projectNumber}/secrets/${target.secretId}`, versions = []
   let reader, actor, contact, idea, revision, preview, operationId, staleIdea, staleRevision, staleOperation
-  let roleCreated = false, runtimeUsed = false, applying
+  let coordinatedIdea, coordinatedRevision, coordinatedOperation
+  let roleCreated = false, preparationRoleCreated = false, runtimeUsed = false, applying
   const writer = { async request(method, path, body) {
     assert.equal(method, 'POST'); assert.equal(path, `${parent}:addVersion`)
     versions.push(Buffer.from(body.payload.data, 'base64'))
@@ -437,7 +441,10 @@ test('sequence coordinator drains readers and preserves a committed confirmation
     await admin.query('INSERT INTO public.approved_revisions(idea_id,revision_id) VALUES ($1,$2)', [idea, revision])
     preview = (await admin.query("INSERT INTO public.media_previews(idea_id,revision_id,object_name,generation,content_type,published) VALUES ($1,$2,$3,'1','image/png',true) RETURNING id", [idea, revision, `synthetic/${suffix}`])).rows[0].id
     await admin.query(`CREATE ROLE "${role}" LOGIN PASSWORD 'synthetic-only'`); roleCreated = true
+    await admin.query(`CREATE ROLE "${preparationRole}" LOGIN PASSWORD 'synthetic-only'`); preparationRoleCreated = true
     await admin.query(`GRANT USAGE ON SCHEMA public TO "${role}"`)
+    await admin.query(`GRANT USAGE ON SCHEMA public TO "${preparationRole}"`)
+    await admin.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text), public.prepare_pending_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text) TO "${preparationRole}"`)
     await admin.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text), public.prepare_pending_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text), public.pin_pending_removal_sequence(text,text,uuid,uuid,text,text,text,uuid), public.apply_pending_sequence_removal(text,text,uuid,uuid,text,text,text,text,text,uuid), public.pending_sequence_removal_status(text,text,uuid,uuid,text,text,text,text,uuid), public.prepare_pending_removal_confirmation(text,text,uuid,uuid,text,text,timestamptz,uuid), public.pending_sequence_confirmation_status(text,text,uuid,uuid,text,text,timestamptz,uuid,timestamptz,text,text,text,uuid), public.verify_pending_sequence_confirmation(text,text,uuid,uuid,timestamptz,text,text,text,text,uuid) TO "${role}"`)
     const session = { uid: subject, email: `${suffix}@example.invalid`, email_verified: true, firebase: { sign_in_provider: 'password' } }
     const verifier = { async verifySessionCookie() { return session }, async getUser() { return { uid: subject, email: session.email, emailVerified: true, disabled: false } } }
@@ -447,7 +454,7 @@ test('sequence coordinator drains readers and preserves a committed confirmation
     await admin.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true')
     reader = await acquirePublicAccessLease(admin)
     runtimeUsed = true
-    const prepared = await preparePendingRemoval(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, 'dev', input)
+    const prepared = await preparePendingRemoval(preparationUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, 'dev', input)
     assert.equal(prepared.state, 'authorized'); assert.equal(prepared.value.state, 'pending')
     await waitForAborts(reader.signal)
     const saved = { operationId, recordId: input.recordId, payload: prepared.value.payload }
@@ -459,12 +466,16 @@ test('sequence coordinator drains readers and preserves a committed confirmation
     await assert.rejects(inspect(read, { ...target, epochId: randomUUID() }), /Pending removal unavailable/)
     assert.equal((await admin.query("SELECT has_function_privilege('public','public.pending_sequence_removal_status(text,text,uuid,uuid,text,text,text,text,uuid)','EXECUTE') AS allowed")).rows[0].allowed, false)
     const limited = new pg.Pool({ connectionString: coordinatorUrl.toString() })
+    const preparationPool = new pg.Pool({ connectionString: preparationUrl.toString() })
     try {
+      await assert.rejects(preparationPool.query('SELECT * FROM public.apply_pending_sequence_removal($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+        ['firebase:demo-idea-map', subject, operationId, input.recordId, '1', Buffer.from(saved.payload).toString('utf8'),
+          'dev', target.projectNumber, target.secretId, target.epochId]), { code: '42501' })
       await assert.rejects(limited.query('SELECT public.remove_published_idea($1,$2,$3,$4,$5,$6)',
         ['firebase:demo-idea-map', subject, idea, revision, 'other', 'synthetic']), { code: '42501' })
       await assert.rejects(limited.query('SELECT * FROM public.apply_pending_removal($1,$2,$3,$4,$5,$6)',
         ['firebase:demo-idea-map', subject, operationId, input.recordId, '1', Buffer.from(saved.payload).toString('utf8')]), { code: '42501' })
-    } finally { await limited.end() }
+    } finally { await limited.end(); await preparationPool.end() }
     const application = { ...saved, version: '1' }
     const execute = (v = verifier, source = read) => applySequenceJournaledRemoval(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', v, target, source, application)
     assert.deepEqual(await execute(verifier, denied), { state: 'authorized', value: 'journal_uncertain' })
@@ -581,7 +592,7 @@ test('sequence coordinator drains readers and preserves a committed confirmation
     await admin.query('INSERT INTO public.approved_revisions(idea_id,revision_id) VALUES ($1,$2)', [staleIdea, staleRevision])
     const staleInput = { ...input, operationId: randomUUID(), recordId: randomUUID(), ideaId: staleIdea, approvedRevisionId: staleRevision }
     staleOperation = staleInput.operationId
-    const stalePrepared = await preparePendingRemoval(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, 'dev', staleInput)
+    const stalePrepared = await preparePendingRemoval(preparationUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, 'dev', staleInput)
     assert.equal(stalePrepared.state, 'authorized'); assert.equal(stalePrepared.value.state, 'pending')
     const staleSaved = { operationId: staleOperation, recordId: staleInput.recordId, payload: stalePrepared.value.payload }
     const staleJournaled = await journalPendingRemovalSequence(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, target, writer, read, staleSaved)
@@ -589,14 +600,32 @@ test('sequence coordinator drains readers and preserves a committed confirmation
     await admin.query("UPDATE public.ideas SET publication_state='private' WHERE id=$1", [staleIdea])
     assert.deepEqual(await applySequenceJournaledRemoval(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier,
       target, read, { ...staleSaved, version: staleJournaled.value.version }), { state: 'authorized', value: 'stale' })
+    assert.deepEqual(await coordinateSequenceRemoval(preparationUrl.toString(), coordinatorUrl.toString(), 'demo-idea-map',
+      'synthetic-cookie', verifier, target, writer, read, staleInput), { state: 'authorized', value: 'reconciliation_required' })
     assert.equal((await admin.query('SELECT applied_at FROM public.public_access_pending_decisions WHERE operation_id=$1', [staleOperation])).rows[0].applied_at, null)
+    coordinatedIdea = (await admin.query("INSERT INTO public.ideas(author_contact_id,publication_state) VALUES ($1,'approved') RETURNING id", [contact])).rows[0].id
+    coordinatedRevision = (await admin.query("INSERT INTO public.idea_revisions(idea_id,version,content,review_state) VALUES ($1,1,'{}'::jsonb,'approved') RETURNING id", [coordinatedIdea])).rows[0].id
+    await admin.query('INSERT INTO public.approved_revisions(idea_id,revision_id) VALUES ($1,$2)', [coordinatedIdea, coordinatedRevision])
+    const coordinatedInput = { ...input, operationId: randomUUID(), recordId: randomUUID(), ideaId: coordinatedIdea, approvedRevisionId: coordinatedRevision }
+    coordinatedOperation = coordinatedInput.operationId
+    const coordinate = source => coordinateSequenceRemoval(preparationUrl.toString(), coordinatorUrl.toString(),
+      'demo-idea-map', 'synthetic-cookie', verifier, target, writer, source, coordinatedInput)
+    assert.deepEqual(await coordinate(denied), { state: 'authorized', value: 'journal_uncertain' })
+    assert.equal((await admin.query('SELECT publication_state FROM public.ideas WHERE id=$1', [coordinatedIdea])).rows[0].publication_state, 'approved')
+    assert.deepEqual(await coordinate(read), { state: 'authorized', value: 'confirmed' })
+    assert.equal((await admin.query('SELECT publication_state FROM public.ideas WHERE id=$1', [coordinatedIdea])).rows[0].publication_state, 'withdrawn')
+    const versionCount = versions.length
+    assert.deepEqual(await coordinate(read), { state: 'authorized', value: 'confirmed' })
+    assert.equal(versions.length, versionCount)
     assert.equal((await admin.query('SELECT is_open FROM public.public_access_gate WHERE singleton=true')).rows[0].is_open, false)
   } finally {
     await reader?.release().catch(() => {})
     if (applying) await applying.catch(() => {})
     if (runtimeUsed) await pendingRemovalDatabasePool(coordinatorUrl.toString()).end()
+    if (runtimeUsed) await pendingRemovalDatabasePool(preparationUrl.toString()).end()
     if (operationId) await admin.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id=$1', [operationId])
     if (staleOperation) await admin.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id=$1', [staleOperation])
+    if (coordinatedOperation) await admin.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id=$1', [coordinatedOperation])
     if (idea) {
       await admin.query('DELETE FROM public.moderator_removals WHERE idea_id=$1', [idea])
       await admin.query('DELETE FROM public.outbox WHERE job_id IN (SELECT id FROM public.jobs WHERE idempotency_key=$1)', [`removal:${idea}:${revision}`])
@@ -611,9 +640,18 @@ test('sequence coordinator drains readers and preserves a committed confirmation
       await admin.query('DELETE FROM public.idea_revisions WHERE idea_id=$1', [staleIdea])
       await admin.query('DELETE FROM public.ideas WHERE id=$1', [staleIdea])
     }
+    if (coordinatedIdea) {
+      await admin.query('DELETE FROM public.moderator_removals WHERE idea_id=$1', [coordinatedIdea])
+      await admin.query('DELETE FROM public.outbox WHERE job_id IN (SELECT id FROM public.jobs WHERE idempotency_key=$1)', [`removal:${coordinatedIdea}:${coordinatedRevision}`])
+      await admin.query('DELETE FROM public.jobs WHERE idempotency_key=$1', [`removal:${coordinatedIdea}:${coordinatedRevision}`])
+      await admin.query('DELETE FROM public.approved_revisions WHERE idea_id=$1', [coordinatedIdea])
+      await admin.query('DELETE FROM public.idea_revisions WHERE idea_id=$1', [coordinatedIdea])
+      await admin.query('DELETE FROM public.ideas WHERE id=$1', [coordinatedIdea])
+    }
     if (contact) await admin.query('DELETE FROM public.contacts WHERE id=$1', [contact])
     await admin.query('UPDATE public.public_access_gate SET is_open=false WHERE singleton=true')
     if (roleCreated) { await admin.query(`DROP OWNED BY "${role}"`); await admin.query(`DROP ROLE "${role}"`) }
+    if (preparationRoleCreated) { await admin.query(`DROP OWNED BY "${preparationRole}"`); await admin.query(`DROP ROLE "${preparationRole}"`) }
     await admin.end()
   }
 })

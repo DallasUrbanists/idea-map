@@ -367,6 +367,12 @@ The database rejects a status read in the verification transaction, including
 after a savepoint. Older verified rows without transaction evidence require
 authorized reconciliation. A sequential retry reuses the verified version;
 concurrent retries can still append identical versions.
+An unwired coordinator joins preparation, journal readback, application and
+confirmation using separately supplied database connections. A caller retains
+the original operation and record IDs for retries. An uncertain write or read
+keeps the decision pending; a revision that becomes stale after preparation
+requires reconciliation. Even a confirmed result leaves the gate closed and
+does not establish coverage or authorize reopening.
 An isolated restore can also read each numbered entry through a selected fence
 and suppress the removals found there. A missing version stops suppression;
 successful reads do not authenticate the baseline, fence or writer cutoff and do
