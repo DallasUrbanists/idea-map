@@ -169,3 +169,10 @@ objectives independently of a provider's default restore window. Operators
 should verify available restore behavior and rehearse an isolated restore,
 including backup retention and removed-content exclusions. Provider recovery
 features must not be assumed to replace the application's backup procedure.
+Neon history, child and restore-created branches, and manual or scheduled
+snapshots can retain older database states independently of the Cloud Storage
+exports. Review their actual configuration, access, expiry, and legal holds as
+part of the [backup and recovery procedure](../contributor-guides/backup-recovery.md#inspect-retention).
+A point-in-time or snapshot restore requires an independent access fence and
+reconciliation before it can serve traffic; the older database cannot prove
+that later removals and holds were preserved.

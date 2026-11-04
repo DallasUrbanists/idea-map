@@ -363,6 +363,29 @@ successful backups after failed runs. A deletion process must account for both
 the minimum backup counts and the privacy deadline, and independently verify
 old versions, soft-deleted objects, and actual expiration.
 
+The Cloud Storage inventory does not cover Neon history, branches, or snapshots.
+For each separately authorized environment, an operator must also review the
+configured [history window](https://neon.com/docs/postgres/backup-restore/history-window),
+the [branch hierarchy](https://neon.com/docs/manage/branches), and the
+[backup and restore inventory](https://neon.com/docs/guides/backup-restore).
+Include child branches, old branches created by restores, manual snapshots, and
+scheduled snapshots. A child branch can retain its earlier data after the parent
+changes. Manual snapshots do not expire unless an expiration is configured, and
+the provider can preserve the latest scheduled snapshot while its schedule is
+active. API- or CLI-created branches may have no expiration. Review the actual
+environment rather than assuming provider defaults.
+
+For an authorized removal, record which provider-held recovery points may still
+contain the material, their owners and expected expiry, and any applicable hold.
+Confirm the provider's actual deletion and retention behavior for those copies;
+a shorter history window or an inaccessible branch alone is not evidence that
+every retained copy has expired. Keep unknown copies and delayed provider
+deletion as unresolved risks against the 90-day deadline. Coordinate scoped
+hold preservation with #56 before changing or deleting a recovery point. Review
+the effect on other records, dependent branches, and recovery objectives, and
+obtain the required authorization before any provider change. This review does
+not authorize deletion of a branch or snapshot.
+
 ## Recover into an isolated environment
 
 An authorized recovery owner should identify the incident time, last verified
@@ -381,6 +404,11 @@ original writers and drain in-flight work before inventorying decision records;
 follow the [journal fence procedure](../architecture/recovery-journal.md#write-and-reconcile)
 and account for delayed permission propagation. An older
 archive cannot be trusted to contain a later publication gate or removal.
+The same rule applies to a Neon point-in-time restore or snapshot. A one-step
+restore can replace the current branch while preserving its endpoint, so fence
+public access and writers independently before invoking it; an older database
+gate cannot provide that fence. Account for any backup branch created by the
+restore when verifying subsequent retention and deletion.
 Verify archive integrity before using it, and use `pg_restore`
 with error checking. Prepare restricted database roles before restoring ACLs,
 then verify function ownership and execute permissions for `PUBLIC` and each
