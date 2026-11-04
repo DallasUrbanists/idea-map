@@ -8,10 +8,10 @@ const service = 'idea-map-worker-dev'
 const image = `us-central1-docker.pkg.dev/${project}/releases/idea-map-worker@sha256:${'a'.repeat(64)}`
 const oldImage = image.replace(/a{64}/, 'b'.repeat(64))
 const old = `${service}-old`
-const target = `${service}-r123-1`
+const target = `${service}-00002-abc`
 const config = { environment: 'staging', service: 'worker', operation: 'prepare', project,
   region: 'us-central1', imageRepository: `us-central1-docker.pkg.dev/${project}/releases`,
-  image, expectedRevision: old, suffix: 'r123-1', revision: target }
+  image, expectedRevision: old, revision: target }
 
 function fakeCloud(options = {}) {
   let active = options.active ?? old
@@ -50,6 +50,12 @@ function fakeCloud(options = {}) {
         serviceReady = 'False'
         throw new Error('Candidate failed to start')
       }
+      if (args[2] === 'update') return {
+        metadata: { name: options.preparedServiceName ?? service, generation: 3 },
+        status: { observedGeneration: options.preparedObservedGeneration ?? 3,
+          conditions: [{ type: 'Ready', status: 'True' }],
+          latestCreatedRevisionName: Object.hasOwn(options, 'createdRevision') ? options.createdRevision : target },
+      }
       if (args[2] === 'update-traffic' && !options.trafficDoesNotConverge) active = target
     },
   }
@@ -63,7 +69,19 @@ test('prepares a checked revision without moving traffic', () => {
   const update = fake.commands.find(args => args[2] === 'update')
   assert.ok(update.includes('--no-traffic'))
   assert.ok(update.includes(`--image=${image}`))
+  assert.ok(update.includes('--format=json'))
+  assert.equal(update.some(arg => arg.startsWith('--revision-suffix=') || arg.startsWith('--tag=')), false)
   assert.equal(fake.commands.some(args => args[2] === 'update-traffic'), false)
+})
+
+test('rejects missing, stale, cross-service, or unchanged generated candidates without routing', () => {
+  for (const options of [{ createdRevision: null }, { createdRevision: old },
+    { createdRevision: 'another-service-00002-abc' }, { preparedServiceName: 'another-service' },
+    { preparedObservedGeneration: 2 }]) {
+    const fake = fakeCloud(options)
+    assert.throws(() => release(config, fake.run))
+    assert.equal(fake.commands.some(args => args[2] === 'update-traffic'), false)
+  }
 })
 
 for (const operation of ['prepare', 'promote', 'rollback']) {
@@ -139,9 +157,9 @@ for (const operation of ['prepare', 'promote', 'rollback']) {
 test('prepares a corrected candidate after a failed deployment leaves service readiness false', () => {
   const fake = fakeCloud({ failPrepareOnce: true })
   assert.throws(() => release(config, fake.run), /Candidate failed to start/)
-  const result = release({ ...config, suffix: 'r124-1' }, fake.run)
+  const result = release(config, fake.run)
   assert.equal(result.previousRevision, old)
-  assert.equal(result.revision, `${service}-r124-1`)
+  assert.equal(result.revision, target)
   assert.equal(fake.commands.filter(args => args[2] === 'update').length, 2)
   assert.equal(fake.commands.some(args => args[2] === 'update-traffic'), false)
 })
