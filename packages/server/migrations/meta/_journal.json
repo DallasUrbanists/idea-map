@@ -281,6 +281,13 @@
       "when": 1793832601399,
       "tag": "0039_sequence_removal_apply",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1793832959321,
+      "tag": "0040_sequence_confirmation_verification",
+      "breakpoints": true
     }
   ]
 }

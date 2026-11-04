@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import pg from 'pg'
 import { CRC32C } from '@google-cloud/storage'
 import { acquirePublicAccessLease, publicAccessLeaseClient } from '../dist/public-access-lease.js'
-import { applyJournaledRemoval, applySequenceJournaledRemoval, journalPendingRemovalSequence, pinPendingRemovalSequence, prepareAndJournalRemoval, preparePendingRemoval, prepareRemovalConfirmation, verifyRemovalConfirmation, writeRemovalConfirmation } from '../dist/pending-removal.js'
+import { applyJournaledRemoval, applySequenceJournaledRemoval, journalPendingRemovalSequence, journalSequenceRemovalConfirmation, pinPendingRemovalSequence, prepareAndJournalRemoval, preparePendingRemoval, prepareRemovalConfirmation, verifyRemovalConfirmation, verifySequenceRemovalConfirmation, writeRemovalConfirmation } from '../dist/pending-removal.js'
 import { decodeRecoveryRecord, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
 import { pendingRemovalDatabasePool, runtimeDatabasePool } from '../dist/runtime-database.js'
 import { compareCurrentRecoveryJournalRecord, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
@@ -354,6 +354,37 @@ test('authorized pending removal closes the gate atomically and retries without 
     await assert.rejects(applySequence(sequenceTarget, sequenceReader, { ...sequenceApplication, version: '3' }), /Pending removal unavailable/)
     assert.equal((await pool.query('SELECT publication_state FROM public.ideas WHERE id=$1', [idea])).rows[0].publication_state, 'withdrawn')
     assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate WHERE singleton=true')).rows[0].is_open, false)
+    const sequenceVerification = 'public.verify_pending_sequence_confirmation(text,text,uuid,uuid,timestamptz,text,text,text,text,uuid)'
+    assert.equal((await pool.query('SELECT has_function_privilege($1,$2,$3) AS allowed', ['public', sequenceVerification, 'EXECUTE'])).rows[0].allowed, false)
+    await pool.query(`GRANT EXECUTE ON FUNCTION public.pin_pending_removal_sequence(text,text,uuid,uuid,text,text,text,uuid), public.prepare_pending_removal_confirmation(text,text,uuid,uuid,text,text,timestamptz,uuid), ${sequenceVerification} TO "${role}"`)
+    const appliedInput = { ...sequenceInput, generation: appliedSequence.value.version, appliedAt: appliedSequence.value.appliedAt }
+    await assert.rejects(journalSequenceRemovalConfirmation(restrictedUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier,
+      { ...sequenceTarget, secretId: 'other-journal' }, writer, sequenceReader, appliedInput), /Pending removal unavailable/)
+    assert.equal(versions.length, 3)
+    assert.deepEqual(await journalSequenceRemovalConfirmation(restrictedUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier,
+      sequenceTarget, writer, deniedReader, appliedInput), { state: 'authorized', value: 'confirmation_uncertain' })
+    const journaledConfirmation = await journalSequenceRemovalConfirmation(restrictedUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier,
+      sequenceTarget, writer, sequenceReader, appliedInput)
+    assert.deepEqual(journaledConfirmation, { state: 'authorized', value: { state: 'confirmation_journaled',
+      recordId: recoveryConfirmationRecordId(secondOperationId), version: '5', coverageVerified: false } })
+    assert.deepEqual(versions[3], versions[4])
+    const preparedAt = (await pool.query('SELECT confirmation_prepared_at FROM public.public_access_pending_decisions WHERE operation_id=$1', [secondOperationId])).rows[0].confirmation_prepared_at
+    const verifySql = 'SELECT * FROM public.verify_pending_sequence_confirmation($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)'
+    const verifyArgs = ['firebase:demo-idea-map', session.uid, secondOperationId, recoveryConfirmationRecordId(secondOperationId), preparedAt,
+      '5', 'dev', sequenceTarget.projectNumber, sequenceTarget.secretId, sequenceTarget.epochId]
+    await assert.rejects(restrictedPool.query(verifySql, [...verifyArgs.slice(0, 9), randomUUID()]), /Pending removal is ambiguous/)
+    await assert.rejects(restrictedPool.query(verifySql, [...verifyArgs.slice(0, 5), '2', ...verifyArgs.slice(6)]), /Pending removal is ambiguous/)
+    const verifySequence = (source = sequenceReader, version = '5') => verifySequenceRemovalConfirmation(restrictedUrl.toString(),
+      'demo-idea-map', 'synthetic-cookie', verifier, sequenceTarget, source, appliedInput, version)
+    assert.deepEqual(await verifySequence(deniedReader), { state: 'authorized', value: 'confirmation_uncertain' })
+    assert.deepEqual(await verifySequence(sequenceReader, '2'), { state: 'authorized', value: 'confirmation_uncertain' })
+    const verifiedSequence = await verifySequence()
+    assert.equal(verifiedSequence.state, 'authorized')
+    assert.equal(verifiedSequence.value.state, 'confirmation_verified')
+    assert.equal(verifiedSequence.value.version, '5')
+    assert.deepEqual(await verifySequence(), verifiedSequence)
+    await assert.rejects(verifySequence(sequenceReader, '4'), /Pending removal unavailable/)
+    assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate WHERE singleton=true')).rows[0].is_open, false)
   } finally {
     await reader?.release().catch(() => {})
     await otherReader?.release().catch(() => {})
@@ -367,7 +398,7 @@ test('authorized pending removal closes the gate atomically and retries without 
     if (journalOperations.length) await pool.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id = ANY($1::uuid[])', [journalOperations])
     await pool.query('UPDATE public.public_access_gate SET is_open = false WHERE singleton = true')
     if (roleCreated) {
-      await pool.query(`REVOKE EXECUTE ON FUNCTION public.lock_active_moderator(text,text), public.prepare_pending_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text), public.apply_pending_sequence_removal(text,text,uuid,uuid,text,text,text,text,text,uuid) FROM "${role}"`)
+      await pool.query(`REVOKE EXECUTE ON FUNCTION public.lock_active_moderator(text,text), public.prepare_pending_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text), public.apply_pending_sequence_removal(text,text,uuid,uuid,text,text,text,text,text,uuid), public.pin_pending_removal_sequence(text,text,uuid,uuid,text,text,text,uuid), public.prepare_pending_removal_confirmation(text,text,uuid,uuid,text,text,timestamptz,uuid), public.verify_pending_sequence_confirmation(text,text,uuid,uuid,timestamptz,text,text,text,text,uuid) FROM "${role}"`)
       await pool.query(`REVOKE USAGE ON SCHEMA public FROM "${role}"`)
       await pool.query(`DROP ROLE "${role}"`)
     }

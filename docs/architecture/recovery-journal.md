@@ -431,6 +431,11 @@ removal. A retry must use the same version. A separately granted legacy
 application function does not enforce this target: it must be retired or
 restricted before any sequence path is enabled. Neither the exact read nor the
 database check authenticates the journal baseline, writer fence or permissions.
+An unwired confirmation step rechecks the pinned target and commits the stable
+confirmation before appending it. It compares the exact numbered entry through
+a reader, then records verification only for the same target and a version
+later than the intent. An uncertain append or read leaves the gate closed.
+These steps do not establish that all decisions and held material are present.
 
 An unwired application step accepts the saved intent and uses a separately
 authorized journal reader and database coordinator. It verifies the current
