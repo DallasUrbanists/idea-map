@@ -24,6 +24,28 @@ variable "enable_operations_freshness_alert" {
   }
 }
 
+variable "enable_operations_database_growth_alert" {
+  description = "Opt in to a database-size growth alert for the existing operations collector."
+  type        = bool
+  default     = false
+  validation {
+    condition = !var.enable_operations_database_growth_alert || (
+      var.enable_operations_monitor && length(var.monitoring_notification_channels) > 0 && var.operations_database_growth_percent > 0
+    )
+    error_message = "Database growth alerts require the collector, existing notification channels, and a positive threshold."
+  }
+}
+
+variable "operations_database_growth_percent" {
+  description = "Reviewed percentage growth threshold over the preceding day, or zero when disabled."
+  type        = number
+  default     = 0
+  validation {
+    condition     = var.operations_database_growth_percent >= 0 && var.operations_database_growth_percent <= 1000000
+    error_message = "Use a growth percentage between zero and one million."
+  }
+}
+
 variable "operations_monitor_image" {
   description = "Reviewed worker image digest in this project's Artifact Registry."
   type        = string
@@ -246,6 +268,56 @@ resource "google_logging_metric" "operations_heartbeat" {
     metric_kind = "DELTA"
     value_type  = "INT64"
     unit        = "1"
+  }
+}
+
+resource "google_logging_metric" "operations_database_size" {
+  count           = var.enable_operations_database_growth_alert ? 1 : 0
+  project         = var.project_id
+  name            = "idea-map-ops-database-size-${var.environment}"
+  description     = "Observed size of the single database queried by the operations collector."
+  filter          = "resource.type=\"cloud_run_job\" AND resource.labels.project_id=\"${var.project_id}\" AND resource.labels.job_name=\"${google_cloud_run_v2_job.operations_monitor[0].name}\" AND jsonPayload.event=\"operations_database_size_observed\""
+  value_extractor = "EXTRACT(jsonPayload.database_size_bytes)"
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "By"
+  }
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 40
+      growth_factor      = 2
+      scale              = 8192
+    }
+  }
+}
+
+resource "google_monitoring_alert_policy" "operations_database_growth" {
+  count                 = var.enable_operations_database_growth_alert ? 1 : 0
+  project               = var.project_id
+  display_name          = "Idea Map ${var.environment} database growth"
+  combiner              = "OR"
+  notification_channels = var.monitoring_notification_channels
+  conditions {
+    display_name = "Observed database size grows beyond the reviewed percentage"
+    condition_threshold {
+      filter          = "resource.type=\"cloud_run_job\" AND resource.labels.project_id=\"${var.project_id}\" AND resource.labels.job_name=\"${google_cloud_run_v2_job.operations_monitor[0].name}\" AND metric.type=\"logging.googleapis.com/user/${google_logging_metric.operations_database_size[0].name}\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = var.operations_database_growth_percent
+      duration        = "0s"
+      # ALIGN_MEAN cannot consume a distribution. Combine the hourly
+      # distributions, then reduce them to their numeric mean before comparing.
+      aggregations {
+        alignment_period     = "3600s"
+        per_series_aligner   = "ALIGN_SUM"
+        cross_series_reducer = "REDUCE_MEAN"
+        group_by_fields      = ["resource.label.project_id", "resource.label.job_name"]
+      }
+      aggregations {
+        alignment_period   = "86400s"
+        per_series_aligner = "ALIGN_PERCENT_CHANGE"
+      }
+    }
   }
 }
 

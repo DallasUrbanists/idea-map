@@ -75,6 +75,7 @@ test('collector combines the existing snapshots and never completes a partial ob
   let releases = 0
   const database = emptyDatabase()
   database.email.failed = 2
+  database.database_size_bytes = '9007199254740992'
   const pool = { async connect() { return {
     async query(sql) { return sql.includes('WITH snapshot AS') ? { rows: [database] } : { rows: [] } },
     release() { releases++ },
@@ -82,6 +83,7 @@ test('collector combines the existing snapshots and never completes a partial ob
   const queue = 'projects/synthetic/locations/us-central1/queues/test'
   const transport = { async request() { return { status: 200, data: {} } } }
   assert.deepEqual(await collectOperations(pool, transport, queue, limits), [
+    { severity: 'INFO', event: 'operations_database_size_observed', database_size_bytes: '9007199254740992' },
     { severity: 'WARNING', event: 'operations_threshold_breached', signal: 'email_events' },
     { severity: 'INFO', event: 'operations_assessment_completed' },
   ])

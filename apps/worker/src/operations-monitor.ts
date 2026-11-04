@@ -10,5 +10,7 @@ export async function collectOperations(pool: pg.Pool, transport: TaskTransport,
   const [database, queue] = await Promise.all([
     readOperationsSnapshot(pool), readQueueSnapshot(transport, queueName),
   ])
-  return operationsEvents(assessOperations(database, queue, limits))
+  const alerts = assessOperations(database, queue, limits)
+  return [{ severity: 'INFO', event: 'operations_database_size_observed', database_size_bytes: database.database_size_bytes },
+    ...operationsEvents(alerts)]
 }

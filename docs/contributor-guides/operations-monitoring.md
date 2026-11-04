@@ -156,12 +156,28 @@ it does not calculate growth or include all provider history and branches.
 Optionally set `enable_operations_alert` and the existing
 `monitoring_notification_channels` to prepare notifications for threshold
 breaches, a closed public-access gate, or a collection error. A missing gate is
-an invalid assessment and reports collection failure. The job logs only signal
-names and collection status, not task IDs, message details, or aggregate values. For investigation,
-use the point-in-time commands above. The alert rate is limited, and repeated
+an invalid assessment and reports collection failure. Each successful collection
+also logs the database's byte size as a decimal string. It does not log task IDs
+or message details. Restrict access to the aggregate measurement and apply the
+reviewed log retention policy. For investigation, use the point-in-time commands
+above. The alert rate is limited, and repeated
 events do not guarantee repeated notifications. A failure before the program
 starts, a paused or missed trigger, missing log data, and an unavailable
 notification channel can prevent that alert.
+
+Optionally set `enable_operations_database_growth_alert` and a positive
+`operations_database_growth_percent` to derive a distribution metric from those
+size measurements and alert on growth over one day. It uses the same collector
+and notification channels. The metric starts only after creation; verify the
+first sample and the full comparison window. The metric converts the decimal
+value to a floating-point number, so it is approximate for very large sizes.
+Missing or delayed samples, a zero baseline, overlapping collections, and the
+monitoring service's alignment and ten-minute smoothing can affect the result.
+Confirm a usable time series and test growth, no growth, and missing data in an
+authorized synthetic environment before relying on notifications. This measures
+only the database queried by the collector; Neon branch history and other
+provider storage need separate monitoring. The capacity alert still compares
+the original byte count exactly.
 
 The separately enabled `enable_operations_freshness_alert` creates a log-based
 completion metric and an alert for two hours without a completed assessment.
@@ -270,9 +286,9 @@ For an authorized Neon environment, use the provider's existing
 to inspect database-size samples over time. Record the environment, time window,
 units, and missing or stale samples when comparing growth. Database size does
 not account for every retained branch or history copy, so inspect those provider
-signals separately. This manual comparison is not a configured growth alert;
-verify the available history and a tested notification path before relying on
-it for unattended monitoring.
+signals separately. The optional collector growth alert above does not cover those
+other provider signals; verify their available history and notification paths
+before relying on unattended monitoring.
 
 ## Review costs across providers
 

@@ -264,7 +264,8 @@ run "operations_monitor_is_opt_in" {
   assert {
     condition = length(google_cloud_run_v2_job.operations_monitor) == 0 && length(google_cloud_scheduler_job.operations_monitor) == 0 && (
       length(google_monitoring_alert_policy.operations_monitor) == 0 && length(google_service_account.operations_monitor) == 0 &&
-      length(google_logging_metric.operations_heartbeat) == 0 && length(google_monitoring_alert_policy.operations_freshness) == 0
+      length(google_logging_metric.operations_heartbeat) == 0 && length(google_monitoring_alert_policy.operations_freshness) == 0 &&
+      length(google_logging_metric.operations_database_size) == 0 && length(google_monitoring_alert_policy.operations_database_growth) == 0
     )
     error_message = "Operations collection must not create resources by default."
   }
@@ -273,16 +274,18 @@ run "operations_monitor_is_opt_in" {
 run "operations_monitor_uses_scoped_identity_and_paused_schedule" {
   command = plan
   variables {
-    enable_operations_monitor          = true
-    enable_operations_alert            = true
-    enable_operations_freshness_alert  = true
-    operations_monitor_image           = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/worker@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
-    operations_database_secret_id      = "synthetic-operations-only"
-    operations_database_secret_version = "4"
-    operations_monitor_schedule        = "*/5 * * * *"
-    operations_thresholds              = { outbox_seconds = 300, overdue_seconds = 600, queue_seconds = 900, email_events = 2 }
-    operations_database_capacity_bytes = "2000000000"
-    monitoring_notification_channels   = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
+    enable_operations_monitor               = true
+    enable_operations_alert                 = true
+    enable_operations_freshness_alert       = true
+    enable_operations_database_growth_alert = true
+    operations_database_growth_percent      = 25
+    operations_monitor_image                = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/worker@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    operations_database_secret_id           = "synthetic-operations-only"
+    operations_database_secret_version      = "4"
+    operations_monitor_schedule             = "*/5 * * * *"
+    operations_thresholds                   = { outbox_seconds = 300, overdue_seconds = 600, queue_seconds = 900, email_events = 2 }
+    operations_database_capacity_bytes      = "2000000000"
+    monitoring_notification_channels        = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
   }
   override_resource {
     target          = google_service_account.operations_monitor[0]
@@ -329,6 +332,24 @@ run "operations_monitor_uses_scoped_identity_and_paused_schedule" {
     )
     error_message = "The freshness signal must track this collector's completed assessments and reviewed channels."
   }
+  assert {
+    condition = google_logging_metric.operations_database_size[0].value_extractor == "EXTRACT(jsonPayload.database_size_bytes)" && (
+      strcontains(google_logging_metric.operations_database_size[0].filter, "operations_database_size_observed") &&
+      google_logging_metric.operations_database_size[0].metric_descriptor[0].value_type == "DISTRIBUTION" &&
+      one(google_monitoring_alert_policy.operations_database_growth[0].conditions).condition_threshold[0].threshold_value == 25 &&
+      one(google_monitoring_alert_policy.operations_database_growth[0].conditions).condition_threshold[0].aggregations[0].per_series_aligner == "ALIGN_SUM" &&
+      one(google_monitoring_alert_policy.operations_database_growth[0].conditions).condition_threshold[0].aggregations[0].cross_series_reducer == "REDUCE_MEAN" &&
+      one(google_monitoring_alert_policy.operations_database_growth[0].conditions).condition_threshold[0].aggregations[1].per_series_aligner == "ALIGN_PERCENT_CHANGE" &&
+      toset(google_monitoring_alert_policy.operations_database_growth[0].notification_channels) == toset(var.monitoring_notification_channels)
+    )
+    error_message = "Database growth must use this collector's samples and reviewed channels."
+  }
+}
+
+run "operations_database_growth_requires_collector_and_threshold" {
+  command = plan
+  variables { enable_operations_database_growth_alert = true }
+  expect_failures = [var.enable_operations_database_growth_alert]
 }
 
 run "operations_alert_requires_collector_and_channel" {
