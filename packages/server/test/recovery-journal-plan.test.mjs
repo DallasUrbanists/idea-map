@@ -18,7 +18,7 @@ test('recovery summary protects uncertain removals and holds and never applies a
     confirmation(3), confirmation(4),
   ]
   assert.deepEqual(summarizeUnverifiedRecovery(records, 'dev'), {
-    removals: [idea], holdPlacements: [idea], holdReviewIdeas: [idea], holdIdentities: [], reviewOperations: [operation(2), operation(3)],
+    removals: [idea], holdPlacements: [idea], holdReviewIdeas: [idea], holdIdentities: [], reviewOperations: [operation(2), operation(3), operation(4)],
     unmatchedConfirmations: 1, coverageVerified: false,
   })
   assert.equal(summarizeUnverifiedRecovery([], 'dev').coverageVerified, false)
@@ -63,4 +63,18 @@ test('conflicting idea associations for a hold ID fail closed in either record o
   assert.throws(() => summarizeUnverifiedRecovery([otherRelease, ...placement], 'dev'), /ambiguous/)
   assert.throws(() => summarizeUnverifiedRecovery([intent(1, release), otherRelease], 'dev'), /ambiguous/)
   assert.doesNotThrow(() => summarizeUnverifiedRecovery([...placement, intent(2, release)], 'dev'))
+})
+
+test('unmatched confirmations identify operations needing review without inventing affected ideas', () => {
+  const holdId = '44444444-4444-4444-8444-444444444444'
+  const result = summarizeUnverifiedRecovery([
+    encodeRecoveryHoldConfirmation(operation(2), 'dev', '2026-11-03T12:01:00.000Z', holdId),
+    confirmation(1),
+  ], 'dev')
+  assert.deepEqual(result.reviewOperations, [operation(1), operation(2)])
+  assert.deepEqual(result.removals, [])
+  assert.deepEqual(result.holdReviewIdeas, [])
+  assert.deepEqual(result.holdIdentities, [])
+  assert.equal(result.unmatchedConfirmations, 2)
+  assert.equal(result.coverageVerified, false)
 })

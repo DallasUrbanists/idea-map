@@ -49,7 +49,12 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
     if (!confirmation || intent.decision.kind !== 'removal') reviewOperations.add(operationId)
   }
   let unmatchedConfirmations = 0
-  for (const operationId of confirmations.keys()) if (!intents.has(operationId)) unmatchedConfirmations++
+  for (const operationId of confirmations.keys()) {
+    if (!intents.has(operationId)) {
+      unmatchedConfirmations++
+      reviewOperations.add(operationId)
+    }
+  }
   holdIdentities.sort((left, right) => left.operationId < right.operationId ? -1 : left.operationId > right.operationId ? 1 : 0)
   return { removals: [...removals].sort(), holdPlacements: [...holdPlacements].sort(), holdReviewIdeas: [...holdReviewIdeas].sort(), holdIdentities,
     reviewOperations: [...reviewOperations].sort(), unmatchedConfirmations, coverageVerified: false as const }
