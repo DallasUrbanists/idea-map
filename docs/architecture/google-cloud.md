@@ -57,8 +57,11 @@ losing ownership of recovery.
 The worker accepts task execution and repair requests at separate private POST
 routes. It verifies the Google-signed token, configured audience, verified email,
 and the distinct invoker assigned to each route; Cloud Run IAM and ingress also
-restrict invocation. The `GET /healthz` route reports process liveness without
-exposing job data. Failed or early execution returns a retryable response.
+restrict invocation. The `GET /health` route reports process liveness without
+exposing job data. Use this path for hosted probes because Cloud Run reserves
+some URL paths ending in `z`; see Google's
+[reserved-path guidance](https://docs.cloud.google.com/run/docs/known-issues#reserved-url-paths).
+Failed or early execution returns a retryable response.
 
 The worker requires `WORKER_PROVIDER_MODE` and uses `WORKER_ORIGIN`,
 `TASK_INVOKER_EMAIL`, `REPAIR_INVOKER_EMAIL`, `CLOUD_TASKS_QUEUE`, and a
