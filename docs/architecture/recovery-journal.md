@@ -61,9 +61,11 @@ includes bucket verification. That is not a deadline for the complete removal
 workflow; SDK metadata requests may continue after the caller times out.
 The summary conservatively identifies ideas in removal and hold-placement
 intents, flags unconfirmed operations and all hold placements and releases for
-authorized review, and reports confirmations without intents. A confirmed hold
-ID alone does not preserve its authority or held material; the summary exposes
-associated hold IDs only as unverified evidence. It never establishes inventory
+authorized review, and reports confirmations without intents. It also identifies
+ideas requiring hold review when only a release intent is present; that is not
+proof that a hold remains active. A confirmed hold ID alone does not preserve its
+authority or held material; the summary exposes associated hold IDs only as
+unverified evidence. It never establishes inventory
 coverage, removes a hold, changes a database, or
 authorizes public access. Its output contains private identifiers and must not
 be written to public logs. These components do not guard mutation paths, capture

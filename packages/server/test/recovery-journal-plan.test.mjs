@@ -18,12 +18,20 @@ test('recovery summary protects uncertain removals and holds and never applies a
     confirmation(3), confirmation(4),
   ]
   assert.deepEqual(summarizeUnverifiedRecovery(records, 'dev'), {
-    removals: [idea], holdPlacements: [idea], holdIdentities: [], reviewOperations: [operation(2), operation(3)],
+    removals: [idea], holdPlacements: [idea], holdReviewIdeas: [idea], holdIdentities: [], reviewOperations: [operation(2), operation(3)],
     unmatchedConfirmations: 1, coverageVerified: false,
   })
   assert.equal(summarizeUnverifiedRecovery([], 'dev').coverageVerified, false)
 })
 
+test('a release without its placement still identifies an idea requiring hold review', () => {
+  const release = { ...hold, kind: 'hold_release', holdId: '44444444-4444-4444-8444-444444444444', legalReviewReference: null }
+  const result = summarizeUnverifiedRecovery([intent(1, release), confirmation(1)], 'dev')
+  assert.deepEqual(result.holdPlacements, [])
+  assert.deepEqual(result.holdReviewIdeas, [idea])
+  assert.deepEqual(result.reviewOperations, [operation(1)])
+  assert.equal(result.coverageVerified, false)
+})
 test('recovery summary rejects duplicate, incompatible, or incorrectly ordered evidence', () => {
   const decision = intent(1, { kind: 'removal', classification: 'other', reason: 'synthetic reason' })
   assert.throws(() => summarizeUnverifiedRecovery([decision, decision], 'dev'), /ambiguous/)

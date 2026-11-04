@@ -21,6 +21,7 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
   }
   const removals = new Set<string>()
   const holdPlacements = new Set<string>()
+  const holdReviewIdeas = new Set<string>()
   const reviewOperations = new Set<string>()
   const placedHoldIds = new Set<string>()
   const holdIdentities: { operationId: string, ideaId: string, holdId: string }[] = []
@@ -34,6 +35,7 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
     }
     if (intent.decision.kind === 'removal') removals.add(intent.ideaId)
     if (intent.decision.kind === 'hold_placement') holdPlacements.add(intent.ideaId)
+    if (intent.decision.kind !== 'removal') holdReviewIdeas.add(intent.ideaId)
     // Even a confirmed placement lacks the authority and held-material evidence
     // needed to recreate it. Releases and uncertain decisions also need review.
     if (!confirmation || intent.decision.kind !== 'removal') reviewOperations.add(operationId)
@@ -41,6 +43,6 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
   let unmatchedConfirmations = 0
   for (const operationId of confirmations.keys()) if (!intents.has(operationId)) unmatchedConfirmations++
   holdIdentities.sort((left, right) => left.operationId < right.operationId ? -1 : left.operationId > right.operationId ? 1 : 0)
-  return { removals: [...removals].sort(), holdPlacements: [...holdPlacements].sort(), holdIdentities,
+  return { removals: [...removals].sort(), holdPlacements: [...holdPlacements].sort(), holdReviewIdeas: [...holdReviewIdeas].sort(), holdIdentities,
     reviewOperations: [...reviewOperations].sort(), unmatchedConfirmations, coverageVerified: false as const }
 }

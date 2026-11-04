@@ -242,7 +242,8 @@ try {
     else process.env.STORAGE_EMULATOR_HOST = inventoryEmulator
   }
   if (summary.coverageVerified !== false || summary.removals.length !== 1 || summary.removals[0] !== ideaId ||
-      summary.holdPlacements.length !== 1 || summary.holdPlacements[0] !== ideaId || summary.holdIdentities.length !== 1 ||
+      summary.holdPlacements.length !== 1 || summary.holdPlacements[0] !== ideaId ||
+      summary.holdReviewIdeas.length !== 1 || summary.holdReviewIdeas[0] !== ideaId || summary.holdIdentities.length !== 1 ||
       summary.holdIdentities[0].operationId !== holdOperation || summary.holdIdentities[0].ideaId !== ideaId ||
       summary.holdIdentities[0].holdId !== committedHoldId || summary.reviewOperations.length !== 1 ||
       summary.reviewOperations[0] !== holdOperation || summary.unmatchedConfirmations !== 0) {
