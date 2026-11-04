@@ -11,12 +11,11 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { dumpArguments, exportEncryptedBackup } from '../apps/worker/ops/export-encrypted-backup.mjs'
 import { decodeRecoveryRecord, encodeRecoveryConfirmation, encodeRecoveryHoldManifestConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../packages/server/dist/recovery-journal-record.js'
 import { encodeRecoverySequenceEntry } from '../packages/server/dist/recovery-sequence.js'
-import { compareUnverifiedRecoveryCheckpoint } from '../packages/server/dist/recovery-journal-plan.js'
 import { encodeUnverifiedHeldManifest } from '../packages/server/dist/recovery-held-manifest.js'
 import { verifySequenceHeldCaptures, verifyUnverifiedHeldCapture } from '../packages/server/dist/recovery-held-verification.js'
-import { prepareUnverifiedRecoveryInventory } from '../packages/server/dist/recovery-inventory.js'
 import { suppressKnownRemovalsFromSequence, suppressUnverifiedRestoredRemovals } from '../packages/server/dist/recovery-suppression.js'
-import { listUnverifiedRecoveryJournal, writeRecoveryJournalRecord, writeUnverifiedHeldMaterial } from '../packages/server/dist/recovery-journal-storage.js'
+import { appendAndVerifyRecoverySequenceVersion, readUnverifiedRecoverySequence } from '../packages/server/dist/recovery-sequence-storage.js'
+import { writeUnverifiedHeldMaterial } from '../packages/server/dist/recovery-journal-storage.js'
 import { acquirePublicAccessLease } from '../packages/server/dist/public-access-lease.js'
 import { readPublishedIdea } from '../packages/server/dist/published-ideas.js'
 import { readMediaPreview } from '../packages/server/dist/media-preview.js'
@@ -143,15 +142,8 @@ try {
     return { async getMetadata() { return [{ name: bucket, projectNumber: journalTarget.projectNumber, generation: '100', metageneration: '1',
       iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
       versioning: { enabled: true }, softDeletePolicy: { retentionDurationSeconds: '604800' } }] },
-    async getFiles(query) {
-      if (query.prefix !== 'idea-map-v2/dev/recovery-journal/' || query.autoPaginate !== false ||
-          (query.pageToken !== undefined && query.pageToken !== 'second')) throw new Error('Unexpected synthetic journal inventory')
-      if (query.softDeleted === true && query.versions === undefined && query.pageToken === undefined) return [[], null]
-      if (query.versions !== true || query.softDeleted !== undefined) throw new Error('Unexpected synthetic journal inventory')
-      const objects = [...entries.values()].filter(entry => entry.metadata.name.startsWith(query.prefix))
-        .sort((a, b) => a.metadata.name.localeCompare(b.metadata.name))
-      return query.pageToken ? [objects.slice(2), null] : [objects.slice(0, 2), objects.length > 2 ? { pageToken: 'second' } : null]
-    }, file(name) {
+    file(name) {
+      if (!name.startsWith('idea-map-v2/dev/held-material/')) throw new Error('Unexpected synthetic held material')
       const file = { interceptors: [], createWriteStream(options) {
         if (options.preconditionOpts.ifGenerationMatch !== 0 || options.validation !== 'crc32c') throw new Error('Synthetic journal safeguards missing')
         const chunks = []
@@ -185,6 +177,36 @@ try {
       return file
     } }
   } }
+  // The fixture models a single numbered decision store. Its baseline and
+  // writer fence are synthetic and are not independent trust anchors.
+  const sequenceTarget = { environment: 'dev', projectNumber: '123456789', secretId: 'synthetic-recovery-sequence', epochId: randomUUID() }
+  const sequenceBase = { environment: sequenceTarget.environment, epochId: sequenceTarget.epochId }
+  const sequenceFenceNonce = randomUUID()
+  const sequenceParent = `projects/${sequenceTarget.projectNumber}/secrets/${sequenceTarget.secretId}`
+  const frames = []
+  let omitSequenceVersion = false
+  const sequenceWriter = { async request(method, path, body) {
+    if (method !== 'POST' || path !== `${sequenceParent}:addVersion`) throw new Error('Unexpected synthetic sequence append')
+    const bytes = Buffer.from(body.payload.data, 'base64')
+    const checksum = new CRC32C(); checksum.update(bytes)
+    if (body.payload.dataCrc32c !== String(Buffer.from(checksum.toString(), 'base64').readUInt32BE(0))) throw new Error('Synthetic sequence checksum mismatch')
+    frames.push(bytes)
+    return { status: 200, data: { name: `${sequenceParent}/versions/${frames.length}`, state: 'ENABLED', clientSpecifiedPayloadChecksum: true } }
+  } }
+  const sequenceReader = { async request(method, path) {
+    const match = new RegExp(`^${sequenceParent}/versions/([1-9][0-9]*):access$`).exec(path)
+    if (method !== 'GET' || !match) throw new Error('Unexpected synthetic sequence read')
+    const version = Number(match[1]), bytes = frames[version - 1]
+    if (!bytes || (omitSequenceVersion && version === 2)) return { status: 404, data: null }
+    const checksum = new CRC32C(); checksum.update(bytes)
+    return { status: 200, data: { name: `${sequenceParent}/versions/${version}`, payload: {
+      data: bytes.toString('base64'), dataCrc32c: String(Buffer.from(checksum.toString(), 'base64').readUInt32BE(0)),
+    } } }
+  } }
+  const appendSequence = entry => appendAndVerifyRecoverySequenceVersion(sequenceWriter, sequenceReader, sequenceTarget,
+    encodeRecoverySequenceEntry(entry))
+  const appendDecision = (recordId, payload) => appendSequence({ ...sequenceBase, kind: 'decision', recordId,
+    data: Buffer.from(payload).toString('base64') })
   const removalOperation = randomUUID()
   const holdOperation = randomUUID()
   const heldArtifact = randomUUID()
@@ -193,7 +215,7 @@ try {
   let committedAuthorityId
   let committedPlacedAt
   let committedAuthority
-  let syntheticCheckpoint
+  let sequenceFenceVersion
   let heldReference
   let manifestReference
   const authorizedAt = new Date().toISOString()
@@ -201,13 +223,12 @@ try {
   const previousEmulator = process.env.STORAGE_EMULATOR_HOST
   delete process.env.STORAGE_EMULATOR_HOST
   try {
-    await writeRecoveryJournalRecord(journal, journalTarget, randomUUID(), encodeRecoveryIntent({ ...base, operationId: removalOperation,
+    await appendSequence({ ...sequenceBase, kind: 'baseline', checkpointDigest: 'a'.repeat(64) })
+    await appendDecision(randomUUID(), encodeRecoveryIntent({ ...base, operationId: removalOperation,
       decision: { kind: 'removal', classification: 'other', reason: 'synthetic removal' } }))
-    await writeRecoveryJournalRecord(journal, journalTarget, randomUUID(), encodeRecoveryIntent({ ...base, operationId: holdOperation,
+    await appendDecision(randomUUID(), encodeRecoveryIntent({ ...base, operationId: holdOperation,
       decision: { kind: 'hold_placement', caseReference: 'synthetic case', reason: 'synthetic preservation',
         authorizationReference: 'synthetic authority', scope: 'synthetic idea' } }))
-    // This fixture checkpoint is not an independent production trust anchor.
-    syntheticCheckpoint = (await listUnverifiedRecoveryJournal(journal, journalTarget)).references
     const removed = await sql(source, `SELECT public.remove_published_idea('firebase:demo-idea-map','${marker}','${ideaId}','${revisionId}','other','synthetic removal')`)
     if (removed !== 'removed') throw new Error('Synthetic removal failed')
     const holdOutcome = await sql(source, `SELECT public.place_legal_hold_outcome('firebase:demo-idea-map','${marker}','${ideaId}','synthetic case','synthetic preservation')`)
@@ -220,7 +241,7 @@ try {
       'grantedBy', granted_by, 'grantedAt', to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
       'authorizationReference', authorization_reference)::text FROM legal_hold_assignments WHERE id='${committedAuthorityId}'`))
     const confirmedAt = await sql(source, `SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`)
-    await writeRecoveryJournalRecord(journal, journalTarget, recoveryConfirmationRecordId(removalOperation), encodeRecoveryConfirmation(removalOperation, 'dev', confirmedAt))
+    await appendDecision(recoveryConfirmationRecordId(removalOperation), encodeRecoveryConfirmation(removalOperation, 'dev', confirmedAt))
     const heldTitle = await sql(source, `SELECT content->>'title' FROM idea_revisions WHERE idea_id='${ideaId}' AND version=2`)
     if (heldTitle !== 'Synthetic later held material') throw new Error('Synthetic held revision is ambiguous')
     const heldRevision = await sql(source, `SELECT id FROM idea_revisions WHERE idea_id='${ideaId}' AND version=2`)
@@ -230,10 +251,11 @@ try {
         generation: heldReference.generation, size: heldReference.size, sha256: heldReference.sha256 }] })
     manifestReference = await writeUnverifiedHeldMaterial(journal, journalTarget, manifestArtifact, manifest)
     const manifestConfirmedAt = await sql(source, `SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`)
-    await writeRecoveryJournalRecord(journal, journalTarget, recoveryConfirmationRecordId(holdOperation),
+    await appendDecision(recoveryConfirmationRecordId(holdOperation),
       encodeRecoveryHoldManifestConfirmation(holdOperation, 'dev', manifestConfirmedAt, committedHoldId, committedAuthorityId,
         committedPlacedAt, committedAuthority, { artifactId: manifestArtifact, generation: manifestReference.generation,
           size: manifestReference.size, sha256: manifestReference.sha256 }))
+    sequenceFenceVersion = (await appendSequence({ ...sequenceBase, kind: 'fence', nonce: sequenceFenceNonce })).version
   } finally {
     if (previousEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
     else process.env.STORAGE_EMULATOR_HOST = previousEmulator
@@ -301,44 +323,16 @@ try {
   const laterRevisionQuery = `SELECT count(*) FROM idea_revisions WHERE idea_id='${ideaId}' AND version=2`
   const sourceLaterRevision = await sql(source, laterRevisionQuery)
   const restoredLaterRevision = await sql(target, laterRevisionQuery)
-  let summary, recoveryRecords, sequenceReader, sequenceTarget, sequenceFenceVersion, sequenceFenceNonce
-  let omitSequenceVersion = false
+  let summary, recoveryRecords
   const inventoryEmulator = process.env.STORAGE_EMULATOR_HOST
   delete process.env.STORAGE_EMULATOR_HOST
   try {
-    const preparedInventory = await prepareUnverifiedRecoveryInventory(journal, journalTarget)
-    if (preparedInventory.coverageVerified !== false || preparedInventory.references.length !== 4) {
-      throw new Error('Synthetic journal inventory failed verification')
+    const preparedInventory = await readUnverifiedRecoverySequence(sequenceReader, sequenceTarget, sequenceFenceVersion, sequenceFenceNonce)
+    if (preparedInventory.coverageVerified !== false || preparedInventory.records.length !== 4) {
+      throw new Error('Synthetic sequence inventory failed verification')
     }
-    const comparison = compareUnverifiedRecoveryCheckpoint(syntheticCheckpoint, preparedInventory.references)
-    if (comparison.coverageVerified !== false || comparison.missing.length || comparison.changed.length ||
-        comparison.additional.length !== 2) throw new Error('Synthetic checkpoint comparison failed')
-    const withoutCheckpointRecord = preparedInventory.references.filter(reference => reference.recordId !== syntheticCheckpoint[0].recordId)
-    const missing = compareUnverifiedRecoveryCheckpoint(syntheticCheckpoint, withoutCheckpointRecord)
-    if (missing.coverageVerified !== false || missing.missing.length !== 1 || missing.missing[0] !== syntheticCheckpoint[0].recordId) {
-      throw new Error('Synthetic missing checkpoint record was not detected')
-    }
-    recoveryRecords = preparedInventory.records
+    recoveryRecords = preparedInventory.records.map(record => record.payload)
     summary = preparedInventory.summary
-    sequenceTarget = { environment: 'dev', projectNumber: '123456789', secretId: 'synthetic-recovery-sequence', epochId: randomUUID() }
-    sequenceFenceNonce = randomUUID()
-    const sequenceBase = { environment: sequenceTarget.environment, epochId: sequenceTarget.epochId }
-    const frames = [encodeRecoverySequenceEntry({ ...sequenceBase, kind: 'baseline', checkpointDigest: 'a'.repeat(64) }),
-      ...recoveryRecords.map((record, index) => encodeRecoverySequenceEntry({ ...sequenceBase, kind: 'decision',
-        recordId: preparedInventory.references[index].recordId, data: Buffer.from(record).toString('base64') })),
-      encodeRecoverySequenceEntry({ ...sequenceBase, kind: 'fence', nonce: sequenceFenceNonce })]
-    sequenceFenceVersion = String(frames.length)
-    const sequenceParent = `projects/${sequenceTarget.projectNumber}/secrets/${sequenceTarget.secretId}`
-    sequenceReader = { async request(method, path) {
-      const match = new RegExp(`^${sequenceParent}/versions/([1-9][0-9]*):access$`).exec(path)
-      if (method !== 'GET' || !match) throw new Error('Unexpected synthetic sequence request')
-      const version = Number(match[1]), bytes = frames[version - 1]
-      if (!bytes || (omitSequenceVersion && version === 2)) return { status: 404, data: null }
-      const checksum = new CRC32C(); checksum.update(Buffer.from(bytes))
-      return { status: 200, data: { name: `${sequenceParent}/versions/${version}`, payload: {
-        data: Buffer.from(bytes).toString('base64'), dataCrc32c: String(Buffer.from(checksum.toString(), 'base64').readUInt32BE(0)),
-      } } }
-    } }
     const holdIntent = recoveryRecords.find(record => {
       const decoded = decodeRecoveryRecord(record, 'dev')
       return decoded.operationId === holdOperation && decoded.recordType === 'intent'

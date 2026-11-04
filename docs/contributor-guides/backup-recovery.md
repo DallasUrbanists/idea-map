@@ -36,12 +36,11 @@ and the absence of a record inserted after the snapshot. It also withdraws a
 synthetic approved idea, adds a later revision, and places a synthetic legal
 hold after the export. The older isolated restore still contains the previously
 public state and lacks the later hold, revision, actor, and legal-authority
-assignment. The rehearsal writes
-synthetic journal intents and confirmations to an in-memory fake around those
-decisions, records the synthetic committed hold's ID, and discovers their exact
-generations through a paginated fake inventory and checks a separate empty
-soft-deleted listing. It reads those generations, compares a second inventory,
-identifies the synthetic idea for hold review, and uses the suppression primitive
+assignment. The rehearsal appends synthetic journal intents and confirmations
+to an in-memory numbered sequence around those decisions and records the
+synthetic committed hold's ID. It reads each version through a selected fence,
+rejects a deliberately missing version, identifies the synthetic idea for hold
+review, and uses the suppression primitive
 for the known removal in the isolated restore. It also stores and reads back one
 synthetic title from the later revision as a bounded held-material artifact. A
 synthetic manifest links that artifact to the hold and is itself referenced by a
@@ -79,10 +78,8 @@ do not establish a hosted network or IAM fence.
 The rehearsal records the synthetic hold's committed assignment facts and exact
 placement time in a version-three confirmation. These facts do not authenticate
 the person or written delegation, recreate missing referenced rows, or preserve
-held content. It also compares its journal
-inventory with an earlier fixture checkpoint and detects a deliberately omitted
-reference. That fixture is
-not an independently protected checkpoint and does not establish coverage.
+held content. The sequence's baseline and fence are synthetic fixtures, not
+independently protected evidence, and do not establish coverage.
 
 The JSON result reports backup and recovery elapsed seconds, the interval between
 the saved and later synthetic records, and verification results. Recovery starts before the empty
