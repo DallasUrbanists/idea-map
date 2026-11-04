@@ -20,16 +20,22 @@ variable "region" {
   default     = "us-central1"
 }
 variable "bucket_names" {
-  description = "Globally unique names for uploads, approved media and backups."
+  description = "Globally unique names for uploads, approved media and backups when this root manages them."
   type = object({
     uploads = string
     public  = string
     backups = string
   })
+  default = { uploads = "", public = "", backups = "" }
   validation {
-    condition     = length(toset(values(var.bucket_names))) == 3 && alltrue([for name in values(var.bucket_names) : length(trimspace(name)) > 0])
-    error_message = "Supply three distinct, nonempty bucket names."
+    condition     = !var.manage_media_buckets || (length(toset(values(var.bucket_names))) == 3 && alltrue([for name in values(var.bucket_names) : length(trimspace(name)) > 0]))
+    error_message = "Supply three distinct, nonempty bucket names when this root manages media buckets."
   }
+}
+variable "manage_media_buckets" {
+  description = "Manage foundation media and backup buckets; disabling is limited to dev and leaves media access unconfigured."
+  type        = bool
+  default     = true
 }
 variable "web_image" {
   description = "Reviewed immutable web container image digest."
@@ -66,6 +72,29 @@ variable "enable_worker_runtime" {
   description = "Opt in to worker task settings and access to an existing database secret."
   type        = bool
   default     = false
+}
+variable "enable_worker_bootstrap" {
+  description = "Temporarily start a non-operational internal worker to discover its generated URI in dev."
+  type        = bool
+  default     = false
+}
+variable "web_database_secret_id" {
+  description = "ID of the existing web-only database URL secret in this project."
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.web_database_secret_id == "" || can(regex("^[a-zA-Z0-9_-]{1,255}$", var.web_database_secret_id))
+    error_message = "Use a Secret Manager secret ID without a project path."
+  }
+}
+variable "web_database_secret_version" {
+  description = "Pinned numeric version of the web database URL secret."
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.web_database_secret_version == "" || can(regex("^[1-9][0-9]*$", var.web_database_secret_version))
+    error_message = "Use an empty value or a numeric secret version, not latest."
+  }
 }
 variable "worker_origin" {
   description = "Exact HTTPS origin of the reviewed worker service, without a trailing slash."

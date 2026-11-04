@@ -62,6 +62,10 @@ resource "google_cloud_tasks_queue" "jobs" {
     min_backoff  = "10s"
     max_backoff  = "300s"
   }
+  # Capture provider attempt evidence for the isolated synthetic review.
+  stackdriver_logging_config {
+    sampling_ratio = 1.0
+  }
   depends_on = [terraform_data.reviewed_worker]
   lifecycle { prevent_destroy = true }
 }

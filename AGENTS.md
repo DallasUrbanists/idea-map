@@ -41,6 +41,19 @@ Agents must follow these rules while making changes:
     development helpers.
 - Inspect existing components and the [Storybook design system](docs/architecture/storybook.md)
     before adding interface code. Storybook is the source of truth for design decisions.
+- Before adding or changing a service, integration, resource, or operational
+    procedure, trace its existing implementation, configuration, and documented
+    architecture decisions. Check related work in progress as well as merged work.
+- Identify the intended environment, resource and state ownership, and whether
+    an existing capability can meet the need. When isolation or a separate
+    resource is necessary, document its purpose and relationship to the existing
+    system; do not assume that a separate resource configures the original one.
+- If the proposed approach conflicts with an established decision or its
+    ownership is unclear, resolve the conflict before implementing it. Explain
+    any intentional architecture change and its compatibility and recovery
+    implications in the change description and update the affected guidance.
+- Inspect existing components, Storybook examples, and the
+    [design system](docs/design/design-system.md) before adding interface code.
     Reuse documented component APIs and project CSS and tokens; do not add Tailwind.
 - Check keyboard access, responsive layouts, and loading, empty, and error states.
 - Keep shared agent rules in this file and make tool-specific entry points link
@@ -71,6 +84,12 @@ For a new or changed user task, agents must follow the
 and add or update the matching how-to guide in the same change.
 
 ## Validate and hand off
+
+Before submitting a pull request, agents must inspect its description and commit
+messages for issue-closing references. Use closing syntax only when the issue's
+acceptance criteria are complete; when it must remain open, avoid that syntax
+entirely, even in negated wording, and use a relationship such as `Related to #N;
+issue remains open` instead.
 
 Agents must follow the [pull-request review guide](docs/contributor-guides/pull-request-review-guide.md)
 when reviewing pull requests. For their own changes, complete these checks:

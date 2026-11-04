@@ -1,0 +1,128 @@
+name: Build staging release images
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: staging-release-images
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.repository == 'DallasUrbanists/idea-map' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      archive_sha256: ${{ steps.archive.outputs.sha256 }}
+      archive_name: ${{ steps.archive.outputs.name }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Verify required main CI
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/release-ci-gate.mjs
+      - name: Build and check both local images
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build -f Dockerfile -t idea-map-web:release .
+          scripts/test-web-image.sh idea-map-web:release
+          docker build -f Dockerfile.worker -t idea-map-worker:release .
+          scripts/test-worker-image.sh idea-map-worker:release
+      - name: Archive checked images
+        id: archive
+        run: |
+          set -euo pipefail
+          docker save -o images.tar idea-map-web:release idea-map-worker:release
+          printf 'sha256=%s\n' "$(sha256sum images.tar | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+          printf 'name=checked-images-%s\n' "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ steps.archive.outputs.name }}
+          path: images.tar
+          retention-days: 1
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_ARTIFACT_REGION }}
+      REPOSITORY: ${{ vars.GCP_ARTIFACT_REPOSITORY }}
+      WIF_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      BUILDER_SERVICE_ACCOUNT: ${{ vars.GCP_IMAGE_BUILDER_SERVICE_ACCOUNT }}
+      ARCHIVE_SHA256: ${{ needs.build.outputs.archive_sha256 }}
+      ARCHIVE_NAME: ${{ needs.build.outputs.archive_name }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Validate checked archive name
+        shell: bash
+        run: '[[ "$ARCHIVE_NAME" =~ ^checked-images-[1-9][0-9]*$ ]]'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ needs.build.outputs.archive_name }}
+      - name: Validate target and load checked images
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PROJECT_ID" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]]
+          [[ "$REGION" =~ ^[a-z]+(-[a-z0-9]+)+[0-9]$ ]]
+          [[ "$REPOSITORY" =~ ^[a-z][a-z0-9-]{0,62}$ ]]
+          [[ "$WIF_PROVIDER" =~ ^projects/[0-9]+/locations/global/workloadIdentityPools/[a-z0-9-]+/providers/[a-z0-9-]+$ ]]
+          [[ "$BUILDER_SERVICE_ACCOUNT" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]@${PROJECT_ID}\.iam\.gserviceaccount\.com$ ]]
+          [[ "$ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          printf '%s  images.tar\n' "$ARCHIVE_SHA256" | sha256sum --check
+          docker load -i images.tar
+      - name: Authenticate to the staging project
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.BUILDER_SERVICE_ACCOUNT }}
+          project_id: ${{ env.PROJECT_ID }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - name: Push images and record digests
+        shell: bash
+        run: |
+          set -euo pipefail
+          registry="${REGION}-docker.pkg.dev"
+          prefix="${registry}/${PROJECT_ID}/${REPOSITORY}"
+          tag="run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          declare -A images
+          gcloud auth configure-docker "$registry" --quiet
+          for service in web worker; do
+            image="${prefix}/idea-map-${service}"
+            docker tag "idea-map-${service}:release" "${image}:${tag}"
+            docker push "${image}:${tag}"
+            digest=$(gcloud artifacts docker images describe "${image}:${tag}" --format='value(image_summary.digest)')
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            docker image inspect "${image}:${tag}" --format '{{range .RepoDigests}}{{println .}}{{end}}' | grep -Fx "${image}@${digest}"
+            images[$service]="${image}@${digest}"
+            printf '%s=%s@%s\n' "$service" "$image" "$digest" >> "$GITHUB_STEP_SUMMARY"
+          done
+          # jq binds its variables using --arg; the filter is not shell-expanded.
+          # shellcheck disable=SC2016
+          jq -n --arg run "$GITHUB_RUN_ID" --arg attempt "$GITHUB_RUN_ATTEMPT" --arg source "$GITHUB_SHA" \
+            --arg web "${images[web]}" --arg worker "${images[worker]}" \
+            '{run_id: $run, run_attempt: $attempt, source: $source, images: {web: $web, worker: $worker}}' > release-images.json
+          printf '\nSource commit: %s\n' "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-image-metadata-${{ github.run_attempt }}
+          path: release-images.json
+          retention-days: 90
+          if-no-files-found: error

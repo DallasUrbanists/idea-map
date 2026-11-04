@@ -19,6 +19,7 @@
     "test:web:published": "node --test scripts/nuxt-published-smoke.mjs",
     "test:ownership-claim": "node --test scripts/ownership-claim.integration.mjs",
     "test:moderator-auth": "node --test scripts/moderator-auth.integration.mjs",
+    "test:registered-submission-auth": "node --test scripts/registered-submission-emulator.integration.mjs",
     "test:auth": "node --test scripts/session-emulator.integration.mjs scripts/auth-browser.integration.mjs scripts/auth-cleanup-emulator.integration.mjs",
     "dev": "tsc --build && pnpm --filter @idea-map/web dev --dotenv ../../.env --host 127.0.0.1",
     "dev:storybook": "pnpm --filter @idea-map/web storybook --no-open",
@@ -36,7 +37,8 @@
     "release:status": "changeset status",
     "dev:fixtures:seed": "node scripts/local-fixtures.mjs seed",
     "dev:fixtures:clean": "node scripts/local-fixtures.mjs clean",
-    "test:fixtures": "node --test scripts/local-fixtures.integration.mjs"
+    "test:fixtures": "node --test scripts/local-fixtures.integration.mjs",
+    "test:offline-job-delivery": "node scripts/offline-job-delivery.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "3.0.3",

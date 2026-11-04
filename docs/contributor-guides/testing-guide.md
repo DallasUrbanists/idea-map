@@ -13,6 +13,7 @@ covers wording changes; code changes need the checks relevant to their behavior.
 The following contents links navigate within this guide:
 
 - [Everyday checks](#everyday-checks)
+- [CI and contribution gates](#ci-and-contribution-gates)
 - [Offline provider fixtures](#offline-provider-fixtures)
 - [Package tests](#package-tests)
 - [Database tests](#database-tests)
@@ -57,6 +58,57 @@ synthetic outbox, moderation, approval-history, and worker checks on pull
 requests, including forks. It uses a disposable PostGIS service and requires no
 hosted credentials. It does not test real moderation authorization or enable
 automatic publication.
+
+## CI and contribution gates
+
+For pull requests, including those from forks, the ordinary *continuous
+integration (CI)* workflows use a read-only repository token and no repository
+secrets. The moderation foundation workflow supplies lint, root tests,
+typecheck, build, web smoke, and synthetic integration checks. The browser workflow builds `dev/Dockerfile.browser-ci` and
+runs the dialog server-side rendering and Chromium tests. You can reproduce the
+check from the repository root with these commands:
+
+```sh
+docker build -f dev/Dockerfile.browser-ci -t idea-map-browser-ci .
+docker run --rm --init idea-map-browser-ci
+```
+
+The Node and Chromium headless-shell base images are pinned by digest; the
+browser image includes its operating-system libraries. The browser is the
+Chromedp project’s modified Chromium headless shell, not Playwright’s bundled
+browser; manual and other browser checks remain separate. The pinned browser
+image is for Linux amd64, matching the hosted runner. pnpm and JavaScript
+dependencies are locked. The workflow records the image ID and Chromium
+version. Contributors should update the browser digest through a reviewed change
+and rerun the checks to receive fixes. Native development is unchanged. The
+browser container requires no hosted credentials or services.
+
+If your proxy uses a custom *certificate authority (CA)*, you should replace
+`PROXY_CA_FILE` with the path to its CA file and build with this command:
+
+```sh
+docker build --secret "id=proxy_ca,src=PROXY_CA_FILE" -f dev/Dockerfile.browser-ci -t idea-map-browser-ci .
+```
+
+You can then run the image with the same `docker run` command shown earlier.
+
+The dependency-audit workflow checks production dependencies at high severity or
+above on pull requests, main, and weekly. You can run
+`pnpm audit --prod --audit-level high` locally to reproduce it. Lower-severity
+and development dependency advisories still require periodic review; a clean
+audit is not proof of security. Dependabot configuration requests weekly npm,
+Actions, and Docker updates; maintainers should review and test each proposed
+update. Contributors should report sensitive findings privately as described in
+[CONTRIBUTING.md](../../CONTRIBUTING.md).
+
+Before merging, maintainers should verify that applicable checks have completed
+and passed on the current head, review changes and unresolved feedback, and apply
+the repository's normal approval and branch rules. Workflow configuration does
+not itself prove branch protection is enabled. Maintainers should verify that a
+fork pull request runs without repository secrets; a same-repository pull request
+alone does not provide that evidence. You should review the
+[release procedure](../policies/release-procedure.md) for versioning, approval,
+and separately authorized publication and deployment.
 
 ## Offline provider fixtures
 
@@ -179,6 +231,12 @@ For the worker integration check, migrate a different disposable database,
 set `TEST_DATABASE_URL`, and run `pnpm --filter @idea-map/worker test:integration`.
 The worker integration test also checks recovery with fake queue responses,
 including inaccessible queues, timeouts, concurrent recovery, and active leases.
+It checks aggregate backlog and email-event snapshots using synthetic records.
+For the controlled-time delivery check, migrate another empty local disposable
+database, set `TEST_DATABASE_URL`, and run
+`pnpm --filter @idea-map/worker test:delivery`. This combines the adopted review
+window with fake queue and authentication responses; it does not validate the
+provider or enable the production approval path.
 These tests use synthetic assessments and injected authentication and policy;
 they do not validate live provider permissions or authorize publication.
 
@@ -220,6 +278,21 @@ pnpm test:ownership-claim
 The test enables the endpoint only for its synthetic server and uses a restricted
 test database role. It does not authorize live claims or validate hosted
 permissions.
+
+For registered private submissions, start a local Firebase Auth emulator with
+the `demo-idea-map` project and migrate a separate disposable PostGIS test
+database. Set `FIREBASE_AUTH_EMULATOR_HOST` to the emulator's loopback host and
+port, set `TEST_DATABASE_URL` to the test database, and build the packages. Run:
+
+```sh
+pnpm test:registered-submission-auth
+```
+
+The test uses synthetic emulator accounts and a storage fake. It checks the
+application's Firebase verifier, session revocation and private database records,
+then deletes its emulator accounts. It does not validate a hosted provider,
+enable a submission endpoint or accept an assessment. The moderation foundation
+workflow runs this test with a disposable Auth emulator and its own database.
 
 For the server-only moderator hold primitive and publication races, run
 `pnpm --filter @idea-map/server test:moderator-holds` with `TEST_DATABASE_URL`

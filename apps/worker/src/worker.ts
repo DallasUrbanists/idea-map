@@ -27,7 +27,7 @@ export function createWorkerHandler(deps: WorkerDependencies) {
     response.setHeader('Cache-Control', 'private, no-store')
     const send = (status: number) => { response.statusCode = status; response.end() }
     try {
-      if (request.method === 'GET' && request.url === '/healthz') return send(200)
+      if (request.method === 'GET' && ['/health', '/healthz'].includes(request.url ?? '')) return send(200)
       if (request.method !== 'POST' || !['/tasks/execute', '/tasks/repair'].includes(request.url ?? '')) return send(404)
       const match = /^Bearer ([^\s]+)$/.exec(request.headers.authorization ?? '')
       if (!match) return send(401)

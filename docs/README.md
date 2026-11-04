@@ -24,7 +24,9 @@ for project work:
 | [AI contributor guide](contributor-guides/ai-agent-guide.md) | Choose a tool, load project instructions, and review assisted work |
 | [Agent operating guide](../AGENTS.md) | Shared rules for coding agents working on the project |
 | [Development guide](contributor-guides/development-guide.md) | Setup, configuration, native/container sessions, shutdown, and troubleshooting |
+| [Cloud Run release guide](contributor-guides/cloud-run-release.md) | Build evidence, deploy, promote, and recover web and worker revisions |
 | [Testing guide](contributor-guides/testing-guide.md) | Required checks, package/database tests, and manual/automated authentication checks |
+| [Operations monitoring](contributor-guides/operations-monitoring.md) | Inspect aggregate backlog and delivery signals with a read-only database identity |
 | [Reuse rights guide](contributor-guides/reuse-rights-guide.md) | Check permissions, attribution, and notices for material used or distributed |
 | [SSR staging guide](contributor-guides/ssr-staging.md) | Operate and validate the isolated server-rendering staging environment |
 | [Pull-request review guide](contributor-guides/pull-request-review-guide.md) | Check behavior, documentation, and evidence, and leave actionable feedback |
@@ -63,6 +65,7 @@ details about each platform in these guides:
 | Infrastructure | [Docker](architecture/docker.md), [Google Cloud](architecture/google-cloud.md), [Terraform](architecture/terraform.md), [Hosting cache](architecture/hosting-cache.md) |
 | Identity and data | [Firebase](architecture/firebase.md), [PostgreSQL/PostGIS/Drizzle](architecture/postgresql-postgis-drizzle.md), [Neon](architecture/neon.md) |
 | External services | [Resend](architecture/resend.md), [Streetmix](architecture/streetmix.md) |
+| Presentation | [Presentation contracts](architecture/presentation.md): roles, commands, state delivery, and recovery |
 
 ## Design
 

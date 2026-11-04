@@ -28,7 +28,7 @@ The isolated [SSR staging service](../contributor-guides/ssr-staging.md) uses
 synthetic data, a separate Cloud SQL database, and staging-only shared caching.
 The [Hosting cache guide](hosting-cache.md) describes its cache restrictions.
 
-Cloud Run uses immutable image digests and zero minimum instances. The
+Cloud Run uses immutable image digests, request-based CPU, and zero minimum instances. The
 configured starting bounds are two web instances with concurrency 20 and one
 worker instance with concurrency 1 per environment. Before changing those
 limits, you should load-test them along with the database pool sizes.
@@ -37,6 +37,10 @@ Infrastructure definitions use internal ingress until an explicit ingress and
 invoker configuration authorizes the required traffic. The deployment must
 provide reviewed public web routing without exposing worker endpoints or private
 media.
+
+The [Cloud Run release guide](../contributor-guides/cloud-run-release.md)
+describes the split between Terraform configuration and the workflow's image
+and traffic ownership, along with promotion and recovery.
 
 ## Tasks and reconciliation
 
@@ -53,8 +57,11 @@ losing ownership of recovery.
 The worker accepts task execution and repair requests at separate private POST
 routes. It verifies the Google-signed token, configured audience, verified email,
 and the distinct invoker assigned to each route; Cloud Run IAM and ingress also
-restrict invocation. The `GET /healthz` route reports process liveness without
-exposing job data. Failed or early execution returns a retryable response.
+restrict invocation. The `GET /health` route reports process liveness without
+exposing job data. Use this path for hosted probes because Cloud Run reserves
+some URL paths ending in `z`; see Google's
+[reserved-path guidance](https://docs.cloud.google.com/run/docs/known-issues#reserved-url-paths).
+Failed or early execution returns a retryable response.
 
 The worker requires `WORKER_PROVIDER_MODE` and uses `WORKER_ORIGIN`,
 `TASK_INVOKER_EMAIL`, `REPAIR_INVOKER_EMAIL`, `CLOUD_TASKS_QUEUE`, and a
@@ -133,6 +140,23 @@ that identity's permissions. Cleanup must not delete an allocated object while
 its authorization remains valid, because the bearer could otherwise create it
 again. Neither method is a resumable upload session, validates file contents, or
 establishes a public preview.
+
+The server package also provides a registered-only draft inventory boundary.
+It verifies a registered session for each mutation and rechecks identity before
+commit. Allocations bind a private object name to a draft revision and slot;
+finalization uses an injected trusted verifier to bind an exact generation and
+digest. Freezing rechecks every expected slot and records a stable private
+manifest for that draft revision. An asset missing or changed during verification
+leaves the inventory incomplete. Storage state can change after a check, so an
+assessment must revalidate its exact required evidence. A frozen inventory is not
+an accepted submission or assessment and does not establish policy, content-type,
+decoding, rights, or provider safety. The server must keep manifests private.
+
+The inventory boundary has no public endpoint or production storage verifier.
+Anonymous and guest drafts remain unavailable through it. The draft revision is
+not yet bound to an accepted idea revision; callers must not use it to authorize
+publication. Retention, cleanup, complete media validation, and separately
+reviewed upload limits remain prerequisites for real use.
 
 The opt-in `enable_media_access` Terraform setting defines a dedicated signer
 with object-creation access to the pending bucket, gives the web identity token

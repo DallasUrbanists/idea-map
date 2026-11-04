@@ -27,11 +27,14 @@ this table:
 | Address / scope | Resource behavior | Review before any real plan or apply |
 | --- | --- | --- |
 | `google_service_account.runtime` | Separate web and worker identities per environment, no IAM grants | Verify names, required permissions and deployment ownership; never reuse unrelated identities |
-| `google_cloud_run_v2_service.runtime` | Internal-only services, separate identities, immutable images, zero minimum; web max 2/concurrency 20, worker max 1/concurrency 1 | Verify image provenance, sizing, health, runtime secrets and reviewed ingress/invoker grants. Public web routing requires explicit reviewed ingress and invoker configuration |
+| `google_cloud_run_v2_service.runtime` | Internal-only services, separate identities, bootstrap images, request-based CPU, zero minimum; web max 2/concurrency 20, worker max 1/concurrency 1 | Verify image provenance, sizing, health, runtime secrets and reviewed ingress/invoker grants. Public web routing requires explicit reviewed ingress and invoker configuration |
 | `google_storage_bucket.media` | Separate uploads, approved-media and backup buckets; uniform access, public access prevention, versioning, no forced deletion and `prevent_destroy` | Confirm unique names, retention, backup access and recovery; approved-media access uses the reviewed delivery boundary |
+| `manage_media_buckets` | Defaults to managing the foundation buckets; dev can omit them for an isolated release rehearsal | Confirm existing bucket ownership, leave foundation media access off, and review backups and recovery separately |
 | `google_cloud_tasks_queue.jobs` | Per-environment queue with bounded dispatch and five attempts | Verify quotas, idempotent handlers, dead-letter/reconciliation behavior and authenticated target before use |
 | `enable_task_delivery` | Opt-in task and repair invokers, worker-only invocation grants, scoped queue access and a paused hourly scheduler | Review service identity, queue inspection access, worker configuration and recovery before a live plan; unpausing is a separate operation |
+| `web_database_secret_id` and `web_database_secret_version` | Opt-in web access to an existing, pinned database URL secret | Review the web role, secret ownership and version, connection budget, and service-only access |
 | `enable_worker_runtime` | Opt-in worker settings and secret access to an existing, pinned database URL secret | Review the exact worker URI, secret ownership and version, queue, invokers, connection budget, and service-only access |
+| `enable_worker_bootstrap` | Dev-only temporary worker process that returns HTTP 503 until its generated URI is known | Use only for a reviewed initial bootstrap; it is not the worker and cannot deliver tasks |
 | `infra/task-delivery-staging` | Separate opt-in synthetic queue, invokers, scoped IAM members, and paused hourly repair for an existing isolated worker | Review its separate state, worker identity and origin, inherited permissions, and resource ownership; never manage the same objects from another root |
 | `infra/neon-cloud-run-test` | Separate authenticated Neon-backed development test service, runtime identity, scoped secret access and one invoker grant | Follow the [test procedure](../policies/neon-cloud-run-test-procedure.md) and confirm the disposable database, secret version, image, inherited access, state prefix and connection budget |
 | `infra/resend-staging` | Separate staging webhook service, runtime identity, database, and scoped secrets | Follow the [staging media procedure](../policies/media-staging-procedure.md#configure-the-delivery-webhook) and review public ingress, runtime grants, pinned versions, and state ownership |
@@ -41,6 +44,28 @@ An actual credentialed plan against the approved state and target shows the
 exact creates, updates, replacements, and deletes. A plan must be reviewed
 before any apply. Applying infrastructure requires explicit authorization.
 
+A new development foundation can set `manage_media_buckets = false` when its
+release rehearsal does not need media or backup buckets from this root. This
+does not connect the service to existing staging media buckets; their separate
+root remains their owner, and `enable_media_access` must remain false. Review
+any resulting media and recovery limitations. The setting cannot omit production
+buckets and is not a removal procedure for buckets already in foundation state;
+their `prevent_destroy` guard and a reviewed ownership and recovery plan still
+apply. When the root manages buckets, supply all three distinct `bucket_names`.
+
+After service creation, the [release workflow](../contributor-guides/cloud-run-release.md)
+owns image, traffic, and client attribution. Terraform ignores those fields
+during updates; the image variables supply bootstrap values only. Operators
+should review the live image, traffic, and the impact of any other
+revision-template change before applying a plan.
+
+Release preparation uses provider-generated revision names. Keep the template
+revision name under Terraform management so an approved configuration change
+can request a fresh revision; ignoring it can reuse an immutable name and fail
+the update. The [provider's revision discussion](https://github.com/hashicorp/terraform-provider-google/issues/17218)
+describes that conflict. Inspect a plan after each release for unexpected
+service changes.
+
 The worker runtime option requires `enable_task_delivery`, an exact
 `worker_origin`, an existing `worker_database_secret_id`, and a numeric
 `worker_database_secret_version`. Terraform checks the configured origin against
@@ -48,10 +73,24 @@ the resulting Cloud Run service URI; that check can be deferred until apply when
 the URI is not yet known. Operators should obtain the exact URI through an
 authorized staging process before enabling the runtime and inspect the plan.
 
-The worker alone receives the database secret reference and secret-level access.
-Terraform does not create its value or secret versions. Operators should verify
-the selected secret, its content, access, and recovery separately; enabling the
-runtime does not enable automatic publication or unpause the scheduler.
+The web database settings require both an existing `web_database_secret_id`
+and a numeric `web_database_secret_version`; leave both empty to omit the
+reference. The root grants the web runtime access to that secret. When the
+worker runtime is enabled, it must use a different database secret and
+credential; the root grants that secret to the worker runtime. Terraform does
+not create the secret values or versions. Operators should verify each selected
+secret, its content, effective access including inherited grants, and recovery
+separately; enabling the worker runtime does not enable automatic publication or
+unpause the scheduler.
+
+For an initial dev bootstrap, `enable_worker_bootstrap` starts a temporary
+process from the worker image that returns 503 for every request. Terraform
+rejects this option outside dev or alongside task delivery or worker runtime.
+Once its generated URI is known, an operator can review a
+second plan with bootstrap disabled and the real worker runtime enabled. The
+release workflow rejects worker revisions with command or argument overrides,
+so the temporary process cannot be promoted or selected for rollback. The
+bootstrap option does not prepare the database or authorize a live apply.
 
 The independent [`infra/ssr-staging`](../../infra/ssr-staging) and
 [`infra/ssr-staging-db`](../../infra/ssr-staging-db) roots manage the synthetic

@@ -207,10 +207,38 @@ idempotent delivery; a database transaction cannot make a provider call atomic.
 The moderation implementation owns the eligibility checks and the task service
 owns authenticated invocation and execution retry limits.
 
+The worker job router recognizes moderation and projection kinds, but the
+runtime configures no execution handlers until their domain gates are accepted.
+An unsupported kind or absent handler remains unavailable; it is not marked
+complete. A selected handler must recheck the job kind under the job lock. A
+future projection handler needs reviewed revision, media, removal and privacy
+semantics and idempotent delivery; external provider effects cannot be made
+atomic by the database transaction. The injected projection callback used in
+local tests writes synthetic database records only and is not a production
+projection implementation.
+
 The moderation policy callback must return `retry` when required evidence is
 temporarily unavailable. It may return `stale` only when that job is permanently
 ineligible; a rejected shortcut leaves its separate standard deadline job intact.
 The worker does not expose a way to supply this callback in a request.
+
+An authorized operator can inspect a single durable job with the worker command.
+Build with `pnpm exec tsc --build`, configure `WORKER_PROVIDER_MODE` and
+`WORKER_DATABASE_URL` for the intended environment using an approved read-only
+role, then run:
+
+```sh
+node apps/worker/dist/inspect-job-cli.js --job JOB_UUID
+```
+
+The command reports the job and assessment identities, original receipt and
+assessment deadline, job schedule, dispatch attempts, generation, acknowledgment,
+and lease status. Its read-only transaction cannot prove that a provider task
+exists, that execution succeeded, or that a retry is safe. A missing job returns
+exit status 2; invalid input or unavailable access returns status 1 without
+printing database settings. Provider mode does not call a provider. Offline mode
+accepts only the same local development or disposable database targets as the
+worker.
 
 To investigate an unpublished job, an authorized operator can connect to the
 intended environment's database with `psql` using its approved read-only role.
@@ -299,6 +327,15 @@ Each accepted submission must retain its terms version and server-recorded
 acceptance timestamp. The record must survive retries and guest-to-account
 claims; an ownership update must not create or replace consent. Referenced terms
 versions must remain available for review.
+
+The registered-only draft submission transaction saves the exact frozen draft
+and location as a private idea revision, with the agreement and original result.
+The version identifies the retained terms bytes by SHA-256. The server accepts
+only its current bundled version for a new submission and preserves those bytes
+with each consent record. A replay returns the original result even if storage
+is unavailable. Maintainers must retain old terms and update the bundled version
+and its checks when adopting new terms. This server-only transaction has no
+public route, does not accept an assessment, and does not publish an idea.
 
 Deletion must honor authorized removal deadlines, legal holds, and backup
 expiry. Restore workflows must preserve removal records so deleted content does

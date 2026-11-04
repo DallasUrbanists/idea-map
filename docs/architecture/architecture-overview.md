@@ -92,9 +92,9 @@ and ownership before use.
 
 The recovery objectives are at most 24 hours of data loss and 24 hours of
 downtime. Operators should rehearse restoration into an isolated environment
-against both objectives and record the recovery owner. Daily backups retain
-seven copies, subject to privacy retention and legal-hold requirements;
-restoration must not republish removed content.
+against both objectives and record the recovery owner. Backups retain 14 daily
+and eight weekly copies, subject to privacy retention and legal-hold
+requirements; restoration must not republish removed content.
 
 ## Asset provenance
 

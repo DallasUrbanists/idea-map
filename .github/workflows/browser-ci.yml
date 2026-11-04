@@ -1,0 +1,21 @@
+name: Browser checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  dialog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build browser test image
+        run: docker build -f dev/Dockerfile.browser-ci -t idea-map-browser-ci .
+      - name: Record browser and image
+        run: |
+          docker image inspect --format '{{.Id}}' idea-map-browser-ci
+          docker run --rm --entrypoint /headless-shell/headless-shell idea-map-browser-ci --version
+      - name: Run focused dialog checks
+        run: docker run --rm --init idea-map-browser-ci
