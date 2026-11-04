@@ -142,7 +142,9 @@ existing Secret Manager service but needs a separately owned secret and distinct
 permissions. A baseline entry contains a checkpoint digest, and a recovery fence
 uses an opaque nonce. The codec checks supplied version numbers from one through
 a selected fence, rejects missing or conflicting entries, and tolerates identical
-retries. It also decodes and summarizes the decisions without asserting coverage.
+retries. When an intent and its confirmation are both present, it rejects a
+confirmation that precedes the first intent; an unmatched confirmation requires
+review. It also decodes and summarizes the decisions without asserting coverage.
 A matching sequence does not authenticate its source or baseline, prove all
 writers used it, establish the fence, or allow access to reopen. An unwired
 transport wrapper can append canonical entries with CRC32C and read explicit

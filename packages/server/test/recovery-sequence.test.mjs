@@ -55,4 +55,11 @@ test('entries reject noncanonical data, wrong environments, and malformed refere
   assert.throws(() => encodeRecoverySequenceEntry({ ...confirmation, recordId: operationId }), /Invalid/)
   assert.deepEqual(compareUnverifiedRecoverySequence(frames([checkpoint, record, confirmation, fence]),
     'dev', epochId, '4', nonce).summary.reviewOperations, [])
+  assert.throws(() => compareUnverifiedRecoverySequence(frames([checkpoint, confirmation, record, fence]),
+    'dev', epochId, '4', nonce), /could not be verified/)
+  assert.deepEqual(compareUnverifiedRecoverySequence(frames([checkpoint, record, confirmation, record, fence]),
+    'dev', epochId, '5', nonce).summary.reviewOperations, [])
+  const unmatched = compareUnverifiedRecoverySequence(frames([checkpoint, confirmation, fence]), 'dev', epochId, '3', nonce)
+  assert.deepEqual(unmatched.summary.reviewOperations, [operationId])
+  assert.equal(unmatched.summary.unmatchedConfirmations, 1)
 })

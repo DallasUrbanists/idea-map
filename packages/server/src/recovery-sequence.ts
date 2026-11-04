@@ -74,6 +74,7 @@ export function compareUnverifiedRecoverySequence(frames: { version: string, pay
         typeof fenceNonce !== 'string' || !uuid4.test(fenceNonce) || frames.length !== Number(fenceVersion)) throw new Error('Invalid')
     let baseline: string | undefined, baselineClosed = false, matchingFence = false
     const decisions = new Map<string, string>()
+    const intentPositions = new Map<string, number>(), confirmationPositions = new Map<string, number>()
     let totalBytes = 0
     for (let index = 0; index < frames.length; index++) {
       const frame = frames[index]
@@ -91,7 +92,12 @@ export function compareUnverifiedRecoverySequence(frames: { version: string, pay
         const previous = decisions.get(entry.recordId)
         if (previous !== undefined && previous !== entry.data) throw new Error('Invalid')
         if (previous === undefined) {
-          totalBytes += Buffer.from(entry.data, 'base64').length
+          const bytes = Buffer.from(entry.data, 'base64')
+          const record = decodeRecoveryRecord(bytes, environment)
+          const positions = record.recordType === 'intent' ? intentPositions : confirmationPositions
+          if (positions.has(record.operationId)) throw new Error('Invalid')
+          positions.set(record.operationId, index)
+          totalBytes += bytes.length
           if (totalBytes > 32 * 1024 * 1024) throw new Error('Invalid')
           decisions.set(entry.recordId, entry.data)
         }
@@ -100,6 +106,10 @@ export function compareUnverifiedRecoverySequence(frames: { version: string, pay
       if (index === frames.length - 1 && (entry.kind !== 'fence' || entry.nonce !== fenceNonce)) throw new Error('Invalid')
     }
     if (baseline === undefined || !matchingFence) throw new Error('Invalid')
+    for (const [operationId, confirmation] of confirmationPositions) {
+      const intent = intentPositions.get(operationId)
+      if (intent !== undefined && confirmation <= intent) throw new Error('Invalid')
+    }
     const records = [...decisions.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
       .map(([id, data]) => ({ recordId: id, payload: Buffer.from(data, 'base64') }))
     const summary = summarizeUnverifiedRecovery(records.map(record => record.payload), environment)
