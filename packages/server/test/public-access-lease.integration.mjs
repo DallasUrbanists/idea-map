@@ -104,7 +104,13 @@ test('authorized pending removal closes the gate atomically and retries without 
     otherReader = await acquirePublicAccessLease(runtimeDatabasePool(url.toString()))
     // The pending decision and gate commit even while readers still hold their
     // shared locks. They must not require the later exclusive drain to finish.
-    const prepared = await prepare()
+    const mutableRemoval = { ...input }
+    const changingRequest = { ...verifier, async getUser() {
+      mutableRemoval.operationId = randomUUID(); mutableRemoval.recordId = randomUUID(); mutableRemoval.ideaId = randomUUID()
+      mutableRemoval.approvedRevisionId = randomUUID(); mutableRemoval.classification = 'violation'; mutableRemoval.reason = 'changed synthetic reason'
+      return { uid: session.uid, email: session.email, emailVerified: true, disabled: false }
+    } }
+    const prepared = await preparePendingRemoval(url.toString(), 'demo-idea-map', 'synthetic-cookie', changingRequest, 'dev', mutableRemoval)
     assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
     await assert.rejects(acquirePublicAccessLease(pool), /Public access unavailable/)
     await waitForAborts(reader.signal, otherReader.signal)

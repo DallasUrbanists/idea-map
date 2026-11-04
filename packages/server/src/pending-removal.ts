@@ -168,14 +168,16 @@ export async function inspectSequenceRemoval(databaseUrl: string, projectId: str
  */
 export async function preparePendingRemoval(databaseUrl: string, projectId: string, cookie: string,
   verifier: RegisteredSessionVerifier, environment: 'dev' | 'prod', input: PendingRemovalInput): Promise<ModeratorAccess<PendingResult>> {
-  if (!databaseUrl || !['dev', 'prod'].includes(environment) || !input || typeof input !== 'object' ||
-      typeof input.operationId !== 'string' || !uuid4.test(input.operationId) ||
-      typeof input.recordId !== 'string' || !uuid4.test(input.recordId) ||
-      typeof input.ideaId !== 'string' || !uuid.test(input.ideaId) ||
-      typeof input.approvedRevisionId !== 'string' || !uuid.test(input.approvedRevisionId) ||
-      !['violation', 'other'].includes(input.classification) || typeof input.reason !== 'string' ||
-      !input.reason.trim() || Buffer.byteLength(input.reason) > 1000 ||
-      Buffer.from(input.reason, 'utf8').toString('utf8') !== input.reason || /[\x00-\x1f\x7f]/u.test(input.reason)) {
+  if (!databaseUrl || !['dev', 'prod'].includes(environment) || !input || typeof input !== 'object') throw new Error('Invalid pending removal')
+  const saved = { operationId: input.operationId, recordId: input.recordId, ideaId: input.ideaId,
+    approvedRevisionId: input.approvedRevisionId, classification: input.classification, reason: input.reason }
+  if (typeof saved.operationId !== 'string' || !uuid4.test(saved.operationId) ||
+      typeof saved.recordId !== 'string' || !uuid4.test(saved.recordId) ||
+      typeof saved.ideaId !== 'string' || !uuid.test(saved.ideaId) ||
+      typeof saved.approvedRevisionId !== 'string' || !uuid.test(saved.approvedRevisionId) ||
+      !['violation', 'other'].includes(saved.classification) || typeof saved.reason !== 'string' ||
+      !saved.reason.trim() || Buffer.byteLength(saved.reason) > 1000 ||
+      Buffer.from(saved.reason, 'utf8').toString('utf8') !== saved.reason || /[\x00-\x1f\x7f]/u.test(saved.reason)) {
     throw new Error('Invalid pending removal')
   }
   try {
@@ -184,21 +186,21 @@ export async function preparePendingRemoval(databaseUrl: string, projectId: stri
       await client.query("SET LOCAL statement_timeout = '10s'")
       const time = await client.query<{ now: Date }>('SELECT pg_catalog.clock_timestamp() AS now')
       const authorizedAt = time.rows[0]?.now?.toISOString()
-      const intent = encodeRecoveryIntent({ operationId: input.operationId, environment, ideaId: input.ideaId,
-        actorId: actor, authorizedAt, decision: { kind: 'removal', classification: input.classification, reason: journalReason } })
+      const intent = encodeRecoveryIntent({ operationId: saved.operationId, environment, ideaId: saved.ideaId,
+        actorId: actor, authorizedAt, decision: { kind: 'removal', classification: saved.classification, reason: journalReason } })
       const result = await client.query<{ outcome: string, persisted_record_id: string | null, persisted_intent: string | null }>(
         'SELECT * FROM public.prepare_pending_removal($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
-        [`firebase:${projectId}`, subject, input.ideaId, input.approvedRevisionId, input.operationId, input.recordId,
-          environment, input.classification, input.reason, Buffer.from(intent).toString('utf8')])
+        [`firebase:${projectId}`, subject, saved.ideaId, saved.approvedRevisionId, saved.operationId, saved.recordId,
+          environment, saved.classification, saved.reason, Buffer.from(intent).toString('utf8')])
       const row = result.rows[0]
       if (row?.outcome === 'stale' && row.persisted_record_id === null && row.persisted_intent === null) return 'stale'
-      if (row?.outcome !== 'pending' || row.persisted_record_id !== input.recordId || typeof row.persisted_intent !== 'string') {
+      if (row?.outcome !== 'pending' || row.persisted_record_id !== saved.recordId || typeof row.persisted_intent !== 'string') {
         throw new Error('Pending removal is ambiguous')
       }
       const payload = Buffer.from(row.persisted_intent, 'utf8')
       const record = decodeRecoveryRecord(payload, environment)
-      if (record.recordType !== 'intent' || record.operationId !== input.operationId || record.ideaId !== input.ideaId ||
-          record.actorId !== actor || record.decision.kind !== 'removal' || record.decision.classification !== input.classification ||
+      if (record.recordType !== 'intent' || record.operationId !== saved.operationId || record.ideaId !== saved.ideaId ||
+          record.actorId !== actor || record.decision.kind !== 'removal' || record.decision.classification !== saved.classification ||
           record.decision.reason !== journalReason) throw new Error('Pending removal is ambiguous')
       return { state: 'pending' as const, recordId: row.persisted_record_id, payload }
     }, pendingRemovalDatabasePool(databaseUrl))
