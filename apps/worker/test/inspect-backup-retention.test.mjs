@@ -244,9 +244,9 @@ test('inventory bounds bucket and listing waits under a shared deadline', async 
   await assert.rejects(inspectBackupRetention({ bucket: () => stalledListing }, target, now, { timeoutMs: 0 }), /timeout/)
 
   let calls = 0
-  const slowBoth = { async getMetadata() { await new Promise(resolve => setTimeout(resolve, 200)); return [metadata] },
-    async getFiles() { calls++; await new Promise(resolve => setTimeout(resolve, 200)); return [[], null] } }
-  await assert.rejects(inspectBackupRetention({ bucket: () => slowBoth }, target, now, { timeoutMs: 300 }), /timed out/)
+  const slowBoth = { async getMetadata() { await new Promise(resolve => setTimeout(resolve, 600)); return [metadata] },
+    async getFiles() { calls++; await new Promise(resolve => setTimeout(resolve, 600)); return [[], null] } }
+  await assert.rejects(inspectBackupRetention({ bucket: () => slowBoth }, target, now, { timeoutMs: 1000 }), /timed out/)
   assert.ok(calls > 0)
 })
 
