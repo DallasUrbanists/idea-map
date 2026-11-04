@@ -153,8 +153,12 @@ export async function inspectBackupRetention(storage, target, now, options = {})
     const match = backupObjectPattern.exec(object.name.slice(prefix.length))
     const day = match && Date.parse(`${match[2]}T00:00:00.000Z`)
     const created = Date.parse(object.timeCreated)
+    const softDeletedAt = Date.parse(object.softDeleteTime)
+    const hardDeleteAt = Date.parse(object.hardDeleteTime)
     if (!match || (match[1] === 'completion') !== (match[4] === 'complete') || !Number.isFinite(day) ||
         new Date(day).toISOString().slice(0, 10) !== match[2] || !Number.isFinite(created) ||
+        !Number.isFinite(softDeletedAt) || !Number.isFinite(hardDeleteAt) || softDeletedAt < created ||
+        softDeletedAt > now.getTime() || hardDeleteAt <= softDeletedAt ||
         created < day || created >= day + 2 * 86_400_000 || created > now.getTime() ||
         typeof object.generation !== 'string' || !/^[1-9][0-9]*$/.test(object.generation) ||
         typeof object.metageneration !== 'string' || !/^[1-9][0-9]*$/.test(object.metageneration)) {
@@ -187,11 +191,14 @@ export async function inspectBackupRetention(storage, target, now, options = {})
     return !object.name.startsWith(`${prefix}completion/`) && now.getTime() - created >= 76 * 86_400_000
   }).length
   const oldPendingArchives = pending.filter(object => now.getTime() - Date.parse(object.timeCreated) >= 76 * 86_400_000).length
-  const reviewRequired = plan.oldOrHeld > 0 || oldPendingArchives > 0 || oldSoftDeleted > 0
+  const longSoftDelete = softDeleted.filter(object => Date.parse(object.hardDeleteTime) - Date.parse(object.softDeleteTime) > 7 * 86_400_000).length
+  const overdueSoftDeletion = softDeleted.filter(object => Date.parse(object.hardDeleteTime) <= evaluatedAt.getTime()).length
+  const reviewRequired = plan.oldOrHeld > 0 || oldPendingArchives > 0 || oldSoftDeleted > 0 ||
+    longSoftDelete > 0 || overdueSoftDeletion > 0
   return { ...plan, candidates: dailyFreshEnough && weeklyFreshEnough ? plan.candidates : [],
     dailyFreshEnough, latestDailyAgeSeconds, weeklyFreshEnough, latestWeeklyAgeSeconds,
     pendingLifecycle: pending.length, pendingCompletions: pendingCompletions.length, orphanCompletions,
-    softDeleted: softDeleted.length, oldSoftDeleted, oldPendingArchives, reviewRequired }
+    softDeleted: softDeleted.length, oldSoftDeleted, longSoftDelete, overdueSoftDeletion, oldPendingArchives, reviewRequired }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

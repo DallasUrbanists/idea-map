@@ -12,6 +12,9 @@ const make = (kind, days) => {
   return { name: `idea-map-v2/dev/${kind}/${timeCreated.slice(0, 10)}/00000000-0000-4000-8000-${String(days).padStart(12, '0')}.pgdump`,
     generation: String(days + 1), metageneration: '1', timeCreated, size: '100', crc32c: 'AAAAAA==' }
 }
+const softDeletedObject = object => ({ ...object,
+  softDeleteTime: new Date(now.getTime() - 86_400_000).toISOString(),
+  hardDeleteTime: new Date(now.getTime() + 6 * 86_400_000).toISOString() })
 const completion = (daily, weekly) => ({
   name: daily.name.replace('/daily/', '/completion/').replace('.pgdump', '.complete'),
   generation: daily.generation, metageneration: '1', timeCreated: daily.timeCreated, size: '0', crc32c: 'AAAAAA==',
@@ -40,7 +43,7 @@ test('inventory reads all pages and separately counts old soft-deleted objects',
     async getMetadata() { return [metadata] },
     async getFiles(query) {
       queries.push(query)
-      if (query.softDeleted) return [[{ metadata: make('daily', 80) }], null]
+      if (query.softDeleted) return [[{ metadata: softDeletedObject(make('daily', 80)) }], null]
       if (!query.pageToken) return [records.slice(0, 10).map(item => ({ metadata: item })), { pageToken: 'second' }]
       return [records.slice(10).map(item => ({ metadata: item })), null]
     },
@@ -144,7 +147,7 @@ test('an old soft-deleted completion marker is not counted as an old archive', a
   const marker = completion(make('daily', 80), null)
   const objects = records.filter(item => now.getTime() - Date.parse(item.timeCreated) < 76 * 86_400_000)
   const bucket = { async getMetadata() { return [metadata] },
-    async getFiles(query) { return [(query.softDeleted ? [marker] : objects).map(item => ({ metadata: item })), null] } }
+    async getFiles(query) { return [(query.softDeleted ? [softDeletedObject(marker)] : objects).map(item => ({ metadata: item })), null] } }
   const result = await inspectBackupRetention(storageFor(bucket), target, now)
   assert.equal(result.softDeleted, 1)
   assert.equal(result.oldSoftDeleted, 0)
@@ -181,7 +184,7 @@ test('an old completion record can outlive its archive without being counted as 
   bucket.getFiles = async query => [query.softDeleted ? [] : cleanup.map(item => ({ metadata: item })), null]
   const pending = await inspectBackupRetention(storageFor(bucket), target, now)
   assert.equal(pending.pendingCompletions, 1)
-  bucket.getFiles = async query => [query.softDeleted ? [{ metadata: old }] : cleanup.map(item => ({ metadata: item })), null]
+  bucket.getFiles = async query => [query.softDeleted ? [{ metadata: softDeletedObject(old) }] : cleanup.map(item => ({ metadata: item })), null]
   await assert.rejects(inspectBackupRetention(storageFor(bucket), target, now))
   const unsafe = records.map(item => item.name === markerName ? { ...item, timeDeleted: now.toISOString() } : item)
   bucket.getFiles = async query => [query.softDeleted ? [] : unsafe.map(item => ({ metadata: item })), null]
@@ -257,4 +260,22 @@ test('a disabled soft-delete policy cannot prove older retained versions are abs
   }, async getFiles() { listed = true; return [[], null] } }
   await assert.rejects(inspectBackupRetention({ bucket: () => bucket }, target, now), /cannot be verified/)
   assert.equal(listed, false)
+})
+
+test('soft-deleted generations with old policy retention or overdue hard deletion require review', async () => {
+  const object = softDeletedObject(make('daily', 80))
+  const bucket = { async getMetadata() { return [metadata] }, async getFiles(query) {
+    return [(query.softDeleted ? [object] : records).map(item => ({ metadata: item })), null]
+  } }
+  object.hardDeleteTime = new Date(now.getTime() + 20 * 86_400_000).toISOString()
+  let result = await inspectBackupRetention(storageFor(bucket), target, now)
+  assert.equal(result.longSoftDelete, 1)
+  assert.equal(result.reviewRequired, true)
+  object.softDeleteTime = new Date(now.getTime() - 8 * 86_400_000).toISOString()
+  object.hardDeleteTime = new Date(now.getTime() - 1 * 86_400_000).toISOString()
+  result = await inspectBackupRetention(storageFor(bucket), target, now)
+  assert.equal(result.overdueSoftDeletion, 1)
+  assert.equal(result.reviewRequired, true)
+  object.hardDeleteTime = 'invalid'
+  await assert.rejects(inspectBackupRetention(storageFor(bucket), target, now), /ambiguous/)
 })

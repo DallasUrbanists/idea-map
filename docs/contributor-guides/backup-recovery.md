@@ -316,8 +316,12 @@ objective.
 `reviewRequired` is true when a live archive is old or held, or an old archive
 remains noncurrent or soft-deleted; the command exits nonzero in that case.
 `oldPendingArchives` identifies old noncurrent archives separately from
-`oldSoftDeleted`. This is a conservative signal for investigation, not proof
-that a particular archive violates a removal deadline or that a hold is
+`oldSoftDeleted`. `longSoftDelete` counts generations whose original soft-delete
+period exceeds seven days; `overdueSoftDeletion` counts generations still listed
+after their reported hard-delete time. Either requires review, even if the
+current bucket policy is shorter. These conservative signals require
+investigation; they do not prove that a particular archive violates a removal
+deadline or that a hold is
 unauthorized. A valid hold still requires separately scoped retention review.
 
 The plan is a point-in-time observation, not permission to delete. It cannot
