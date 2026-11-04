@@ -291,8 +291,13 @@ writer can write the same canonical confirmation bytes on each retry. A lost
 response or a create-only conflict remains uncertain until a separately
 authorized reader compares the current generation and exact bytes. Neither a
 successful write nor a matching read reopens the gate or proves completeness.
-The coordinator must still resolve every pending decision and any independent
-access fence before an authorized process can restore public access.
+An unwired coordinator can compare the current confirmation's exact bytes and
+generation, then record that verification in a separate authorized transaction.
+A database function checks the original moderator, closed gate, saved ID and
+preparation time; only a trusted coordinator may attest to the storage read.
+Retries preserve the first verified generation and time. Verification is not
+journal coverage, and it does not resolve the other pending decisions, the
+independent access fence, or reopen the gate.
 
 Granting a web identity general gate updates would also let it reopen the gate;
 verify narrowly scoped grants and inherited permissions before integrating the

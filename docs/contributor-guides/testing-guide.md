@@ -257,7 +257,8 @@ write, an ambiguous write, a rejected retry, and a matching read leave the gate
 closed. Separate synthetic preparation and coordinator roles test a verified
 pending removal, reader drain, rollback, stale decisions, and idempotent retry.
 They also check confirmation ordering, including savepoints, deterministic
-confirmation IDs, and uncertain writes. The gate stays closed; reconciliation
+confirmation IDs, uncertain writes, and separately authorized confirmation
+readback with retry and rollback. The gate stays closed; complete reconciliation
 and reopening are not implemented. These tests do not exercise public responses,
 Cloud Storage permissions, or the hosted Neon pooler.
 For the controlled-time delivery check, migrate another empty local disposable

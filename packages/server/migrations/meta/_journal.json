@@ -253,6 +253,13 @@
       "when": 1793749229433,
       "tag": "0035_pending_removal_confirmation",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793752133848,
+      "tag": "0036_confirmation_verification",
+      "breakpoints": true
     }
   ]
 }

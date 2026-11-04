@@ -53,8 +53,8 @@ stores only synthetic data and does not test Cloud Storage encryption or
 permissions, all database grants, or Neon role setup. The synthetic target
 also revokes `PUBLIC` database connections and verifies that its test role
 cannot connect. It checks that the restored pending-removal preparation,
-application, and confirmation functions do not grant `PUBLIC` execution and
-that the application guard trigger is enabled without `PUBLIC` execution. It
+application, confirmation, and verification functions do not grant `PUBLIC`
+execution and that the guard triggers are enabled without `PUBLIC` execution. It
 also checks that the initially closed gate is present; it does not show that an
 older archive contains a later gate closure. These checks do not establish a
 hosted network or IAM fence.

@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import pg from 'pg'
 import { CRC32C } from '@google-cloud/storage'
 import { acquirePublicAccessLease, publicAccessLeaseClient } from '../dist/public-access-lease.js'
-import { applyJournaledRemoval, prepareAndJournalRemoval, preparePendingRemoval, prepareRemovalConfirmation, writeRemovalConfirmation } from '../dist/pending-removal.js'
+import { applyJournaledRemoval, prepareAndJournalRemoval, preparePendingRemoval, prepareRemovalConfirmation, verifyRemovalConfirmation, writeRemovalConfirmation } from '../dist/pending-removal.js'
 import { decodeRecoveryRecord, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
 import { pendingRemovalDatabasePool, runtimeDatabasePool } from '../dist/runtime-database.js'
 import { compareCurrentRecoveryJournalRecord, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
@@ -328,6 +328,7 @@ test('a trusted coordinator applies only the verified pending removal after read
   const prepareFunction = 'public.prepare_pending_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text)'
   const applyFunction = 'public.apply_pending_removal(text,text,uuid,uuid,text,text)'
   const confirmationFunction = 'public.prepare_pending_removal_confirmation(text,text,uuid,uuid,text,text,timestamptz,uuid)'
+  const verificationFunction = 'public.verify_pending_removal_confirmation(text,text,uuid,uuid,timestamptz,text)'
   const prepareUrl = new URL(url)
   const coordinatorUrl = new URL(url)
   let reader, actor, contact, idea, revision, operationId, preview, staleIdea, staleRevision, staleOperation, applying
@@ -350,7 +351,7 @@ test('a trusted coordinator applies only the verified pending removal after read
     createdRoles.push(coordinatorRole)
     await admin.query(`GRANT USAGE ON SCHEMA public TO "${prepareRole}", "${coordinatorRole}"`)
     await admin.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text), ${prepareFunction} TO "${prepareRole}"`)
-    await admin.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text), ${applyFunction}, ${confirmationFunction} TO "${coordinatorRole}"`)
+    await admin.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text), ${applyFunction}, ${confirmationFunction}, ${verificationFunction} TO "${coordinatorRole}"`)
     prepareUrl.username = prepareRole; prepareUrl.password = 'synthetic-only'
     coordinatorUrl.username = coordinatorRole; coordinatorUrl.password = 'synthetic-only'
     preparePool = new pg.Pool({ connectionString: prepareUrl.toString() })
@@ -362,6 +363,7 @@ test('a trusted coordinator applies only the verified pending removal after read
     await assert.rejects(coordinatorPool.query('SELECT * FROM public.public_access_pending_decisions'), { code: '42501' })
     assert.equal((await admin.query('SELECT has_function_privilege($1,$2,$3) AS allowed', ['public', applyFunction, 'EXECUTE'])).rows[0].allowed, false)
     assert.equal((await admin.query('SELECT has_function_privilege($1,$2,$3) AS allowed', ['public', confirmationFunction, 'EXECUTE'])).rows[0].allowed, false)
+    assert.equal((await admin.query('SELECT has_function_privilege($1,$2,$3) AS allowed', ['public', verificationFunction, 'EXECUTE'])).rows[0].allowed, false)
     const session = { uid: subject, email: `${suffix}@example.invalid`, email_verified: true, firebase: { sign_in_provider: 'password' } }
     const verifier = { async verifySessionCookie() { return session }, async getUser() { return { uid: subject, email: session.email, emailVerified: true, disabled: false } } }
     const input = { operationId: randomUUID(), recordId: randomUUID(), ideaId: idea, approvedRevisionId: revision,
@@ -519,10 +521,42 @@ test('a trusted coordinator applies only the verified pending removal after read
     const confirmationObjects = new Map()
     assert.deepEqual(await writeConfirmation(confirmationObjects, true), { state: 'authorized', value: 'confirmation_uncertain' })
     assert.deepEqual(await writeConfirmation(confirmationObjects, false), { state: 'authorized', value: 'confirmation_uncertain' })
-    assert.deepEqual([...confirmationObjects.values()], [Buffer.from(confirmation.value.payload)])
-    const confirmationChecksum = new CRC32C(); confirmationChecksum.update(Buffer.from(confirmation.value.payload))
-    assert.deepEqual(await compareCurrentRecoveryJournalRecord(fakeReader(Buffer.from(confirmation.value.payload), confirmationChecksum.toString()),
+    const confirmationPath = `idea-map-v2/dev/recovery-journal/${confirmationId}.json`
+    const recoveredBytes = confirmationObjects.get(confirmationPath)
+    assert.deepEqual(recoveredBytes, Buffer.from(confirmation.value.payload))
+    const confirmationChecksum = new CRC32C(); confirmationChecksum.update(recoveredBytes)
+    assert.deepEqual(await compareCurrentRecoveryJournalRecord(fakeReader(recoveredBytes, confirmationChecksum.toString()),
       target, confirmationId, confirmation.value.payload), { generation: '90071992547409931234', coverageVerified: false })
+    const storedReader = fakeReader(recoveredBytes, confirmationChecksum.toString())
+    const confirmationReader = { bucket(bucket) { return { file(name) {
+      if (name !== confirmationPath || !confirmationObjects.has(name)) throw new Error('Synthetic confirmation is missing')
+      return storedReader.bucket(bucket).file(name)
+    } } } }
+    const verifyConfirmation = (v = verifier, source = confirmationReader) => verifyRemovalConfirmation(
+      coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', v, target, source, confirmationInput)
+    await assert.rejects(preparePool.query('SELECT * FROM public.verify_pending_removal_confirmation($1,$2,$3,$4,$5,$6)',
+      ['firebase:demo-idea-map', subject, operationId, confirmationId, confirmation.value.preparedAt, '1']), { code: '42501' })
+    assert.deepEqual(await verifyConfirmation(verifier, fakeReader(body, checksum.toString())),
+      { state: 'authorized', value: 'confirmation_uncertain' })
+    assert.deepEqual((await admin.query('SELECT confirmation_generation,confirmation_verified_at FROM public.public_access_pending_decisions WHERE operation_id=$1', [operationId])).rows[0],
+      { confirmation_generation: null, confirmation_verified_at: null })
+    let verificationChecks = 0
+    const revokedVerification = { ...verifier, async getUser() { return { uid: subject, email: session.email,
+      emailVerified: true, disabled: ++verificationChecks > 3 } } }
+    assert.deepEqual(await verifyConfirmation(revokedVerification), { state: 'unauthenticated' })
+    assert.deepEqual((await admin.query('SELECT confirmation_generation,confirmation_verified_at FROM public.public_access_pending_decisions WHERE operation_id=$1', [operationId])).rows[0],
+      { confirmation_generation: null, confirmation_verified_at: null })
+    const verified = await verifyConfirmation()
+    assert.equal(verified.state, 'authorized')
+    assert.equal(verified.value.state, 'confirmation_verified')
+    assert.equal(verified.value.recordId, confirmationId)
+    assert.equal(verified.value.generation, '90071992547409931234')
+    assert.ok(Date.parse(verified.value.verifiedAt) >= Date.parse(confirmation.value.preparedAt))
+    assert.deepEqual(await verifyConfirmation(), verified)
+    await assert.rejects(verifyConfirmation(verifier, fakeReader(recoveredBytes, confirmationChecksum.toString(), '90071992547409931235')),
+      /Pending removal unavailable/)
+    await assert.rejects(admin.query("UPDATE public.public_access_pending_decisions SET confirmation_generation='9' WHERE operation_id=$1", [operationId]),
+      /Confirmation verification is immutable/)
     assert.equal((await admin.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
     staleIdea = (await admin.query("INSERT INTO public.ideas(author_contact_id,publication_state) VALUES ($1,'approved') RETURNING id", [contact])).rows[0].id
     staleRevision = (await admin.query("INSERT INTO public.idea_revisions(idea_id,version,content,review_state) VALUES ($1,1,'{}'::jsonb,'approved') RETURNING id", [staleIdea])).rows[0].id

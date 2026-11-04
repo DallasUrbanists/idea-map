@@ -181,3 +181,39 @@ export async function writeRemovalConfirmation(coordinatorDatabaseUrl: string, p
     return { state: 'authorized', value: 'confirmation_uncertain' }
   }
 }
+
+/** Record an exact confirmation readback without reopening public access. */
+export async function verifyRemovalConfirmation(coordinatorDatabaseUrl: string, projectId: string, cookie: string,
+  verifier: RegisteredSessionVerifier, target: { environment: 'dev' | 'prod', bucket: string },
+  reader: Storage, input: AppliedRemoval): Promise<ModeratorAccess<'confirmation_uncertain' | {
+    state: 'confirmation_verified', recordId: string, generation: string, verifiedAt: string,
+  }>> {
+  const prepared = await prepareRemovalConfirmation(coordinatorDatabaseUrl, projectId, cookie, verifier, target?.environment, input)
+  if (prepared.state !== 'authorized') return prepared
+  try {
+    return await withVerifiedModerator(coordinatorDatabaseUrl, projectId, cookie, verifier, async (client, _actor, subject) => {
+      let generation: string
+      try {
+        const match = await compareCurrentRecoveryJournalRecord(reader, target, prepared.value.recordId, prepared.value.payload)
+        generation = match.generation
+        if (!/^[1-9][0-9]{0,19}$/.test(generation)) throw new Error('Invalid journal generation')
+      } catch {
+        return 'confirmation_uncertain' as const
+      }
+      await client.query("SET LOCAL lock_timeout = '5s'")
+      await client.query("SET LOCAL statement_timeout = '10s'")
+      const selected = await client.query<{ confirmation_verified_at: Date, confirmation_generation: string }>(
+        'SELECT * FROM public.verify_pending_removal_confirmation($1,$2,$3,$4,$5,$6)',
+        [`firebase:${projectId}`, subject, input.operationId, prepared.value.recordId, prepared.value.preparedAt, generation])
+      const row = selected.rows[0]
+      if (!(row?.confirmation_verified_at instanceof Date) || !Number.isFinite(row.confirmation_verified_at.getTime()) ||
+          row.confirmation_verified_at.getTime() < Date.parse(prepared.value.preparedAt) || row.confirmation_generation !== generation) {
+        throw new Error('Pending removal is ambiguous')
+      }
+      return { state: 'confirmation_verified' as const, recordId: prepared.value.recordId,
+        generation, verifiedAt: row.confirmation_verified_at.toISOString() }
+    }, pendingRemovalDatabasePool(coordinatorDatabaseUrl))
+  } catch {
+    throw new Error('Pending removal unavailable')
+  }
+}
