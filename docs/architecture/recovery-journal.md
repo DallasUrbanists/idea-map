@@ -470,6 +470,19 @@ The retention and disposition work in
 lifecycle integration. Coordinate its guarded mutation paths and scoped evidence
 with this recovery process; a journal record by itself is not that integration.
 
+For an authorized removal, the application-data process must track the original
+authorization time and target primary deletion within 14 days. Its completion
+evidence must cover the applicable database records and media generations, not
+just suppression from public views or a queued deletion request. Track any
+remaining copies and active holds for authorized follow-up, using only the scope
+needed for the decision. A valid hold can require restricted retention beyond the
+ordinary deadline; do not treat a pending hold review as proof that every copy
+is held. Repeated requests or retries must not silently restart the original
+deadline. Preserve the minimum evidence needed to reconcile older backups without
+indefinitely retaining the content or private reasons being deleted. The #56
+lifecycle must define and implement those records, timing, and disposition;
+this journal does not currently verify primary deletion or backup expiry.
+
 ## Required evidence
 
 Before relying on the journal, test with synthetic data and isolated resources:
