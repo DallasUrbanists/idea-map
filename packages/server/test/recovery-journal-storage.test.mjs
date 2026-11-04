@@ -275,7 +275,8 @@ test('journal inventory discovers bounded exact generations without asserting co
     [[], { pageToken: 'soft-next' }], [[], null],
   ]), target)
   assert.deepEqual(result, { references: [{ recordId: id, generation: first.metadata.generation, metageneration: '1', crc32c: 'AAAAAA==' },
-    { recordId: secondId, generation: second.metadata.generation, metageneration: '1', crc32c: 'AAAAAA==' }], coverageVerified: false, softDeletedChecked: true })
+    { recordId: secondId, generation: second.metadata.generation, metageneration: '1', crc32c: 'AAAAAA==' }],
+    bucketGeneration: '100', bucketMetageneration: '1', coverageVerified: false, softDeletedChecked: true })
   assert.equal(queries.length, 4)
   assert.ok(queries.every(query => query.prefix === prefix && query.autoPaginate === false))
   assert.ok(queries.slice(0, 2).every(query => query.versions === true && !query.softDeleted))

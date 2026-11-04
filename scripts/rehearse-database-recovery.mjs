@@ -10,9 +10,10 @@ import { pipeline } from 'node:stream/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { dumpArguments, exportEncryptedBackup } from '../apps/worker/ops/export-encrypted-backup.mjs'
 import { decodeRecoveryRecord, encodeRecoveryConfirmation, encodeRecoveryHoldConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../packages/server/dist/recovery-journal-record.js'
-import { compareUnverifiedRecoveryCheckpoint, summarizeUnverifiedRecovery } from '../packages/server/dist/recovery-journal-plan.js'
+import { compareUnverifiedRecoveryCheckpoint } from '../packages/server/dist/recovery-journal-plan.js'
+import { prepareUnverifiedRecoveryInventory } from '../packages/server/dist/recovery-inventory.js'
 import { suppressUnverifiedRestoredRemovals } from '../packages/server/dist/recovery-suppression.js'
-import { listUnverifiedRecoveryJournal, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../packages/server/dist/recovery-journal-storage.js'
+import { listUnverifiedRecoveryJournal, writeRecoveryJournalRecord } from '../packages/server/dist/recovery-journal-storage.js'
 import { acquirePublicAccessLease } from '../packages/server/dist/public-access-lease.js'
 import { readPublishedIdea } from '../packages/server/dist/published-ideas.js'
 import { readMediaPreview } from '../packages/server/dist/media-preview.js'
@@ -296,9 +297,10 @@ try {
     if (missing.coverageVerified !== false || missing.missing.length !== 1 || missing.missing[0] !== syntheticCheckpoint[0].recordId) {
       throw new Error('Synthetic missing checkpoint record was not detected')
     }
-    recoveryRecords = await Promise.all(inventory.references.map(reference =>
-      readRecoveryJournalRecord(journal, journalTarget, reference.recordId, reference.generation)))
-    summary = summarizeUnverifiedRecovery(recoveryRecords, 'dev')
+    const preparedInventory = await prepareUnverifiedRecoveryInventory(journal, journalTarget)
+    if (preparedInventory.coverageVerified !== false) throw new Error('Synthetic journal coverage was incorrectly asserted')
+    recoveryRecords = preparedInventory.records
+    summary = preparedInventory.summary
   } finally {
     if (inventoryEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
     else process.env.STORAGE_EMULATOR_HOST = inventoryEmulator

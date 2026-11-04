@@ -164,6 +164,15 @@ generation or metadata generation. This detects a bucket replacement or
 metadata change during the inventory; it does not establish writer fencing,
 effective permissions, or journal coverage.
 
+An unwired inventory reader combines the reference listing with exact-generation
+record reads, then lists again and rejects missing, changed, or additional
+references. It bounds concurrency, total bytes, and elapsed waiting time; an SDK
+request may still finish after its caller stops waiting. The returned records and
+summary contain private information. Even a stable result does not detect a tail
+that disappeared before the first listing, authenticate a baseline, or prove that
+all writers were fenced. Keep the replacement isolated while those checks and
+hold reconciliation remain unresolved.
+
 A checkpoint comparison helper can identify missing, changed, or additional
 record IDs relative to a separately supplied list of exact generations,
 metagenerations, and checksums. Duplicate or malformed references fail the

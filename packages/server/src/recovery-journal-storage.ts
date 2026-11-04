@@ -137,13 +137,14 @@ export async function readRecoveryJournalRecord(storage: Storage, target: Target
  * A listing cannot establish a missing tail, writer coverage, or past permanent
  * deletion. Metadata requests may finish after this function's deadline.
  */
-export async function listUnverifiedRecoveryJournal(storage: Storage, target: Target):
-Promise<{ references: { recordId: string, generation: string, metageneration: string, crc32c: string }[], coverageVerified: false, softDeletedChecked: true }> {
-  if (!validTarget(target)) throw new Error('Invalid journal target')
+export async function listUnverifiedRecoveryJournal(storage: Storage, target: Target, timeoutMs = 30_000):
+Promise<{ references: { recordId: string, generation: string, metageneration: string, crc32c: string }[],
+  bucketGeneration: string, bucketMetageneration: string, coverageVerified: false, softDeletedChecked: true }> {
+  if (!validTarget(target) || !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000) throw new Error('Invalid journal target')
   const prefix = `idea-map-v2/${target.environment}/recovery-journal/`
   const references: { recordId: string, generation: string, metageneration: string, crc32c: string }[] = []
   const names = new Set<string>()
-  const deadline = performance.now() + 30_000
+  const deadline = performance.now() + timeoutMs
   try {
     const { bucket, metadata: before } = await verifiedBucket(storage, target, Math.min(5000, remainingTime(deadline)), true)
     if (typeof before.generation !== 'string' || !/^[1-9][0-9]*$/.test(before.generation) ||
@@ -201,7 +202,7 @@ Promise<{ references: { recordId: string, generation: string, metageneration: st
       throw new Error('Journal bucket changed during inventory')
     }
     remainingTime(deadline)
-    return { references, coverageVerified: false, softDeletedChecked: true }
+    return { references, bucketGeneration, bucketMetageneration, coverageVerified: false, softDeletedChecked: true }
   } catch {
     throw new Error('Journal inventory could not be verified')
   }

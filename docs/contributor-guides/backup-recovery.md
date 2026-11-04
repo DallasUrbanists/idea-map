@@ -40,10 +40,10 @@ assignment. The rehearsal writes
 synthetic journal intents and confirmations to an in-memory fake around those
 decisions, records the synthetic committed hold's ID, and discovers their exact
 generations through a paginated fake inventory and checks a separate empty
-soft-deleted listing. It reads those generations, identifies the synthetic idea
-for hold review, and uses the suppression primitive for the known removal in the
-isolated restore. It verifies that an open gate blocks suppression and that a
-retry is idempotent. With
+soft-deleted listing. It reads those generations, compares a second inventory,
+identifies the synthetic idea for hold review, and uses the suppression primitive
+for the known removal in the isolated restore. It verifies that an open gate
+blocks suppression and that a retry is idempotent. With
 the gate still closed, it checks
 the existing internal idea and preview reads before and after suppression; the
 preview uses synthetic bytes from a fake storage client. These checks do not test
