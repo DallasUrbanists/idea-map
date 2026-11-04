@@ -215,20 +215,21 @@ permissions, retention, and restore procedures; it has not been implemented.
 The existing bucket journal does not implement the sequence fence;
 do not use it as proof of complete coverage.
 
-An unwired sequence codec explores another option: retain decision bytes in the
-existing bucket and put only their exact object IDs, generations, and SHA-256
-digests in numbered Secret Manager versions. This would use the existing Secret
-Manager service but require a separately owned secret and distinct permissions;
-it is an index, not a second copy of the decision content. A baseline entry
-contains a checkpoint digest, and a recovery fence uses an opaque nonce. The
-codec checks supplied version numbers from one through a selected fence, rejects
-missing or conflicting entries, and tolerates identical retries. A matching
-sequence does not authenticate its source or baseline, prove all writers used
-the index, establish the fence, or allow access to reopen. The codec is not a
-Secret Manager client and is not connected to any live mutation or recovery.
-Choosing this two-store approach needs an architecture review against the
-single-store alternative above, including what happens if either service is
-unavailable and how both stores' permissions and retention are enforced.
+An unwired sequence codec explores the single-store option: put the canonical
+decision bytes directly in numbered Secret Manager versions. This uses the
+existing Secret Manager service but needs a separately owned secret and distinct
+permissions. A baseline entry contains a checkpoint digest, and a recovery fence
+uses an opaque nonce. The codec checks supplied version numbers from one through
+a selected fence, rejects missing or conflicting entries, and tolerates identical
+retries. It also decodes and summarizes the decisions without asserting coverage.
+A matching sequence does not authenticate its source or baseline, prove all
+writers used it, establish the fence, or allow access to reopen. The codec is not
+a Secret Manager client and is not connected to any live mutation or recovery.
+The existing bucket-based decision transport remains a separate, unwired
+prototype; do not run both as independent authoritative journals. Choosing and
+integrating one design requires review of its permissions, retention, recovery
+and unavailability behavior. Held material would remain separately scoped in
+the existing backup bucket.
 
 Secret Manager charges for enabled and disabled versions, not only requests.
 As one illustrative scenario, 10 new versions per day retained for 90 days
