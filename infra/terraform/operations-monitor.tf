@@ -80,6 +80,19 @@ variable "operations_thresholds" {
   }
 }
 
+variable "operations_database_capacity_bytes" {
+  description = "Reviewed positive byte threshold for the monitored database, or empty when disabled."
+  type        = string
+  default     = ""
+  validation {
+    condition = var.operations_database_capacity_bytes == "" || (
+      can(regex("^[1-9][0-9]{0,18}$", var.operations_database_capacity_bytes)) &&
+      try(tonumber(var.operations_database_capacity_bytes) <= 9223372036854775807, false)
+    )
+    error_message = "Use an empty value or a positive PostgreSQL bigint byte threshold."
+  }
+}
+
 resource "google_service_account" "operations_monitor" {
   count        = var.enable_operations_monitor ? 1 : 0
   account_id   = "idea-map-ops-${var.environment}"
@@ -143,10 +156,11 @@ resource "google_cloud_run_v2_job" "operations_monitor" {
         }
         dynamic "env" {
           for_each = {
-            OPERATIONS_OUTBOX_AGE_SECONDS  = try(tostring(var.operations_thresholds.outbox_seconds), "")
-            OPERATIONS_OVERDUE_AGE_SECONDS = try(tostring(var.operations_thresholds.overdue_seconds), "")
-            OPERATIONS_QUEUE_AGE_SECONDS   = try(tostring(var.operations_thresholds.queue_seconds), "")
-            OPERATIONS_EMAIL_EVENTS        = try(tostring(var.operations_thresholds.email_events), "")
+            OPERATIONS_OUTBOX_AGE_SECONDS      = try(tostring(var.operations_thresholds.outbox_seconds), "")
+            OPERATIONS_OVERDUE_AGE_SECONDS     = try(tostring(var.operations_thresholds.overdue_seconds), "")
+            OPERATIONS_QUEUE_AGE_SECONDS       = try(tostring(var.operations_thresholds.queue_seconds), "")
+            OPERATIONS_EMAIL_EVENTS            = try(tostring(var.operations_thresholds.email_events), "")
+            OPERATIONS_DATABASE_CAPACITY_BYTES = var.operations_database_capacity_bytes
           }
           content {
             name  = env.key
@@ -158,7 +172,7 @@ resource "google_cloud_run_v2_job" "operations_monitor" {
   }
   lifecycle {
     precondition {
-      condition = var.operations_monitor_image != "" && var.operations_monitor_schedule != "" && length(var.operations_thresholds) == 4 && (
+      condition = var.operations_monitor_image != "" && var.operations_monitor_schedule != "" && var.operations_database_capacity_bytes != "" && length(var.operations_thresholds) == 4 && (
         var.operations_database_secret_id != "" && var.operations_database_secret_version != "" &&
         var.operations_database_secret_id != var.web_database_secret_id &&
         var.operations_database_secret_id != var.worker_database_secret_id &&

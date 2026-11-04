@@ -14,6 +14,7 @@ test('snapshot reports private aggregate backlog, overdue jobs and recent failur
   const marker = `snapshot-${randomUUID()}`
   try {
     const before = await readOperationsSnapshot(pool)
+    assert.match(before.database_size_bytes, /^[1-9][0-9]*$/)
     const rows = (await pool.query(`INSERT INTO jobs (kind, idempotency_key, state, scheduled_at)
       VALUES ('test', $1, 'pending', now() - interval '2 hours'),
              ('test', $2, 'pending', now() + interval '2 hours'),
@@ -122,6 +123,7 @@ test('the snapshot works with column-scoped read-only access', async () => {
     const snapshot = await readOperationsSnapshot(scopedPool)
     assert.equal(snapshot.backlog.unpublished, 0)
     assert.equal(snapshot.public_access_open, false)
+    assert.match(snapshot.database_size_bytes, /^[1-9][0-9]*$/)
     await assert.rejects(client.query('SELECT idempotency_key FROM public.jobs'), { code: '42501' })
     await assert.rejects(client.query('SELECT email_id FROM public.email_delivery_events'), { code: '42501' })
     await assert.rejects(client.query('SELECT * FROM public.contacts'), { code: '42501' })

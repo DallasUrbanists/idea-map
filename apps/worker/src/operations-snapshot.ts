@@ -32,6 +32,7 @@ export async function readOperationsSnapshot(pool: pg.Pool) {
       )
       SELECT s.observed_at, row_to_json(backlog) AS backlog,
         row_to_json(overdue) AS overdue, row_to_json(email) AS email,
+        pg_catalog.pg_database_size(pg_catalog.current_database())::text AS database_size_bytes,
         (SELECT is_open FROM public.public_access_gate WHERE singleton = true) AS public_access_open
       FROM snapshot s CROSS JOIN backlog CROSS JOIN overdue CROSS JOIN email
     `)

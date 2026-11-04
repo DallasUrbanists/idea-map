@@ -32,7 +32,8 @@ the columns needed by the snapshot: `jobs.id`, `jobs.state`,
 `outbox.dispatch_attempts`, `outbox.created_at`; and
 `email_delivery_events.event_type`, `email_delivery_events.created_at`; and
 `public_access_gate.singleton`, `public_access_gate.is_open`. It also
-needs schema usage. These grants allow direct access to those individual column
+needs schema usage, database connection, and permission to execute
+`pg_database_size`. These grants allow direct access to those individual column
 values, including job IDs and timing, so restrict the identity and credentials.
 Access to a hosted or production database requires separate authorization.
 
@@ -74,7 +75,12 @@ idea and media requests should be blocked; `null` means the gate row is missing.
 An open row does not prove journal coverage, effective routing, or successful
 responses. The process health endpoint does not check the gate.
 
-This snapshot does not measure availability, provider queue age, disk or
+`database_size_bytes` is the database's current size as a decimal string. It is
+a point-in-time PostgreSQL measurement, not a growth rate or the provider's
+total billed storage; Neon branch history and other branches need separate
+review. Query time and provider behavior need testing on representative data.
+
+This snapshot does not measure availability, provider queue age, physical disk or
 storage growth, backup freshness, or alert delivery. It does not run on a
 schedule. Before relying on operational monitoring, configure and test those
 signals and notifications for the authorized environment and assign an owner.
@@ -132,8 +138,10 @@ an immutable worker image containing `dist/operations-monitor-cli.js`, and
 prepare an operations-only database secret rather than reusing web, worker, or
 backup credentials. Set `enable_operations_monitor`,
 `operations_monitor_image`, `operations_database_secret_id`,
-`operations_database_secret_version`, `operations_monitor_schedule`, and all
-four `operations_thresholds`. The thresholds are whole numbers:
+`operations_database_secret_version`, `operations_monitor_schedule`,
+`operations_database_capacity_bytes`, and all four `operations_thresholds`.
+The database capacity is a positive decimal byte threshold. The other thresholds
+are whole numbers:
 `outbox_seconds`, `overdue_seconds`, and `queue_seconds` are ages in seconds;
 `email_events` is a count for each type of event during the preceding 24 hours.
 The threshold is breached when the corresponding value reaches it. The queue
@@ -142,6 +150,8 @@ the emitted signals distinguish them. Creation age includes future-scheduled
 tasks, and the outbox age includes future work;
 choose thresholds with the deployment's schedules in mind. Email events are not
 unique messages, and a zero count does not verify delivery or webhook health.
+The database capacity signal compares the current size with the byte threshold;
+it does not calculate growth or include all provider history and branches.
 
 Optionally set `enable_operations_alert` and the existing
 `monitoring_notification_channels` to prepare notifications for threshold

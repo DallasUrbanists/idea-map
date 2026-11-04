@@ -1,17 +1,22 @@
 type DatabaseSnapshot = {
   public_access_open: boolean
+  database_size_bytes: string
   backlog: { unpublished: number, oldest_seconds: number | null }
   overdue: { count: number, oldest_seconds: number | null }
   email: { failed: number, bounced: number, suppressed: number, delayed: number, complained: number }
 }
 type QueueSnapshot = { count: number, oldest_seconds: number | null, due: number, oldest_due_seconds: number | null }
-type Thresholds = { backlogSeconds: number, overdueSeconds: number, queueSeconds: number, emailEvents: number }
+type Thresholds = { backlogSeconds: number, overdueSeconds: number, queueSeconds: number, emailEvents: number, databaseBytes: string }
 
 function count(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 }
 function age(value: unknown, total: number): value is number | null {
   return total === 0 ? value === null : typeof value === 'number' && Number.isFinite(value) && value >= 0
+}
+function bytes(value: unknown, positive: boolean): value is string {
+  return typeof value === 'string' && /^(0|[1-9][0-9]{0,18})$/.test(value) &&
+    (!positive || value !== '0') && BigInt(value) <= 9_223_372_036_854_775_807n
 }
 
 /** Evaluate aggregates without returning job IDs, message details, or provider responses. */
@@ -20,6 +25,7 @@ export function assessOperations(database: DatabaseSnapshot, queue: QueueSnapsho
       ![thresholds.backlogSeconds, thresholds.overdueSeconds, thresholds.queueSeconds, thresholds.emailEvents]
         .every(value => Number.isSafeInteger(value) && value > 0) ||
       typeof database.public_access_open !== 'boolean' ||
+      !bytes(database.database_size_bytes, false) || !bytes(thresholds.databaseBytes, true) ||
       !count(database.backlog.unpublished) || !age(database.backlog.oldest_seconds, database.backlog.unpublished) ||
       !count(database.overdue.count) || !age(database.overdue.oldest_seconds, database.overdue.count) ||
       !count(queue.count) || !age(queue.oldest_seconds, queue.count) || !count(queue.due) || queue.due > queue.count ||
@@ -29,6 +35,7 @@ export function assessOperations(database: DatabaseSnapshot, queue: QueueSnapsho
   }
   const alerts: string[] = []
   if (!database.public_access_open) alerts.push('public_access_closed')
+  if (BigInt(database.database_size_bytes) >= BigInt(thresholds.databaseBytes)) alerts.push('database_capacity')
   if (database.backlog.oldest_seconds !== null && database.backlog.oldest_seconds >= thresholds.backlogSeconds) alerts.push('outbox_age')
   if (database.overdue.oldest_seconds !== null && database.overdue.oldest_seconds >= thresholds.overdueSeconds) alerts.push('overdue_age')
   if (queue.oldest_seconds !== null && queue.oldest_seconds >= thresholds.queueSeconds) alerts.push('queue_age')

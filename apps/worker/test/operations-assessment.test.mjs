@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url'
 import { assessOperations, operationsEvents } from '../dist/operations-assessment.js'
 import { collectOperations } from '../dist/operations-monitor.js'
 
-const limits = { backlogSeconds: 60, overdueSeconds: 120, queueSeconds: 300, emailEvents: 2 }
-const emptyDatabase = () => ({ public_access_open: true, backlog: { unpublished: 0, oldest_seconds: null }, overdue: { count: 0, oldest_seconds: null },
+const limits = { backlogSeconds: 60, overdueSeconds: 120, queueSeconds: 300, emailEvents: 2, databaseBytes: '9007199254740993' }
+const emptyDatabase = () => ({ public_access_open: true, database_size_bytes: '0', backlog: { unpublished: 0, oldest_seconds: null }, overdue: { count: 0, oldest_seconds: null },
   email: { failed: 0, bounced: 0, suppressed: 0, delayed: 0, complained: 0 } })
 const emptyQueue = () => ({ count: 0, oldest_seconds: null, due: 0, oldest_due_seconds: null })
 
@@ -35,6 +35,16 @@ test('a recently created task that is already overdue is reported separately', (
   assert.deepEqual(assessOperations(database, queue, limits), ['queue_due_age'])
 })
 
+test('database capacity uses exact byte comparisons above JavaScript safe integers', () => {
+  const database = emptyDatabase()
+  database.database_size_bytes = '9007199254740992'
+  assert.deepEqual(assessOperations(database, emptyQueue(), limits), [])
+  database.database_size_bytes = '9007199254740993'
+  assert.deepEqual(assessOperations(database, emptyQueue(), limits), ['database_capacity'])
+  database.database_size_bytes = '9223372036854775808'
+  assert.throws(() => assessOperations(database, emptyQueue(), limits))
+})
+
 test('assessment refuses partial, inconsistent, or invalid observations and thresholds', () => {
   const database = emptyDatabase()
   const queue = emptyQueue()
@@ -44,6 +54,8 @@ test('assessment refuses partial, inconsistent, or invalid observations and thre
   assert.throws(() => assessOperations({ ...database, public_access_open: null }, queue, limits))
   assert.throws(() => assessOperations({ ...database, backlog: { unpublished: 1, oldest_seconds: NaN } }, queue, limits))
   assert.throws(() => assessOperations(database, queue, { ...limits, queueSeconds: 0 }))
+  assert.throws(() => assessOperations({ ...database, database_size_bytes: '01' }, queue, limits))
+  assert.throws(() => assessOperations(database, queue, { ...limits, databaseBytes: '0' }))
   assert.throws(() => assessOperations(database, queue, { backlogSeconds: 1 }))
 })
 

@@ -281,6 +281,7 @@ run "operations_monitor_uses_scoped_identity_and_paused_schedule" {
     operations_database_secret_version = "4"
     operations_monitor_schedule        = "*/5 * * * *"
     operations_thresholds              = { outbox_seconds = 300, overdue_seconds = 600, queue_seconds = 900, email_events = 2 }
+    operations_database_capacity_bytes = "2000000000"
     monitoring_notification_channels   = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
   }
   override_resource {
@@ -305,6 +306,7 @@ run "operations_monitor_uses_scoped_identity_and_paused_schedule" {
     condition = google_cloud_run_v2_job.operations_monitor[0].template[0].task_count == 1 && (
       google_cloud_run_v2_job.operations_monitor[0].template[0].template[0].max_retries == 0 &&
       google_cloud_run_v2_job.operations_monitor[0].template[0].template[0].containers[0].command == tolist(["node", "dist/operations-monitor-cli.js"]) &&
+      one([for entry in google_cloud_run_v2_job.operations_monitor[0].template[0].template[0].containers[0].env : entry.value if entry.name == "OPERATIONS_DATABASE_CAPACITY_BYTES"]) == "2000000000" &&
       google_cloud_scheduler_job.operations_monitor[0].paused &&
       google_cloud_scheduler_job.operations_monitor[0].http_target[0].oauth_token[0].service_account_email == "operations-trigger@synthetic.invalid" &&
       google_cloud_run_v2_job_iam_member.operations_scheduler[0].role == "roles/run.invoker"
@@ -353,6 +355,25 @@ run "operations_monitor_rejects_incomplete_thresholds" {
   expect_failures = [var.operations_thresholds]
 }
 
+run "operations_monitor_rejects_invalid_database_capacity" {
+  command = plan
+  variables { operations_database_capacity_bytes = "9223372036854775808" }
+  expect_failures = [var.operations_database_capacity_bytes]
+}
+
+run "operations_monitor_requires_database_capacity" {
+  command = plan
+  variables {
+    enable_operations_monitor          = true
+    operations_monitor_image           = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/worker@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    operations_database_secret_id      = "synthetic-operations-only"
+    operations_database_secret_version = "4"
+    operations_monitor_schedule        = "*/5 * * * *"
+    operations_thresholds              = { outbox_seconds = 300, overdue_seconds = 600, queue_seconds = 900, email_events = 2 }
+  }
+  expect_failures = [google_cloud_run_v2_job.operations_monitor]
+}
+
 run "operations_monitor_rejects_unpinned_secret" {
   command = plan
   variables { operations_database_secret_version = "latest" }
@@ -368,6 +389,7 @@ run "operations_monitor_rejects_shared_worker_secret" {
     operations_database_secret_version = "4"
     operations_monitor_schedule        = "*/5 * * * *"
     operations_thresholds              = { outbox_seconds = 300, overdue_seconds = 600, queue_seconds = 900, email_events = 2 }
+    operations_database_capacity_bytes = "2000000000"
     worker_database_secret_id          = "shared-secret"
   }
   expect_failures = [google_cloud_run_v2_job.operations_monitor]
@@ -382,6 +404,7 @@ run "operations_monitor_rejects_shared_web_secret" {
     operations_database_secret_version = "4"
     operations_monitor_schedule        = "*/5 * * * *"
     operations_thresholds              = { outbox_seconds = 300, overdue_seconds = 600, queue_seconds = 900, email_events = 2 }
+    operations_database_capacity_bytes = "2000000000"
     web_database_secret_id             = "shared-secret"
     web_database_secret_version        = "1"
   }
