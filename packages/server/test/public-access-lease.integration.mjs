@@ -546,8 +546,35 @@ test('a trusted coordinator applies only the verified pending removal after read
     assert.deepEqual(await verifyConfirmation(revokedVerification), { state: 'unauthenticated' })
     assert.deepEqual((await admin.query('SELECT confirmation_generation,confirmation_verified_at FROM public.public_access_pending_decisions WHERE operation_id=$1', [operationId])).rows[0],
       { confirmation_generation: null, confirmation_verified_at: null })
+    // Simulate a database commit whose success response is lost. Preparation
+    // uses the first transaction; verification commits in the second.
+    const runtimePool = pendingRemovalDatabasePool(coordinatorUrl.toString())
+    const originalConnect = runtimePool.connect
+    let connected = 0
+    runtimePool.connect = async function (...args) {
+      const client = await originalConnect.apply(this, args)
+      if (++connected === 2) {
+        const originalQuery = client.query
+        client.query = async function (...queryArgs) {
+          const value = await originalQuery.apply(this, queryArgs)
+          if (queryArgs[0] === 'COMMIT') {
+            client.query = originalQuery
+            throw new Error('synthetic lost commit response')
+          }
+          return value
+        }
+      }
+      return client
+    }
+    try { await assert.rejects(verifyConfirmation(), /Pending removal unavailable/) }
+    finally { runtimePool.connect = originalConnect }
+    const committed = (await admin.query('SELECT confirmation_generation,confirmation_verified_at FROM public.public_access_pending_decisions WHERE operation_id=$1', [operationId])).rows[0]
+    assert.equal(committed.confirmation_generation, '90071992547409931234')
+    assert.ok(committed.confirmation_verified_at instanceof Date)
+    assert.equal((await admin.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
     const verified = await verifyConfirmation()
     assert.equal(verified.state, 'authorized')
+    assert.equal(verified.value.verifiedAt, committed.confirmation_verified_at.toISOString())
     assert.equal(verified.value.state, 'confirmation_verified')
     assert.equal(verified.value.recordId, confirmationId)
     assert.equal(verified.value.generation, '90071992547409931234')
