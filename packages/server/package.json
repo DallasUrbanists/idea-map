@@ -46,7 +46,7 @@
     "test:moderator-removals": "tsc --build && node --test test/moderator-removals.test.mjs",
     "test:escalation-transfers": "tsc --build && node --test test/escalation-transfers.test.mjs",
     "test:verified-ownership": "tsc --build && node --test test/verified-ownership.test.mjs",
-    "test:moderator-authorization": "tsc --build && node --test test/moderator-authorization.test.mjs",
+    "test:moderator-authorization": "tsc --build && node --test test/moderator-authorization.test.mjs test/moderator-authorization-cleanup.test.mjs",
     "test:approval-history": "tsc --build && node --test test/approval-history.test.mjs",
     "test:cloud-tasks": "tsc --build && node --test test/cloud-tasks.test.mjs",
     "test:worker-staging-grants": "tsc --build && node --test test/worker-staging-grants.test.mjs",
