@@ -168,6 +168,22 @@ by its exact number is strongly consistent, but
 [version listing and the latest alias are eventually consistent](https://cloud.google.com/secret-manager/docs/reference/consistency).
 Do not infer that a version does not exist from a recent list or latest read.
 
+One sequence-fence option needs further validation before use: after independently
+fencing and draining every decision writer, an authorized recovery identity could
+append a sentinel version and use the returned exact version number as an upper
+bound. [Secret version IDs](https://cloud.google.com/secret-manager/docs/reference/rest/v1/projects.secrets.versions)
+start at one and advance with each addition; reading explicitly numbered versions
+rather than listing or using the latest alias could expose gaps through that
+sentinel. This depends on every covered decision being durably recorded before
+commit, a verified baseline for older archives, no writers continuing past the
+fence, and a protected secret that cannot be destroyed or recreated by a writer.
+A disabled, destroyed, missing, or unreadable required version must keep recovery
+isolated. An ambiguous sentinel write needs reconciliation, not an assumed upper
+bound. The sequence would also need a reviewed rollover and expiration process for
+decision metadata and held evidence, and measured quota, costs, and scan time.
+The existing bucket journal does not implement this option; do not use it as proof
+of complete coverage.
+
 The checkpoint needs a coordinated boundary, not merely a timestamp. Suspend
 all covered mutations, drain in-flight transactions and journal writes, verify
 the current decision state and writer restrictions, and record the checkpoint
