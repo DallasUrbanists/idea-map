@@ -41,7 +41,9 @@ synthetic journal intents and confirmations to an in-memory fake around those
 decisions, records the synthetic committed hold's ID, and discovers their exact
 generations through a paginated fake inventory and checks a separate empty
 soft-deleted listing. It reads those generations, identifies the synthetic idea
-for hold review, and suppresses the known removal in the isolated restore. With
+for hold review, and uses the suppression primitive for the known removal in the
+isolated restore. It verifies that an open gate blocks suppression and that a
+retry is idempotent. With
 the gate still closed, it checks
 the existing internal idea and preview reads before and after suppression; the
 preview uses synthetic bytes from a fake storage client. These checks do not test
@@ -62,9 +64,9 @@ remains isolated. A second synthetic archive omits the gate table; its restored
 target also rejects the runtime login, and the current lease code rejects the
 missing table. That fixture is not a full historical schema and does not verify
 compatibility with a particular earlier release. The rehearsal checks that the
-restored pending-removal preparation, application, confirmation, and verification
-functions do not grant `PUBLIC` execution and that the guard triggers are enabled
-without `PUBLIC` execution. It
+restored pending-removal preparation, application, confirmation, verification, and
+recovery-suppression functions do not grant `PUBLIC` execution and that the guard
+triggers are enabled without `PUBLIC` execution. It
 does not show that an older archive contains a later gate closure. These checks
 do not establish a hosted network or IAM fence.
 

@@ -265,6 +265,20 @@ missing record, coverage gap, or incompatible schema keeps affected material
 private and requires authorized reconciliation. Record the uncertainty and
 include reconciliation time in the recovery measurement.
 
+An unwired suppression primitive can mark ideas from known removal intents
+withdrawn and unpublish their previews on an independently isolated replacement.
+It takes the exclusive public-read lock, requires the database gate to be closed,
+locks the matching ideas, and reports counts for present and absent IDs. Repeating
+it is safe, and an uncertain intent is suppressed as well. The function has no
+`PUBLIC` execute grant; only a separately authorized recovery coordinator should
+receive access after the independent network and writer fences are verified.
+It does not authenticate the records, establish complete coverage, restore hold
+evidence, reconcile moderation and trust records, update external projections or
+caches, delete primary data, or open the gate. Keep the target isolated until
+those outstanding tasks are resolved. A missing idea requires review; it can
+represent an idea created after the restored archive rather than a verified
+deletion.
+
 The write protocol alone does not solve an unavailable journal: an already
 authorized removal must still stop public access immediately, and a failed
 write must not silently create a coverage gap. If an authorized removal cannot

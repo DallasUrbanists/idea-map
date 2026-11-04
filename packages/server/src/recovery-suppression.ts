@@ -1,0 +1,33 @@
+import type pg from 'pg'
+import { summarizeUnverifiedRecovery } from './recovery-journal-plan.js'
+
+/**
+ * Suppress every known removal intent on an independently isolated restore.
+ * This does not authenticate the inventory, prove coverage, restore holds,
+ * update external projections, or authorize reopening public access.
+ */
+export async function suppressUnverifiedRestoredRemovals(pool: pg.Pool, records: Uint8Array[], environment: 'dev' | 'prod') {
+  const summary = summarizeUnverifiedRecovery(records, environment)
+  if (summary.removals.length > 10_000) throw new Error('Recovery suppression inventory is too large')
+  let client: pg.PoolClient
+  try { client = await pool.connect() } catch { throw new Error('Recovery suppression unavailable') }
+  let destroy = false
+  try {
+    await client.query('BEGIN ISOLATION LEVEL READ COMMITTED')
+    await client.query("SET LOCAL lock_timeout = '5s'")
+    await client.query("SET LOCAL statement_timeout = '10s'")
+    const result = await client.query<{ matched: number, absent: number }>(
+      'SELECT * FROM public.suppress_restored_removals($1::uuid[])', [summary.removals])
+    const row = result.rows[0]
+    if (result.rows.length !== 1 || !Number.isSafeInteger(row?.matched) || !Number.isSafeInteger(row?.absent) ||
+        row!.matched < 0 || row!.absent < 0 || row!.matched + row!.absent !== summary.removals.length) {
+      throw new Error('Recovery suppression result is ambiguous')
+    }
+    await client.query('COMMIT')
+    return { matched: row!.matched, absent: row!.absent, reviewOperations: summary.reviewOperations.length,
+      coverageVerified: false as const }
+  } catch {
+    try { await client.query('ROLLBACK') } catch { destroy = true }
+    throw new Error('Recovery suppression outcome is uncertain')
+  } finally { client.release(destroy) }
+}

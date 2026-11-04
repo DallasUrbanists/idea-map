@@ -9,8 +9,9 @@ import { createRequire } from 'node:module'
 import { pipeline } from 'node:stream/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { dumpArguments, exportEncryptedBackup } from '../apps/worker/ops/export-encrypted-backup.mjs'
-import { encodeRecoveryConfirmation, encodeRecoveryHoldConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../packages/server/dist/recovery-journal-record.js'
+import { decodeRecoveryRecord, encodeRecoveryConfirmation, encodeRecoveryHoldConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../packages/server/dist/recovery-journal-record.js'
 import { compareUnverifiedRecoveryCheckpoint, summarizeUnverifiedRecovery } from '../packages/server/dist/recovery-journal-plan.js'
+import { suppressUnverifiedRestoredRemovals } from '../packages/server/dist/recovery-suppression.js'
 import { listUnverifiedRecoveryJournal, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../packages/server/dist/recovery-journal-storage.js'
 import { acquirePublicAccessLease } from '../packages/server/dist/public-access-lease.js'
 import { readPublishedIdea } from '../packages/server/dist/published-ideas.js'
@@ -279,7 +280,7 @@ try {
   const laterRevisionQuery = `SELECT count(*) FROM idea_revisions WHERE idea_id='${ideaId}' AND version=2`
   const sourceLaterRevision = await sql(source, laterRevisionQuery)
   const restoredLaterRevision = await sql(target, laterRevisionQuery)
-  let summary
+  let summary, recoveryRecords
   const inventoryEmulator = process.env.STORAGE_EMULATOR_HOST
   delete process.env.STORAGE_EMULATOR_HOST
   try {
@@ -295,9 +296,9 @@ try {
     if (missing.coverageVerified !== false || missing.missing.length !== 1 || missing.missing[0] !== syntheticCheckpoint[0].recordId) {
       throw new Error('Synthetic missing checkpoint record was not detected')
     }
-    const records = await Promise.all(inventory.references.map(reference =>
+    recoveryRecords = await Promise.all(inventory.references.map(reference =>
       readRecoveryJournalRecord(journal, journalTarget, reference.recordId, reference.generation)))
-    summary = summarizeUnverifiedRecovery(records, 'dev')
+    summary = summarizeUnverifiedRecovery(recoveryRecords, 'dev')
   } finally {
     if (inventoryEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
     else process.env.STORAGE_EMULATOR_HOST = inventoryEmulator
@@ -344,7 +345,46 @@ try {
     try { lease = await acquirePublicAccessLease(recoveryPool) }
     catch (error) { if (error.message !== 'Public access unavailable') throw error }
     if (lease) { await lease.release(); throw new Error('Synthetic restored gate permitted public access') }
-    await sql(target, `UPDATE ideas SET publication_state='withdrawn' WHERE id='${ideaId}'`)
+    // The independent fence stays active while the database gate is briefly
+    // opened to verify that the suppression primitive refuses an unsafe target.
+    await sql(target, 'UPDATE public.public_access_gate SET is_open=true WHERE singleton=true')
+    let rejectedOpenGate = false
+    try { await suppressUnverifiedRestoredRemovals(recoveryPool, recoveryRecords, 'dev') }
+    catch (error) { rejectedOpenGate = error.message === 'Recovery suppression outcome is uncertain' }
+    finally { await sql(target, 'UPDATE public.public_access_gate SET is_open=false WHERE singleton=true') }
+    if (!rejectedOpenGate || (await sql(target, visibleQuery)) !== '1') throw new Error('Synthetic suppression accepted an open gate')
+    const removalIntent = recoveryRecords.find(record => {
+      const decoded = decodeRecoveryRecord(record, 'dev')
+      return decoded.recordType === 'intent' && decoded.operationId === removalOperation
+    })
+    if (!removalIntent) throw new Error('Synthetic removal intent is missing')
+    const uncertain = await suppressUnverifiedRestoredRemovals(recoveryPool, [removalIntent], 'dev')
+    if (JSON.stringify(uncertain) !== JSON.stringify({ matched: 1, absent: 0, reviewOperations: 1, coverageVerified: false })) {
+      throw new Error('Synthetic uncertain removal was not suppressed for review')
+    }
+    const suppressed = await suppressUnverifiedRestoredRemovals(recoveryPool, recoveryRecords, 'dev')
+    const retried = await suppressUnverifiedRestoredRemovals(recoveryPool, recoveryRecords, 'dev')
+    if (JSON.stringify(suppressed) !== JSON.stringify({ matched: 1, absent: 0, reviewOperations: 1, coverageVerified: false }) ||
+        JSON.stringify(retried) !== JSON.stringify(suppressed)) throw new Error('Synthetic suppression was not idempotent')
+    const missingIntent = encodeRecoveryIntent({ ...base, ideaId: randomUUID(), operationId: randomUUID(),
+      decision: { kind: 'removal', classification: 'other', reason: 'synthetic uncertain removal' } })
+    const withMissing = await suppressUnverifiedRestoredRemovals(recoveryPool, [...recoveryRecords, missingIntent], 'dev')
+    if (JSON.stringify(withMissing) !== JSON.stringify({ matched: 1, absent: 1, reviewOperations: 2, coverageVerified: false })) {
+      throw new Error('Synthetic missing removal was not reported for review')
+    }
+    const empty = await suppressUnverifiedRestoredRemovals(recoveryPool, [], 'dev')
+    if (JSON.stringify(empty) !== JSON.stringify({ matched: 0, absent: 0, reviewOperations: 0, coverageVerified: false })) {
+      throw new Error('Empty synthetic suppression was ambiguous')
+    }
+    for (const invalid of [[ideaId, ideaId], [ideaId, null]]) {
+      let rejected = false
+      try { await recoveryPool.query('SELECT * FROM public.suppress_restored_removals($1::uuid[])', [invalid]) }
+      catch (error) { rejected = error.message.includes('Invalid recovery suppression') }
+      if (!rejected) throw new Error('Synthetic invalid suppression input was accepted')
+    }
+    if (await sql(target, `SELECT published FROM media_previews WHERE id='${previewId}'`) !== 'f') {
+      throw new Error('Synthetic preview metadata remained published')
+    }
     const after = await readRecoveryContent()
     if (after.idea !== null || after.preview !== null || previewReads !== 1) throw new Error('Synthetic removal remained publicly readable')
     reconciledVisible = await sql(target, visibleQuery)
@@ -366,13 +406,15 @@ try {
   const restoredVerificationPublicExecute = await sql(target, verificationPrivilege)
   const verificationTriggerPrivilege = "SELECT has_function_privilege('public','public.protect_pending_confirmation_verification()','EXECUTE')"
   const restoredVerificationTriggerPublicExecute = await sql(target, verificationTriggerPrivilege)
+  const suppressionPrivilege = "SELECT has_function_privilege('public','public.suppress_restored_removals(uuid[])','EXECUTE')"
+  const restoredSuppressionPublicExecute = await sql(target, suppressionPrivilege)
   const restoredVerificationTrigger = await sql(target, "SELECT count(*) FROM pg_catalog.pg_trigger WHERE tgrelid='public.public_access_pending_decisions'::regclass AND tgname='protect_pending_confirmation_verification' AND NOT tgisinternal AND tgenabled='O'")
   const restoredGateOpen = await sql(target, 'SELECT is_open FROM public.public_access_gate WHERE singleton=true')
   const publicConnect = await sql(source, `SELECT has_database_privilege('public','${target}','CONNECT')`)
   const namedConnect = await sql(source, `SELECT has_database_privilege('${reader}','${target}','CONNECT')`)
   if (restored !== '1' || excluded !== '0' || postgis !== '1' || ideas !== '1' || Number(migrations) < 1 || sourceVisible !== '0' || restoredVisible !== '1' || reconciledVisible !== '0' || sourceHolds !== '1' || restoredHolds !== '0' || sourceAuthority !== '1' || restoredAuthority !== '0' || sourceActor !== '1' || restoredActor !== '0' || sourceLaterRevision !== '1' || restoredLaterRevision !== '0' || sourcePublicExecute !== 'f' || restoredPublicExecute !== 'f' || restoredPendingPublicExecute !== 'f' || restoredApplyPublicExecute !== 'f' || restoredConfirmationPublicExecute !== 'f' || restoredTriggerPublicExecute !== 'f' || restoredApplicationTrigger !== '1' ||
       restoredVerificationPublicExecute !== 'f' || restoredVerificationTriggerPublicExecute !== 'f' ||
-      restoredVerificationTrigger !== '1' || restoredGateOpen !== 'f' || sourceNamedExecute !== 't' || restoredNamedExecute !== 't' || publicConnect !== 'f' || namedConnect !== 'f') throw new Error('Restored synthetic database failed verification')
+      restoredVerificationTrigger !== '1' || restoredSuppressionPublicExecute !== 'f' || restoredGateOpen !== 'f' || sourceNamedExecute !== 't' || restoredNamedExecute !== 't' || publicConnect !== 'f' || namedConnect !== 'f') throw new Error('Restored synthetic database failed verification')
   const lossMs = Number(latest) - Number(captured)
   if (!Number.isFinite(lossMs) || lossMs < 0) throw new Error('Synthetic data-loss interval could not be measured')
   console.log(JSON.stringify({ backupSeconds: (backupFinished - dumpStarted) / 1000,
