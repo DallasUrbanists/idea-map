@@ -19,7 +19,7 @@ function remainingTime(deadline: number): number {
   return remaining
 }
 
-async function verifiedBucket(storage: Storage, target: Target, timeoutMs: number) {
+async function verifiedBucket(storage: Storage, target: Target, timeoutMs: number, requireSoftDeletedListing = false) {
   const bucket = storage.bucket(target.bucket)
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
@@ -28,6 +28,11 @@ async function verifiedBucket(storage: Storage, target: Target, timeoutMs: numbe
       new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Bucket verification timed out')), timeoutMs) }),
     ])
     verifyBackupBucket(metadata, target)
+    // A disabled current policy does not remove versions retained under an
+    // earlier policy, but the provider's soft-deleted listing requires one.
+    if (requireSoftDeletedListing && Number(metadata.softDeletePolicy?.retentionDurationSeconds) === 0) {
+      throw new Error('Soft-deleted journal inventory cannot be verified')
+    }
     return bucket
   } finally { if (timer) clearTimeout(timer) }
 }
@@ -140,7 +145,7 @@ Promise<{ references: { recordId: string, generation: string, metageneration: st
   const names = new Set<string>()
   const deadline = performance.now() + 30_000
   try {
-    const bucket = await verifiedBucket(storage, target, Math.min(5000, remainingTime(deadline)))
+    const bucket = await verifiedBucket(storage, target, Math.min(5000, remainingTime(deadline)), true)
     const listPage = async (mode: 'versions' | 'softDeleted', pageToken?: string) => {
       const remaining = remainingTime(deadline)
       let timer: ReturnType<typeof setTimeout> | undefined

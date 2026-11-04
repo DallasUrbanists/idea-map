@@ -155,6 +155,10 @@ as unverified. Its size, page and time limits can cause a safe failure; its
 request deadline does not cancel an in-flight storage request. Review the reader's
 bucket-wide list permission before use. Permanently deleted records, missing
 tails, older backups, and unauthorized writers need separate evidence.
+The inventory also fails if the bucket's current soft-delete policy is disabled:
+older soft-deleted records can remain recoverable under their original policy,
+but the soft-deleted listing requires an enabled policy. Review the policy
+history and retained records before relying on the inventory.
 
 A checkpoint comparison helper can identify missing, changed, or additional
 record IDs relative to a separately supplied list of exact generations,

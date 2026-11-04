@@ -309,3 +309,14 @@ test('journal inventory fails closed when listing does not respond', async t => 
   t.mock.timers.tick(5000)
   await rejected
 })
+
+test('journal inventory refuses a disabled soft-delete policy even if a listing would be empty', async () => {
+  const [safe] = await bucketMetadata()
+  let lists = 0
+  const storage = { bucket: () => ({
+    async getMetadata() { return [{ ...safe, softDeletePolicy: { retentionDurationSeconds: '0' } }] },
+    async getFiles() { lists++; return [[], null] },
+  }) }
+  await assert.rejects(listUnverifiedRecoveryJournal(storage, target), /could not be verified/)
+  assert.equal(lists, 0)
+})
