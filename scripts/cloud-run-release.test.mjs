@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { release } from './cloud-run-release.mjs'
+import { createHash } from 'node:crypto'
+import { release, releaseChecked } from './cloud-run-release.mjs'
 
 const project = 'synthetic-dev'
 const service = 'idea-map-worker-dev'
@@ -62,6 +63,52 @@ test('prepares a checked revision without moving traffic', () => {
   const update = fake.commands.find(args => args[2] === 'update')
   assert.ok(update.includes('--no-traffic'))
   assert.ok(update.includes(`--image=${image}`))
+  assert.equal(fake.commands.some(args => args[2] === 'update-traffic'), false)
+})
+
+for (const operation of ['prepare', 'promote', 'rollback']) {
+  test(`${operation} verifies the platform digest resolved from a checked image index`, () => {
+    const resolvedImage = image.replace(/a{64}/, 'c'.repeat(64))
+    const fake = fakeCloud({ revisionImage: resolvedImage, revisionDigest: resolvedImage })
+    const result = release({ ...config, operation, resolvedImage }, fake.run)
+    assert.equal(result.image, image)
+    assert.equal(result.revision, target)
+  })
+}
+
+test('checks an image index before issuing Cloud Run commands', async () => {
+  const resolvedImage = image.replace(/a{64}/, 'c'.repeat(64))
+  const manifest = Buffer.from(JSON.stringify({ schemaVersion: 2, mediaType: 'application/vnd.oci.image.index.v1+json',
+    manifests: [{ mediaType: 'application/vnd.oci.image.manifest.v1+json', digest: resolvedImage.split('@')[1],
+      platform: { os: 'linux', architecture: 'amd64' } }] }))
+  const indexImage = image.replace(/a{64}/, createHash('sha256').update(manifest).digest('hex'))
+  const fake = fakeCloud({ revisionImage: resolvedImage, revisionDigest: resolvedImage })
+  const result = await releaseChecked({ ...config, image: indexImage }, fake.run, async () => manifest)
+  assert.equal(result.image, indexImage)
+  assert.ok(fake.commands.some(args => args[2] === 'update' && args.includes(`--image=${indexImage}`)))
+  const rejected = fakeCloud()
+  await assert.rejects(releaseChecked({ ...config, image: indexImage }, rejected.run, async () => Buffer.from('tampered')))
+  assert.equal(rejected.commands.length, 0)
+})
+
+test('can roll back to an exact revision digest without registry access', async () => {
+  const fake = fakeCloud()
+  const result = await releaseChecked({ ...config, operation: 'rollback' }, fake.run, async () => {
+    throw new Error('Registry unavailable')
+  })
+  assert.equal(result.revision, target)
+  assert.ok(fake.commands.some(args => args[2] === 'update-traffic'))
+  const unhealthy = fakeCloud({ ready: 'False' })
+  await assert.rejects(releaseChecked({ ...config, operation: 'rollback' }, unhealthy.run, async () => {
+    throw new Error('Registry unavailable')
+  }), /Revision identity, image, or health metadata/)
+  assert.equal(unhealthy.commands.some(args => args[2] === 'update-traffic'), false)
+})
+
+test('rejects a revision that does not match the resolved platform digest', () => {
+  const resolvedImage = image.replace(/a{64}/, 'c'.repeat(64))
+  const fake = fakeCloud({ revisionImage: image, revisionDigest: image })
+  assert.throws(() => release({ ...config, operation: 'promote', resolvedImage }, fake.run), /Revision identity, image, or health metadata/)
   assert.equal(fake.commands.some(args => args[2] === 'update-traffic'), false)
 })
 
@@ -179,6 +226,7 @@ test('reports uncertain traffic when the provider does not converge after a chan
 test('rejects mutable images, other services, and untrusted registry inputs', () => {
   for (const overrides of [{ image: 'example.invalid/worker:latest' },
     { imageRepository: 'example.invalid/other' }, { service: 'unknown' },
+    { resolvedImage: `us-central1-docker.pkg.dev/other-project/releases/idea-map-worker@sha256:${'c'.repeat(64)}` },
     { expectedRevision: 'another-service-old' }, { project: 'prod;echo' },
     { project: 'other-project' }]) {
     const fake = fakeCloud()
