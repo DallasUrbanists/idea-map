@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import pg from 'pg'
 import { CRC32C } from '@google-cloud/storage'
 import { acquirePublicAccessLease, publicAccessLeaseClient } from '../dist/public-access-lease.js'
-import { applyJournaledRemoval, prepareAndJournalRemoval, preparePendingRemoval, prepareRemovalConfirmation, verifyRemovalConfirmation, writeRemovalConfirmation } from '../dist/pending-removal.js'
+import { applyJournaledRemoval, pinPendingRemovalSequence, prepareAndJournalRemoval, preparePendingRemoval, prepareRemovalConfirmation, verifyRemovalConfirmation, writeRemovalConfirmation } from '../dist/pending-removal.js'
 import { decodeRecoveryRecord, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
 import { pendingRemovalDatabasePool, runtimeDatabasePool } from '../dist/runtime-database.js'
 import { compareCurrentRecoveryJournalRecord, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
@@ -253,7 +253,19 @@ test('authorized pending removal closes the gate atomically and retries without 
     await assert.rejects(pool.query('UPDATE public.public_access_pending_decisions SET journal_project_number=$1 WHERE operation_id=$2',
       ['123456789', secondOperationId]), { code: '23514' })
     await assert.rejects(pool.query(pinSql, [...pinArgs.slice(0, 4), 'synthetic wrong intent', ...pinArgs.slice(5)]), /ambiguous/)
-    assert.equal((await pool.query(pinSql, pinArgs)).rows[0].outcome, 'pinned')
+    const sequenceTarget = { environment: 'dev', projectNumber: '123456789', secretId: 'synthetic-journal', epochId: epoch }
+    const sequenceInput = { operationId: secondOperationId, recordId: secondRecordId, payload: limited.value.payload }
+    let pinChecks = 0
+    const revokedDuringPin = { ...verifier, async getUser() { return { uid: session.uid, email: session.email, emailVerified: true, disabled: ++pinChecks > 1 } } }
+    assert.deepEqual(await pinPendingRemovalSequence(url.toString(), 'demo-idea-map', 'synthetic-cookie', revokedDuringPin, sequenceTarget, sequenceInput),
+      { state: 'unauthenticated' })
+    assert.equal((await pool.query('SELECT journal_project_number FROM public.public_access_pending_decisions WHERE operation_id=$1', [secondOperationId])).rows[0].journal_project_number, null)
+    assert.deepEqual(await pinPendingRemovalSequence(url.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, sequenceTarget, sequenceInput),
+      { state: 'authorized', value: 'pinned' })
+    assert.deepEqual(await pinPendingRemovalSequence(url.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, sequenceTarget, sequenceInput),
+      { state: 'authorized', value: 'pinned' })
+    await assert.rejects(pinPendingRemovalSequence(url.toString(), 'demo-idea-map', 'synthetic-cookie', verifier,
+      { ...sequenceTarget, secretId: 'other-journal' }, sequenceInput), /Pending removal unavailable/)
     assert.equal((await pool.query(pinSql, pinArgs)).rows[0].outcome, 'pinned')
     await assert.rejects(pool.query(pinSql, [...pinArgs.slice(0, 6), 'other-journal', pinArgs[7]]), /ambiguous/)
     await assert.rejects(pool.query('UPDATE public.public_access_pending_decisions SET journal_epoch_id=$1 WHERE operation_id=$2',

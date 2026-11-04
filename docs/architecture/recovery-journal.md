@@ -413,8 +413,11 @@ the gate is closed. It rechecks the original moderator and saved intent; retries
 must use the same target. A trigger prevents changing the pin or applying a
 removal in the same transaction that created it. The coordinator must confirm the
 pin transaction committed before any external append; a lost commit response
-requires reconciliation. Existing applied rows without a pin cannot be pinned
-automatically. The pin does not verify the secret, effective access, baseline or
+requires reconciliation. An unwired server helper checks the canonical saved
+intent and current moderator, and returns success only after that transaction
+commits. A failed identity recheck rolls the pin back. Existing applied rows
+without a pin cannot be pinned automatically. The pin does not verify the
+secret, effective access, baseline or
 coverage, and the older bucket-based coordinator does not enforce it. No runtime
 role receives this function, and neither path is ready for live use.
 

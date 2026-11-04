@@ -13,6 +13,40 @@ type PendingRemovalInput = {
   classification: 'violation' | 'other', reason: string,
 }
 
+/** Pin a saved intent before any sequence append. This does not append or apply it. */
+export async function pinPendingRemovalSequence(databaseUrl: string, projectId: string, cookie: string,
+  verifier: RegisteredSessionVerifier, target: { environment: 'dev' | 'prod', projectNumber: string, secretId: string, epochId: string },
+  input: { operationId: string, recordId: string, payload: Uint8Array }): Promise<ModeratorAccess<'pinned'>> {
+  if (typeof databaseUrl !== 'string' || !databaseUrl || !target || !['dev', 'prod'].includes(target.environment) ||
+      typeof target.projectNumber !== 'string' || !/^[1-9][0-9]{5,19}$/.test(target.projectNumber) ||
+      typeof target.secretId !== 'string' || !/^[a-zA-Z0-9_-]{1,255}$/.test(target.secretId) ||
+      typeof target.epochId !== 'string' || !uuid4.test(target.epochId) || !input ||
+      typeof input.operationId !== 'string' || !uuid4.test(input.operationId) ||
+      typeof input.recordId !== 'string' || !uuid4.test(input.recordId) || !(input.payload instanceof Uint8Array) ||
+      input.payload.byteLength < 1 || input.payload.byteLength > 16_384) throw new Error('Invalid pending removal')
+  const payload = Buffer.from(input.payload)
+  let record
+  try { record = decodeRecoveryRecord(payload, target.environment) } catch { throw new Error('Invalid pending removal') }
+  if (record.recordType !== 'intent' || record.operationId !== input.operationId || record.decision.kind !== 'removal') {
+    throw new Error('Invalid pending removal')
+  }
+  try {
+    return await withVerifiedModerator(databaseUrl, projectId, cookie, verifier, async (client, actor, subject) => {
+      if (record.actorId !== actor) throw new Error('Pending removal is ambiguous')
+      await client.query("SET LOCAL lock_timeout = '5s'")
+      await client.query("SET LOCAL statement_timeout = '10s'")
+      const result = await client.query<{ outcome: string }>('SELECT public.pin_pending_removal_sequence($1,$2,$3,$4,$5,$6,$7,$8) AS outcome',
+        [`firebase:${projectId}`, subject, input.operationId, input.recordId, payload.toString('utf8'),
+          target.projectNumber, target.secretId, target.epochId])
+      if (result.rows[0]?.outcome !== 'pinned') throw new Error('Pending removal is ambiguous')
+      return 'pinned' as const
+    }, pendingRemovalDatabasePool(databaseUrl))
+  } catch {
+    // A failed or uncertain commit cannot authorize an external append.
+    throw new Error('Pending removal unavailable')
+  }
+}
+
 /**
  * Persist an authorized pending removal and close the gate in one transaction.
  * This is unwired: it does not write the journal, remove content, prevent SQL
