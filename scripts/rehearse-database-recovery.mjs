@@ -12,8 +12,12 @@ import { dumpArguments, exportEncryptedBackup } from '../apps/worker/ops/export-
 import { encodeRecoveryConfirmation, encodeRecoveryHoldConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../packages/server/dist/recovery-journal-record.js'
 import { summarizeUnverifiedRecovery } from '../packages/server/dist/recovery-journal-plan.js'
 import { listUnverifiedRecoveryJournal, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../packages/server/dist/recovery-journal-storage.js'
+import { acquirePublicAccessLease } from '../packages/server/dist/public-access-lease.js'
+import { readPublishedIdea } from '../packages/server/dist/published-ideas.js'
+import { readMediaPreview } from '../packages/server/dist/media-preview.js'
 
 const { CRC32C } = createRequire(new URL('../packages/server/package.json', import.meta.url))('@google-cloud/storage')
+const pg = createRequire(new URL('../packages/server/package.json', import.meta.url))('pg')
 
 // The rehearsal owns every target it creates. It has no database or bucket inputs.
 const id = randomUUID()
@@ -81,6 +85,7 @@ try {
   await sql(source, `INSERT INTO idea_revisions(idea_id,version,content,review_state) SELECT i.id,1,'{"title":"Synthetic title","description":"Synthetic description"}'::jsonb,'approved' FROM ideas i JOIN contacts c ON c.id=i.author_contact_id WHERE c.normalized_email='${marker}@example.invalid'; INSERT INTO approved_revisions(idea_id,revision_id) SELECT r.idea_id,r.id FROM idea_revisions r JOIN ideas i ON i.id=r.idea_id JOIN contacts c ON c.id=i.author_contact_id WHERE c.normalized_email='${marker}@example.invalid'`)
   const ideaId = await sql(source, `SELECT i.id FROM ideas i JOIN contacts c ON c.id=i.author_contact_id WHERE c.normalized_email='${marker}@example.invalid'`)
   const revisionId = await sql(source, `SELECT r.id FROM idea_revisions r WHERE r.idea_id='${ideaId}'`)
+  const previewId = await sql(source, `INSERT INTO media_previews(idea_id,revision_id,object_name,generation,content_type,published) VALUES ('${ideaId}','${revisionId}','synthetic-preview','1','image/png',true) RETURNING id`)
   await sql(source, `CREATE ROLE ${reader} NOLOGIN; GRANT EXECUTE ON FUNCTION public.place_legal_hold_outcome(text,text,uuid,text,text) TO ${reader}`)
   const captured = await sql(source, `SELECT extract(epoch FROM recorded_at) * 1000 FROM synthetic_recovery_marker WHERE id='${marker}-before'`)
   const dumpStarted = Date.now()
@@ -240,10 +245,43 @@ try {
       summary.reviewOperations[0] !== holdOperation || summary.unmatchedConfirmations !== 0) {
     throw new Error('Synthetic journal summary failed verification')
   }
-  // This conservative local update suppresses the known removal while the
-  // target stays isolated. It is not a complete live reconciliation procedure.
-  await sql(target, `UPDATE ideas SET publication_state='withdrawn' WHERE id='${ideaId}'`)
-  const reconciledVisible = await sql(target, visibleQuery)
+  // The target stays isolated. Exercise the real projection and preview queries
+  // internally, without opening the gate or claiming complete reconciliation.
+  const recoveryPool = new pg.Pool({ connectionString: `postgres://idea_map:synthetic-local-only@127.0.0.1:${port}/${target}`,
+    max: 2, connectionTimeoutMillis: 5000 })
+  const imageBytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+  let previewReads = 0
+  const previewStorage = { bucket: bucket => ({ file: (name, options) => {
+    if (bucket !== 'synthetic-public' || name !== 'synthetic-preview' || options.preconditionOpts.ifGenerationMatch !== '1') {
+      throw new Error('Unexpected synthetic preview reference')
+    }
+    return { interceptors: [],
+      async getMetadata() { previewReads++; return [{ generation: '1', size: String(imageBytes.length), contentType: 'image/png' }] },
+      createReadStream() { return Readable.from([imageBytes]) },
+    }
+  } }) }
+  const readRecoveryContent = async () => {
+    const client = await recoveryPool.connect()
+    try {
+      return { idea: await readPublishedIdea('', ideaId, client),
+        preview: await readMediaPreview(client, previewStorage, 'synthetic-public', previewId, 1024) }
+    } finally { client.release() }
+  }
+  let reconciledVisible
+  try {
+    const before = await readRecoveryContent()
+    if (before.idea?.title !== 'Synthetic title' || !before.preview?.bytes.equals(imageBytes) || previewReads !== 1) {
+      throw new Error('Synthetic restored public content was not observed')
+    }
+    let lease
+    try { lease = await acquirePublicAccessLease(recoveryPool) }
+    catch (error) { if (error.message !== 'Public access unavailable') throw error }
+    if (lease) { await lease.release(); throw new Error('Synthetic restored gate permitted public access') }
+    await sql(target, `UPDATE ideas SET publication_state='withdrawn' WHERE id='${ideaId}'`)
+    const after = await readRecoveryContent()
+    if (after.idea !== null || after.preview !== null || previewReads !== 1) throw new Error('Synthetic removal remained publicly readable')
+    reconciledVisible = await sql(target, visibleQuery)
+  } finally { await recoveryPool.end() }
   const functionPrivilege = "SELECT has_function_privilege('public','public.place_legal_hold_outcome(text,text,uuid,text,text)','EXECUTE')"
   const sourcePublicExecute = await sql(source, functionPrivilege)
   const restoredPublicExecute = await sql(target, functionPrivilege)
@@ -272,7 +310,8 @@ try {
   if (!Number.isFinite(lossMs) || lossMs < 0) throw new Error('Synthetic data-loss interval could not be measured')
   console.log(JSON.stringify({ backupSeconds: (backupFinished - dumpStarted) / 1000,
     recoverySeconds: (Date.now() - recoveryStarted) / 1000, dataLossSeconds: lossMs / 1000,
-    migrations: Number(migrations), postgisRestored: true, syntheticRemovalSuppressed: true, heldEvidenceRequiresReconciliation: true,
+    migrations: Number(migrations), postgisRestored: true, syntheticRemovalSuppressed: true,
+    syntheticPreviewSuppressed: true, heldEvidenceRequiresReconciliation: true,
     holdAuthorityRequiresReconciliation: true,
     journalCoverageVerified: false, syntheticGrantAndRevocationRestored: true, missingRoleRejected: true, databaseAccessFenced: true }))
 } finally {
