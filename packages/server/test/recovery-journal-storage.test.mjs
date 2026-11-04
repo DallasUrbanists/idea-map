@@ -6,7 +6,7 @@ import { compareCurrentRecoveryJournalRecord, listUnverifiedRecoveryJournal, rea
 import { encodeRecoveryConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
 
 const target = { environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789' }
-const bucketMetadata = async () => [{ name: target.bucket, projectNumber: target.projectNumber,
+const bucketMetadata = async () => [{ name: target.bucket, projectNumber: target.projectNumber, generation: '100', metageneration: '1',
   iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
   versioning: { enabled: true }, softDeletePolicy: { retentionDurationSeconds: '604800' } }]
 const id = '11111111-1111-4111-8111-111111111111'
@@ -319,4 +319,24 @@ test('journal inventory refuses a disabled soft-delete policy even if a listing 
   }) }
   await assert.rejects(listUnverifiedRecoveryJournal(storage, target), /could not be verified/)
   assert.equal(lists, 0)
+})
+
+test('journal inventory rejects bucket replacement or policy changes during listing', async () => {
+  const [safe] = await bucketMetadata()
+  for (const last of [
+    { ...safe, generation: '101' },
+    { ...safe, metageneration: '2' },
+    { ...safe, softDeletePolicy: { retentionDurationSeconds: '0' } },
+    { ...safe, generation: undefined },
+  ]) {
+    let calls = 0
+    const storage = { bucket: () => ({
+      async getMetadata() { return [calls++ === 0 ? safe : last] },
+      async getFiles() { return [[], null] },
+    }) }
+    await assert.rejects(listUnverifiedRecoveryJournal(storage, target), /could not be verified/)
+    assert.equal(calls, 2)
+  }
+  const missingIdentity = { bucket: () => ({ async getMetadata() { return [{ ...safe, generation: undefined }] } }) }
+  await assert.rejects(listUnverifiedRecoveryJournal(missingIdentity, target), /could not be verified/)
 })

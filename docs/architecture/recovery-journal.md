@@ -159,6 +159,10 @@ The inventory also fails if the bucket's current soft-delete policy is disabled:
 older soft-deleted records can remain recoverable under their original policy,
 but the soft-deleted listing requires an enabled policy. Review the policy
 history and retained records before relying on the inventory.
+It verifies the bucket again after both listings and rejects a change in its
+generation or metadata generation. This detects a bucket replacement or
+metadata change during the inventory; it does not establish writer fencing,
+effective permissions, or journal coverage.
 
 A checkpoint comparison helper can identify missing, changed, or additional
 record IDs relative to a separately supplied list of exact generations,

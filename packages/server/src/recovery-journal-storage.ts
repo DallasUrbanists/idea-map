@@ -33,7 +33,7 @@ async function verifiedBucket(storage: Storage, target: Target, timeoutMs: numbe
     if (requireSoftDeletedListing && Number(metadata.softDeletePolicy?.retentionDurationSeconds) === 0) {
       throw new Error('Soft-deleted journal inventory cannot be verified')
     }
-    return bucket
+    return { bucket, metadata }
   } finally { if (timer) clearTimeout(timer) }
 }
 
@@ -67,7 +67,7 @@ export async function writeRecoveryJournalRecord(storage: Storage,
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const path = `idea-map-v2/${target.environment}/recovery-journal/${recordId}.json`
-    const bucket = await verifiedBucket(storage, target, remainingTime(deadline))
+    const { bucket } = await verifiedBucket(storage, target, remainingTime(deadline))
     const remaining = remainingTime(deadline)
     const stream = bucket.file(path).createWriteStream({
       resumable: false, validation: 'crc32c', timeout: remaining, preconditionOpts: { ifGenerationMatch: 0 },
@@ -145,7 +145,13 @@ Promise<{ references: { recordId: string, generation: string, metageneration: st
   const names = new Set<string>()
   const deadline = performance.now() + 30_000
   try {
-    const bucket = await verifiedBucket(storage, target, Math.min(5000, remainingTime(deadline)), true)
+    const { bucket, metadata: before } = await verifiedBucket(storage, target, Math.min(5000, remainingTime(deadline)), true)
+    if (typeof before.generation !== 'string' || !/^[1-9][0-9]*$/.test(before.generation) ||
+        typeof before.metageneration !== 'string' || !/^[1-9][0-9]*$/.test(before.metageneration)) {
+      throw new Error('Journal bucket identity is ambiguous')
+    }
+    const bucketGeneration = before.generation
+    const bucketMetageneration = before.metageneration
     const listPage = async (mode: 'versions' | 'softDeleted', pageToken?: string) => {
       const remaining = remainingTime(deadline)
       let timer: ReturnType<typeof setTimeout> | undefined
@@ -188,6 +194,12 @@ Promise<{ references: { recordId: string, generation: string, metageneration: st
       }
       if (!finished) throw new Error('Journal inventory has too many pages')
     }
+    // Detect a bucket replacement or metadata change across the two listings.
+    // This is not proof of writer fencing or of effective IAM permissions.
+    const { metadata: after } = await verifiedBucket(storage, target, Math.min(5000, remainingTime(deadline)), true)
+    if (after.generation !== bucketGeneration || after.metageneration !== bucketMetageneration) {
+      throw new Error('Journal bucket changed during inventory')
+    }
     return { references, coverageVerified: false, softDeletedChecked: true }
   } catch {
     throw new Error('Journal inventory could not be verified')
@@ -209,7 +221,7 @@ export async function compareCurrentRecoveryJournalRecord(storage: Storage, targ
   try {
     decodeRecoveryRecord(bytes, target.environment)
     const path = `idea-map-v2/${target.environment}/recovery-journal/${recordId}.json`
-    const bucket = await verifiedBucket(storage, target, remainingTime(deadline))
+    const { bucket } = await verifiedBucket(storage, target, remainingTime(deadline))
     const file = bucket.file(path)
     const metadata = async () => {
       let timer: ReturnType<typeof setTimeout> | undefined

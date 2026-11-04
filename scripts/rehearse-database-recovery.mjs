@@ -118,7 +118,7 @@ try {
   const entries = new Map()
   const journal = { bucket: bucket => {
     if (bucket !== journalTarget.bucket) throw new Error('Unexpected synthetic journal bucket')
-    return { async getMetadata() { return [{ name: bucket, projectNumber: journalTarget.projectNumber,
+    return { async getMetadata() { return [{ name: bucket, projectNumber: journalTarget.projectNumber, generation: '100', metageneration: '1',
       iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
       versioning: { enabled: true }, softDeletePolicy: { retentionDurationSeconds: '604800' } }] },
     async getFiles(query) {
