@@ -106,14 +106,20 @@ alert. Review collection limits and provider metrics before scheduling it.
 ## Prepare scheduled collection
 
 The existing foundation can optionally define a Cloud Run job that reuses the
-worker image to assess these two snapshots. The collector and its alerts start
-disabled; the scheduler starts paused. No additional queue
-or database is created. A distinct service account receives queue-scoped
-`cloudtasks.tasks.list` and access to an existing operations-only database
-secret. That database identity needs the column-scoped read-only grants
-described above; they permit reading individual values, so review and restrict it. Secret
-Manager grants access to the secret rather than a single version, even though
-the job pins a version.
+worker image to assess these two snapshots. The collector runs independently of
+the worker service, so it can report on that service's backlog while the service
+is unavailable. Its separate service account and read-only database role avoid
+adding queue-list and operations-database access to the worker's credentials.
+This option adds a job, scheduler, and service identities to the foundation; it
+does not add a queue or
+database. The collector and its alerts start disabled; the scheduler starts
+paused.
+
+The collector's service account receives queue-scoped `cloudtasks.tasks.list`
+and access to an existing operations-only database secret. That database identity
+needs the column-scoped read-only grants described above; they permit reading
+individual values, so review and restrict it. Secret Manager grants access to the
+secret rather than a single version, even though the job pins a version.
 
 Before a separately authorized plan, review existing jobs, alert policies,
 inherited permissions, notification channels, and the connection budget. Use
