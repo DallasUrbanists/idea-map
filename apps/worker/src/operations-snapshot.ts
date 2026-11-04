@@ -3,6 +3,7 @@ import type pg from 'pg'
 /** Read aggregate database signals without returning job or message identifiers. */
 export async function readOperationsSnapshot(pool: pg.Pool) {
   const client = await pool.connect()
+  let destroy = false
   try {
     await client.query('BEGIN READ ONLY')
     await client.query("SET LOCAL statement_timeout = '5s'")
@@ -39,9 +40,9 @@ export async function readOperationsSnapshot(pool: pg.Pool) {
     await client.query('COMMIT')
     return result.rows[0]
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => {})
+    try { await client.query('ROLLBACK') } catch { destroy = true }
     throw error
   } finally {
-    client.release()
+    client.release(destroy)
   }
 }

@@ -4,6 +4,7 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { assessOperations, operationsEvents } from '../dist/operations-assessment.js'
 import { collectOperations } from '../dist/operations-monitor.js'
+import { readOperationsSnapshot } from '../dist/operations-snapshot.js'
 
 const limits = { backlogSeconds: 60, overdueSeconds: 120, queueSeconds: 300, emailEvents: 2, databaseBytes: '9007199254740993' }
 const emptyDatabase = () => ({ public_access_open: true, database_size_bytes: '0', backlog: { unpublished: 0, oldest_seconds: null }, overdue: { count: 0, oldest_seconds: null },
@@ -89,4 +90,20 @@ test('collector combines the existing snapshots and never completes a partial ob
   ])
   await assert.rejects(collectOperations(pool, { async request() { return { status: 403, data: {} } } }, queue, limits))
   assert.equal(releases, 2)
+})
+
+test('a failed snapshot discards a connection when rollback also fails', async () => {
+  let released, rollbackAttempted = false
+  const original = new Error('synthetic query failure')
+  const pool = { async connect() { return {
+    async query(sql) {
+      if (sql.includes('WITH snapshot AS')) throw original
+      if (sql === 'ROLLBACK') { rollbackAttempted = true; throw new Error('synthetic rollback failure') }
+      return { rows: [] }
+    },
+    release(destroy) { released = destroy },
+  } } }
+  await assert.rejects(readOperationsSnapshot(pool), error => error === original)
+  assert.equal(rollbackAttempted, true)
+  assert.equal(released, true)
 })
