@@ -325,6 +325,9 @@ times. `dailyFreshEnough` and `weeklyFreshEnough` are false when the respective
 export is absent or older than 24 hours or seven days. The command then proposes
 no candidates and exits nonzero. These conservative limits can signal a gap
 during a delayed run. This diagnostic does not schedule checks or send alerts.
+A lower-level planner also suppresses candidates when even the latest upload
+completion is too old; that check alone cannot establish backup freshness. The
+inventory additionally checks the recorded backup start time and completion.
 A fresh export alone does not prove that the deployed service meets its data-loss
 objective.
 

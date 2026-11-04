@@ -50,6 +50,24 @@ test('a missing week prevents deletion even when older copies satisfy the count'
   assert.deepEqual(result.candidates, [])
 })
 
+test('stale upload times cannot yield candidates even with consecutive older groups', () => {
+  const daily = inventory()
+  const dailyBoundary = planBackupRetention({ ...daily, now: new Date(now.getTime() + 86_400_000) })
+  assert.equal(dailyBoundary.retentionSatisfied, true)
+  assert.ok(dailyBoundary.candidates.length > 0)
+  const dailyStale = planBackupRetention({ ...daily, now: new Date(now.getTime() + 86_400_001) })
+  assert.equal(dailyStale.retentionSatisfied, true)
+  assert.deepEqual(dailyStale.candidates, [])
+  const weekly = inventory()
+  weekly.objects = weekly.objects.filter(item => item.name !== object('weekly', 0).name)
+  const weeklyBoundary = planBackupRetention(weekly)
+  assert.equal(weeklyBoundary.retentionSatisfied, true)
+  assert.ok(weeklyBoundary.candidates.length > 0)
+  const weeklyStale = planBackupRetention({ ...weekly, now: new Date(now.getTime() + 1) })
+  assert.equal(weeklyStale.retentionSatisfied, true)
+  assert.deepEqual(weeklyStale.candidates, [])
+})
+
 test('retention fails closed for insufficient, incomplete, ambiguous, or unexpected inventory', () => {
   const baseline = inventory()
   assert.throws(() => planBackupRetention({ ...baseline, complete: false }))

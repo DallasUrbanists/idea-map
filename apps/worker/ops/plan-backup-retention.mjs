@@ -44,7 +44,11 @@ export function planBackupRetention({ environment, complete, objects, now = new 
     if (!consecutive[kind]) retentionSatisfied = false
     keepGroups[kind] = new Set(groups.slice(0, minimum))
   }
-  const candidates = entries.filter(entry => retentionSatisfied && !keepGroups[entry.kind].has(entry.group) &&
+  // Upload completion time is only a necessary freshness check: the caller
+  // must separately verify the actual backup start and completion record.
+  const recentDaily = entries.some(entry => entry.kind === 'daily' && now.getTime() - entry.created <= DAY)
+  const recentWeekly = entries.some(entry => entry.kind === 'weekly' && now.getTime() - entry.created <= 7 * DAY)
+  const candidates = entries.filter(entry => retentionSatisfied && recentDaily && recentWeekly && !keepGroups[entry.kind].has(entry.group) &&
     now.getTime() - entry.created >= (entry.kind === 'daily' ? 15 : 63) * DAY &&
     !entry.eventBasedHold && !entry.temporaryHold &&
     (!entry.retentionExpirationTime || Date.parse(entry.retentionExpirationTime) <= now.getTime()) &&
