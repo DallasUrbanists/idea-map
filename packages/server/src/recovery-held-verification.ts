@@ -3,6 +3,7 @@ import { decodeRecoveryRecord } from './recovery-journal-record.js'
 import { summarizeUnverifiedRecovery } from './recovery-journal-plan.js'
 import { matchUnverifiedHeldManifest } from './recovery-held-manifest.js'
 import { readUnverifiedHeldMaterial } from './recovery-journal-storage.js'
+import { readUnverifiedRecoverySequence, type RecoverySequenceTransport } from './recovery-sequence-storage.js'
 
 type Target = { environment: 'dev' | 'prod', bucket: string, projectNumber: string }
 
@@ -12,11 +13,12 @@ type Target = { environment: 'dev' | 'prod', bucket: string, projectNumber: stri
  * prove a complete journal, protect future retention, or authorize deletion.
  */
 export async function verifyUnverifiedHeldCapture(storage: Storage, target: Target,
-  intentBytes: Uint8Array, confirmationBytes: Uint8Array, timeoutMs = 120_000) {
+  intentBytes: Uint8Array, confirmationBytes: Uint8Array, timeoutMs = 120_000, maxTotalBytes = 128 * 1024 * 1024) {
   if (!target || !['dev', 'prod'].includes(target.environment) ||
       !(intentBytes instanceof Uint8Array) || intentBytes.byteLength < 1 || intentBytes.byteLength > 16_384 ||
       !(confirmationBytes instanceof Uint8Array) || confirmationBytes.byteLength < 1 || confirmationBytes.byteLength > 16_384 ||
-      !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 120_000) throw new Error('Invalid held capture')
+      !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 120_000 ||
+      !Number.isSafeInteger(maxTotalBytes) || maxTotalBytes < 1 || maxTotalBytes > 128 * 1024 * 1024) throw new Error('Invalid held capture')
   const destination = { environment: target.environment, bucket: target.bucket, projectNumber: target.projectNumber }
   const intent = Buffer.from(intentBytes), confirmation = Buffer.from(confirmationBytes)
   const deadline = performance.now() + timeoutMs
@@ -35,7 +37,7 @@ export async function verifyUnverifiedHeldCapture(storage: Storage, target: Targ
     const bytes = await readUnverifiedHeldMaterial(storage, destination, reference.artifactId, reference, remaining())
     const { manifest } = matchUnverifiedHeldManifest(intent, confirmation, bytes, destination.environment)
     const totalBytes = manifest.entries.reduce((total, entry) => total + entry.size, 0)
-    if (totalBytes > 128 * 1024 * 1024) throw new Error('Held capture is too large')
+    if (totalBytes > maxTotalBytes) throw new Error('Held capture is too large')
     let next = 0, stopped = false
     const check = async () => {
       while (!stopped) {
@@ -53,4 +55,46 @@ export async function verifyUnverifiedHeldCapture(storage: Storage, target: Targ
     // Artifact references, content, and provider responses are private.
     throw new Error('Held capture could not be verified')
   }
+}
+
+/**
+ * Check the selected captures named by a numbered sequence, while preserving
+ * every unresolved hold for manual review. This does not authenticate the
+ * sequence, authority or scope, nor establish complete held-material coverage.
+ */
+export async function verifySequenceHeldCaptures(reader: RecoverySequenceTransport,
+  sequenceTarget: { environment: 'dev' | 'prod', epochId: string, projectNumber: string, secretId: string },
+  fenceVersion: string, fenceNonce: string, storage: Storage, heldTarget: Target, timeoutMs = 120_000) {
+  if (!sequenceTarget || !heldTarget || sequenceTarget.environment !== heldTarget.environment ||
+      !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 120_000) throw new Error('Invalid held capture')
+  const sequence = { ...sequenceTarget }, destination = { ...heldTarget }
+  const deadline = performance.now() + timeoutMs
+  const remaining = () => {
+    const value = Math.ceil(deadline - performance.now())
+    if (value < 1) throw new Error('Held capture verification timed out')
+    return value
+  }
+  try {
+    const inventory = await readUnverifiedRecoverySequence(reader, sequence, fenceVersion, fenceNonce, remaining())
+    const intents = new Map<string, Uint8Array>(), confirmations = new Map<string, Uint8Array>()
+    for (const { payload } of inventory.records) {
+      const record = decodeRecoveryRecord(payload, sequence.environment)
+      if (record.recordType === 'intent' && record.decision.kind === 'hold_placement') intents.set(record.operationId, payload)
+      else if (record.recordType === 'hold_commit_confirmation' && record.version === 3) confirmations.set(record.operationId, payload)
+    }
+    if (intents.size > 100) throw new Error('Held capture inventory is too large')
+    let checkedCaptures = 0, checkedArtifacts = 0, totalBytes = 0, incompletePlacements = 0
+    for (const [operationId, intent] of intents) {
+      const confirmation = confirmations.get(operationId)
+      if (!confirmation) { incompletePlacements++; continue }
+      const budget = Math.min(128 * 1024 * 1024, 512 * 1024 * 1024 - totalBytes)
+      if (budget < 1) throw new Error('Held capture inventory is too large')
+      const checked = await verifyUnverifiedHeldCapture(storage, destination, intent, confirmation, remaining(), budget)
+      checkedCaptures++; checkedArtifacts += checked.checkedArtifacts; totalBytes += checked.totalBytes
+    }
+    remaining()
+    return { checkedCaptures, checkedArtifacts, totalBytes, incompletePlacements,
+      reviewOperations: inventory.summary.reviewOperations.length, unmatchedConfirmations: inventory.summary.unmatchedConfirmations,
+      coverageVerified: false as const, authorityVerified: false as const }
+  } catch { throw new Error('Held capture inventory could not be verified') }
 }

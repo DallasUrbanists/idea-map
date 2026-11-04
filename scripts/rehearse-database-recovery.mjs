@@ -13,7 +13,7 @@ import { decodeRecoveryRecord, encodeRecoveryConfirmation, encodeRecoveryHoldMan
 import { encodeRecoverySequenceEntry } from '../packages/server/dist/recovery-sequence.js'
 import { compareUnverifiedRecoveryCheckpoint } from '../packages/server/dist/recovery-journal-plan.js'
 import { encodeUnverifiedHeldManifest } from '../packages/server/dist/recovery-held-manifest.js'
-import { verifyUnverifiedHeldCapture } from '../packages/server/dist/recovery-held-verification.js'
+import { verifySequenceHeldCaptures, verifyUnverifiedHeldCapture } from '../packages/server/dist/recovery-held-verification.js'
 import { prepareUnverifiedRecoveryInventory } from '../packages/server/dist/recovery-inventory.js'
 import { suppressKnownRemovalsFromSequence, suppressUnverifiedRestoredRemovals } from '../packages/server/dist/recovery-suppression.js'
 import { listUnverifiedRecoveryJournal, writeRecoveryJournalRecord, writeUnverifiedHeldMaterial } from '../packages/server/dist/recovery-journal-storage.js'
@@ -353,6 +353,10 @@ try {
         checked.coverageVerified !== false || checked.checkedArtifacts !== 1 || checked.totalBytes !== heldReference.size) {
       throw new Error('Synthetic held material readback failed')
     }
+    const sequenceHeld = await verifySequenceHeldCaptures(sequenceReader, sequenceTarget, sequenceFenceVersion, sequenceFenceNonce, journal, journalTarget)
+    if (sequenceHeld.checkedCaptures !== 1 || sequenceHeld.checkedArtifacts !== 1 || sequenceHeld.totalBytes !== heldReference.size ||
+        sequenceHeld.incompletePlacements !== 0 || sequenceHeld.reviewOperations !== 1 || sequenceHeld.unmatchedConfirmations !== 0 ||
+        sequenceHeld.coverageVerified !== false || sequenceHeld.authorityVerified !== false) throw new Error('Synthetic sequence held capture failed verification')
   } finally {
     if (inventoryEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
     else process.env.STORAGE_EMULATOR_HOST = inventoryEmulator

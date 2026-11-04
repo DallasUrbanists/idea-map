@@ -5,8 +5,9 @@ import { after, test } from 'node:test'
 import { CRC32C } from '@google-cloud/storage'
 import { readUnverifiedHeldMaterial, writeUnverifiedHeldMaterial } from '../dist/recovery-journal-storage.js'
 import { encodeUnverifiedHeldManifest } from '../dist/recovery-held-manifest.js'
-import { encodeRecoveryHoldManifestConfirmation, encodeRecoveryIntent } from '../dist/recovery-journal-record.js'
-import { verifyUnverifiedHeldCapture } from '../dist/recovery-held-verification.js'
+import { encodeRecoveryHoldManifestConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
+import { encodeRecoverySequenceEntry } from '../dist/recovery-sequence.js'
+import { verifySequenceHeldCaptures, verifyUnverifiedHeldCapture } from '../dist/recovery-held-verification.js'
 
 const target = { environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789' }
 const artifact = '11111111-1111-4111-8111-111111111111'
@@ -120,9 +121,39 @@ test('verification reads every selected generation but never asserts hold covera
     { artifactId: manifestId, generation: manifestRef.generation, size: manifestRef.size, sha256: manifestRef.sha256 })
   assert.deepEqual(await verifyUnverifiedHeldCapture(storage, target, intent, confirmation),
     { checkedArtifacts: 2, totalBytes: contents.length + secondBytes.length, coverageVerified: false })
+  const readsBeforeBudget = reads()
+  await assert.rejects(verifyUnverifiedHeldCapture(storage, target, intent, confirmation, 120_000, contents.length), /could not be verified/)
+  assert.equal(reads() - readsBeforeBudget, 1) // The manifest is checked before fetching artifacts.
+  const sequenceTarget = { environment: 'dev', projectNumber: '123456789', secretId: 'synthetic-journal', epochId: mediaId }
+  const nonce = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const base = { environment: 'dev', epochId: sequenceTarget.epochId }
+  const entries = [encodeRecoverySequenceEntry({ ...base, kind: 'baseline', checkpointDigest: 'a'.repeat(64) }),
+    encodeRecoverySequenceEntry({ ...base, kind: 'decision', recordId: operationId, data: Buffer.from(intent).toString('base64') }),
+    encodeRecoverySequenceEntry({ ...base, kind: 'decision', recordId: recoveryConfirmationRecordId(operationId), data: Buffer.from(confirmation).toString('base64') }),
+    encodeRecoverySequenceEntry({ ...base, kind: 'fence', nonce })]
+  const parent = `projects/${sequenceTarget.projectNumber}/secrets/${sequenceTarget.secretId}`
+  const sequenceReader = { async request(method, path) {
+    const match = new RegExp(`^${parent}/versions/([1-9][0-9]*):access$`).exec(path)
+    assert.equal(method, 'GET'); assert.ok(match)
+    const bytes = entries[Number(match[1]) - 1]
+    if (!bytes) return { status: 404, data: null }
+    const crc = new CRC32C(); crc.update(Buffer.from(bytes))
+    return { status: 200, data: { name: `${parent}/versions/${match[1]}`,
+      payload: { data: Buffer.from(bytes).toString('base64'), dataCrc32c: String(Buffer.from(crc.toString(), 'base64').readUInt32BE(0)) } } }
+  } }
+  assert.deepEqual(await verifySequenceHeldCaptures(sequenceReader, sequenceTarget, '4', nonce, storage, target),
+    { checkedCaptures: 1, checkedArtifacts: 2, totalBytes: contents.length + secondBytes.length, incompletePlacements: 0,
+      reviewOperations: 1, unmatchedConfirmations: 0, coverageVerified: false, authorityVerified: false })
+  const confirmationFrame = entries.splice(2, 1)[0]
+  assert.deepEqual(await verifySequenceHeldCaptures(sequenceReader, sequenceTarget, '3', nonce, storage, target),
+    { checkedCaptures: 0, checkedArtifacts: 0, totalBytes: 0, incompletePlacements: 1,
+      reviewOperations: 1, unmatchedConfirmations: 0, coverageVerified: false, authorityVerified: false })
+  entries.splice(2, 0, confirmationFrame)
+  await assert.rejects(verifySequenceHeldCaptures(sequenceReader, sequenceTarget, '4', nonce, storage, { ...target, environment: 'prod' }), /Invalid/)
   const mediaPath = `idea-map-v2/dev/held-material/${secondId}.bin`
   objects.get(mediaPath).body = Buffer.alloc(secondBytes.length, 1)
   await assert.rejects(verifyUnverifiedHeldCapture(storage, target, intent, confirmation), /could not be verified/)
+  await assert.rejects(verifySequenceHeldCaptures(sequenceReader, sequenceTarget, '4', nonce, storage, target), /could not be verified/)
   objects.delete(`idea-map-v2/dev/held-material/${secondId}.bin`)
   await assert.rejects(verifyUnverifiedHeldCapture(storage, target, intent, confirmation), error =>
     error.message === 'Held capture could not be verified' && !error.message.includes('private'))

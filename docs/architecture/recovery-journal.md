@@ -600,6 +600,11 @@ authenticate the scope, capture all evidence, implement retention, legal-hold
 release or disposition, or establish complete recovery. Do not use them to
 authorize deletion or enable a live hold workflow. Review permissions for the
 separate `held-material` prefix before any live integration.
+An unwired sequence check finds the recorded hold placements and verifies each
+available version-three capture. It reports placements without captures and
+other decisions requiring review; it does not authenticate the journal or hold
+authority. It checks at most 100 placements and 512 MiB of selected artifacts
+within two minutes, with the per-capture limits still applying.
 The retention and disposition work in
 [#56](https://github.com/DallasUrbanists/idea-map/issues/56) owns application-data
 lifecycle integration. Coordinate its guarded mutation paths and scoped evidence
