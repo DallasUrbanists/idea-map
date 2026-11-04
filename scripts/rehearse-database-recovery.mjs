@@ -10,7 +10,7 @@ import { pipeline } from 'node:stream/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { dumpArguments, exportEncryptedBackup } from '../apps/worker/ops/export-encrypted-backup.mjs'
 import { encodeRecoveryConfirmation, encodeRecoveryHoldConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../packages/server/dist/recovery-journal-record.js'
-import { summarizeUnverifiedRecovery } from '../packages/server/dist/recovery-journal-plan.js'
+import { compareUnverifiedRecoveryCheckpoint, summarizeUnverifiedRecovery } from '../packages/server/dist/recovery-journal-plan.js'
 import { listUnverifiedRecoveryJournal, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../packages/server/dist/recovery-journal-storage.js'
 import { acquirePublicAccessLease } from '../packages/server/dist/public-access-lease.js'
 import { readPublishedIdea } from '../packages/server/dist/published-ideas.js'
@@ -164,6 +164,7 @@ try {
   const removalOperation = randomUUID()
   const holdOperation = randomUUID()
   let committedHoldId
+  let syntheticCheckpoint
   const authorizedAt = new Date().toISOString()
   const base = { environment: 'dev', ideaId, actorId: director, authorizedAt }
   const previousEmulator = process.env.STORAGE_EMULATOR_HOST
@@ -174,6 +175,8 @@ try {
     await writeRecoveryJournalRecord(journal, journalTarget, randomUUID(), encodeRecoveryIntent({ ...base, operationId: holdOperation,
       decision: { kind: 'hold_placement', caseReference: 'synthetic case', reason: 'synthetic preservation',
         authorizationReference: 'synthetic authority', scope: 'synthetic idea' } }))
+    // This fixture checkpoint is not an independent production trust anchor.
+    syntheticCheckpoint = (await listUnverifiedRecoveryJournal(journal, journalTarget)).references
     const removed = await sql(source, `SELECT public.remove_published_idea('firebase:demo-idea-map','${marker}','${ideaId}','${revisionId}','other','synthetic removal')`)
     if (removed !== 'removed') throw new Error('Synthetic removal failed')
     const holdOutcome = await sql(source, `SELECT public.place_legal_hold_outcome('firebase:demo-idea-map','${marker}','${ideaId}','synthetic case','synthetic preservation')`)
@@ -233,6 +236,14 @@ try {
     const inventory = await listUnverifiedRecoveryJournal(journal, journalTarget)
     if (inventory.coverageVerified !== false || inventory.softDeletedChecked !== true || inventory.references.length !== 4) {
       throw new Error('Synthetic journal inventory failed verification')
+    }
+    const comparison = compareUnverifiedRecoveryCheckpoint(syntheticCheckpoint, inventory.references)
+    if (comparison.coverageVerified !== false || comparison.missing.length || comparison.changed.length ||
+        comparison.additional.length !== 2) throw new Error('Synthetic checkpoint comparison failed')
+    const withoutCheckpointRecord = inventory.references.filter(reference => reference.recordId !== syntheticCheckpoint[0].recordId)
+    const missing = compareUnverifiedRecoveryCheckpoint(syntheticCheckpoint, withoutCheckpointRecord)
+    if (missing.coverageVerified !== false || missing.missing.length !== 1 || missing.missing[0] !== syntheticCheckpoint[0].recordId) {
+      throw new Error('Synthetic missing checkpoint record was not detected')
     }
     const records = await Promise.all(inventory.references.map(reference =>
       readRecoveryJournalRecord(journal, journalTarget, reference.recordId, reference.generation)))

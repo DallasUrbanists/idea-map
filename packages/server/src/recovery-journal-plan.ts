@@ -59,3 +59,38 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
   return { removals: [...removals].sort(), holdPlacements: [...holdPlacements].sort(), holdReviewIdeas: [...holdReviewIdeas].sort(), holdIdentities,
     reviewOperations: [...reviewOperations].sort(), unmatchedConfirmations, coverageVerified: false as const }
 }
+
+type JournalReference = { recordId: string, generation: string }
+const recordId = /^[0-9a-f]{8}-[0-9a-f]{4}-[48][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+/**
+ * Compare an independently supplied checkpoint with an inventory. This reports
+ * discrepancies; it does not establish checkpoint authenticity or completeness.
+ */
+export function compareUnverifiedRecoveryCheckpoint(checkpoint: JournalReference[], current: JournalReference[]) {
+  function index(references: JournalReference[]) {
+    if (!Array.isArray(references) || references.length > 10_000) throw new Error('Recovery checkpoint is invalid')
+    const result = new Map<string, string>()
+    for (const reference of references) {
+      if (!reference || typeof reference !== 'object' || Object.keys(reference).sort().join(',') !== 'generation,recordId' ||
+          typeof reference.recordId !== 'string' || !recordId.test(reference.recordId) ||
+          typeof reference.generation !== 'string' || !/^[1-9][0-9]*$/.test(reference.generation) ||
+          reference.generation.length > 20 || result.has(reference.recordId)) {
+        throw new Error('Recovery checkpoint is invalid')
+      }
+      result.set(reference.recordId, reference.generation)
+    }
+    return result
+  }
+  const expected = index(checkpoint)
+  const observed = index(current)
+  const missing: string[] = []
+  const changed: string[] = []
+  const additional: string[] = []
+  for (const [id, generation] of expected) {
+    if (!observed.has(id)) missing.push(id)
+    else if (observed.get(id) !== generation) changed.push(id)
+  }
+  for (const id of observed.keys()) if (!expected.has(id)) additional.push(id)
+  return { missing: missing.sort(), changed: changed.sort(), additional: additional.sort(), coverageVerified: false as const }
+}

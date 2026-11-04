@@ -156,6 +156,14 @@ request deadline does not cancel an in-flight storage request. Review the reader
 bucket-wide list permission before use. Permanently deleted records, missing
 tails, older backups, and unauthorized writers need separate evidence.
 
+A checkpoint comparison helper can identify missing, changed, or additional
+record IDs relative to a separately supplied list of exact generations. Duplicate
+or malformed references fail the comparison. Its output is private; a changed
+generation requires investigation even if its content appears similar. A matching
+list does not authenticate the checkpoint, prove it was independently preserved,
+detect a missing tail after it, verify writer fencing, or establish coverage.
+The helper cannot reopen access or apply decisions.
+
 The checkpoint needs a coordinated boundary, not merely a timestamp. Suspend
 all covered mutations, drain in-flight transactions and journal writes, verify
 the current decision state and writer restrictions, and record the checkpoint

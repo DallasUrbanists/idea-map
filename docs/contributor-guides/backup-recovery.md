@@ -63,6 +63,10 @@ also checks that the initially closed gate is present; it does not show that an
 older archive contains a later gate closure. These checks do not establish a
 hosted network or IAM fence.
 
+The rehearsal also compares its synthetic journal inventory with an earlier
+fixture checkpoint and detects a deliberately omitted reference. That fixture is
+not an independently protected checkpoint and does not establish coverage.
+
 The JSON result reports backup and recovery elapsed seconds, the interval between
 the saved and later synthetic records, and verification results. Recovery starts before the empty
 target is created and ends after database checks. The interval measures only the
