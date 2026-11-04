@@ -55,4 +55,8 @@ function closeOnTouch(event: PointerEvent) {
   text-wrap: pretty;
   overflow-wrap: anywhere;
 }
+.tooltip-warning {
+  background: var(--color-warning);
+  color: var(--color-warning-text);
+}
 </style>

@@ -43,7 +43,7 @@ test('icons and emojis docs link to each other and all source tokens are readabl
   for (const [name, other] of [['icons', 'Emojis'], ['emojis', 'Icons']]) {
     await page.goto(`/?path=/docs/components-${name}--docs&globals=theme:dark`)
     const frame = page.frameLocator('#storybook-preview-iframe')
-    await expect(frame.locator('h1')).toHaveText(new RegExp(name, 'i'))
+    await expect(frame.locator('.sbdocs-content h1')).toHaveText(new RegExp(name, 'i'))
     const link = frame.locator('.sbdocs-content > p').first().getByRole('link', { name: other })
     await expect(link).toHaveAttribute('href', `./?path=/docs/components-${other.toLowerCase()}--docs`)
     await expect(frame.locator('.docblock-source pre span').first()).toBeVisible()
@@ -272,7 +272,7 @@ test('spacing and container samples use sorted token values', async ({ page }) =
     await expect(page.getByRole('heading', { name: /Corners$/ })).toBeVisible()
     await expect(page.getByRole('heading', { name: /Shadows$/ })).toBeVisible()
     for (const [region, names, property, expected] of [
-      ['Corner tokens', ['Square', 'Control', 'Card', 'Pill'], 'borderTopLeftRadius', ['0px', '4px', '8px', '999px']],
+      ['Corner tokens', ['Square', 'Control', 'Card', 'Pill'], 'borderTopLeftRadius', ['0px', '4px', '12px', '999px']],
       ['Shadow tokens', ['Grounded', 'Glow', 'Drag', 'Floating'], 'boxShadow', null],
     ]) {
       const table = page.getByRole('region', { name: region }).locator('table')
@@ -315,7 +315,7 @@ test('spacing and container samples use sorted token values', async ({ page }) =
         document.body.appendChild(shadowProbe)
         const expectedShadow = getComputedStyle(shadowProbe).boxShadow
         shadowProbe.remove()
-        return style.borderTopLeftRadius === ['0px', '4px', '8px', '999px'][i] && style.boxShadow === expectedShadow
+        return style.borderTopLeftRadius === ['0px', '4px', '12px', '999px'][i] && style.boxShadow === expectedShadow
       }))
       probe.remove()
       return result
@@ -354,11 +354,11 @@ test('usage preview cards follow toolbar changes and retain the selected theme a
         await expect(preview).toHaveCSS('background-color', theme === 'dark' ? 'rgb(38, 49, 62)' : 'rgb(255, 255, 255)')
         await expect(preview).toHaveCSS('color', theme === 'dark' ? 'rgb(242, 244, 246)' : 'rgb(40, 50, 62)')
         await expect(preview).toHaveCSS('border-color', theme === 'dark' ? 'rgb(70, 84, 99)' : 'rgb(215, 222, 230)')
-        await expect(preview).toHaveCSS('border-radius', '8px')
+        await expect(preview).toHaveCSS('border-radius', '12px')
         await expect(preview).toHaveCSS('box-shadow', 'none')
       }
       if (component === 'button') await expect(frame.getByRole('button', { name: 'Show details', exact: true })).toHaveCSS('color', theme === 'dark' ? 'rgb(242, 244, 246)' : 'rgb(40, 50, 62)')
-      if (component === 'card') await expect(frame.locator('.idea-card').first()).toHaveCSS('background-color', theme === 'dark' ? 'rgb(48, 62, 78)' : 'rgb(232, 237, 243)')
+      if (component === 'card') await expect(frame.locator('.card').first()).toHaveCSS('background-color', theme === 'dark' ? 'rgb(48, 62, 78)' : 'rgb(232, 237, 243)')
       if (component === 'tooltip') await expect(frame.frameLocator('iframe').first().locator('html')).toHaveAttribute('data-theme', theme)
     }
     await page.getByRole('button', { name: /Color theme for the component preview/ }).click()

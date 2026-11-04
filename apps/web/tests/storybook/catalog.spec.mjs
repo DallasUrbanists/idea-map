@@ -106,7 +106,7 @@ test('map controls update zoom, enforce limits, and explain unavailable location
 })
 
 test('error recovery and skeleton completion replace pending content', async ({ page }) => {
-  await openStory(page, 'error-state', 'recovery')
+  await openStory(page, 'error-state', 'usage-default')
   await page.getByRole('button', { name: 'Try again' }).click()
   await expect(page.getByRole('status')).toContainText('Ideas loaded')
   await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0)
@@ -122,36 +122,36 @@ test('toast actions and keyboard dismissal work without moving focus on arrival'
   const trigger = page.getByRole('button', { name: 'Show notification' })
   await trigger.focus()
   await trigger.press('Enter')
-  await expect(page.locator('.idea-toast')).toBeVisible()
+  await expect(page.locator('.toast')).toBeVisible()
   await expect(trigger).toBeFocused()
   await page.keyboard.press('Alt+t')
-  await expect(page.locator('.idea-toast-viewport')).toBeFocused()
+  await expect(page.locator('.toast-viewport')).toBeFocused()
   await page.keyboard.press('Tab')
-  await expect(page.locator('.idea-toast')).toBeFocused()
+  await expect(page.locator('.toast')).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeFocused()
   await page.keyboard.press('Enter')
   await expect(page.getByRole('status')).toHaveText('Save undone')
-  await expect(page.locator('.idea-toast')).toHaveCount(0)
+  await expect(page.locator('.toast')).toHaveCount(0)
   await trigger.click()
   await page.keyboard.press('Alt+t')
   await page.keyboard.press('Tab')
   await page.keyboard.press('Escape')
-  await expect(page.locator('.idea-toast')).toHaveCount(0)
+  await expect(page.locator('.toast')).toHaveCount(0)
 })
 
 test('toast timers pause while a notification is hovered and resume after leaving', async ({ page }) => {
   await page.clock.install()
   await openStory(page, 'toast')
   await page.getByRole('button', { name: 'Show notification' }).click()
-  await expect(page.locator('.idea-toast')).toBeVisible()
+  await expect(page.locator('.toast')).toBeVisible()
   await page.clock.fastForward(4000)
-  await page.locator('.idea-toast').hover()
+  await page.locator('.toast').hover()
   await page.clock.fastForward(10000)
-  await expect(page.locator('.idea-toast')).toBeVisible()
+  await expect(page.locator('.toast')).toBeVisible()
   await page.mouse.move(0, 0)
   await page.clock.fastForward(2000)
-  await expect(page.locator('.idea-toast')).toHaveCount(0)
+  await expect(page.locator('.toast')).toHaveCount(0)
 })
 
 test('table headers, numeric alignment, and horizontal keyboard scrolling follow Foundations', async ({ page }) => {
@@ -183,7 +183,9 @@ test('loading indicators preserve text and static skeletons under reduced motion
   await expect(page.getByRole('status')).toHaveText('Saving your idea…')
   await expect(page.locator('.ring')).toHaveCSS('animation-name', 'none')
   await openStory(page, 'skeleton')
-  expect(await page.locator('.idea-skeleton *').evaluateAll(nodes => nodes.every(node => getComputedStyle(node).animationName === 'none'))).toBe(true)
+  const skeletonParts = page.locator('.skeleton *')
+  await expect(skeletonParts.first()).toBeVisible()
+  expect(await skeletonParts.evaluateAll(nodes => nodes.every(node => getComputedStyle(node).animationName === 'none'))).toBe(true)
 })
 
 for (const theme of ['light', 'dark']) {
@@ -191,7 +193,7 @@ for (const theme of ['light', 'dark']) {
     test.setTimeout(180000)
     await page.setViewportSize({ width: 320, height: 800 })
     const stories = [
-      ['badge', 'with-icon'], ['card', 'default'], ['error-state', 'inline'], ['chip', 'meaning'],
+      ['badge', 'with-icon'], ['card', 'default'], ['error-state', 'usage-inline'], ['chip', 'meaning'],
       ['input', 'error'], ['map-controls', 'default'], ['menu', 'inline'], ['segmented-control', 'fill'],
       ['spinner', 'default'], ['status', 'pill'], ['table', 'custom-cells'],
       ['toast', 'tones'], ['navigation-rail', 'capsule'], ['switch', 'long-label'], ['skeleton', 'default'],
@@ -207,7 +209,7 @@ for (const theme of ['light', 'dark']) {
     }
     await openStory(page, 'menu', 'checkboxes', theme)
     await page.getByRole('button', { name: 'Visible layers' }).click()
-    const result = await new AxeBuilder({ page }).include('.idea-menu-panel').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
+    const result = await new AxeBuilder({ page }).include('.menu-panel').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
     expect(result.violations).toEqual([])
   })
 }

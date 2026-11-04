@@ -35,6 +35,8 @@ defineSlots<{ default(): unknown; icon?(): unknown; loading?(): unknown }>()
 
 <style scoped>
 .button {
+  box-sizing: border-box;
+  min-height: var(--size-minimum-tap-target);
   max-width: 100%;
   padding: var(--gap-compact) calc(2 * var(--gap-compact));
   border: 1px solid var(--button-border, var(--color-success));

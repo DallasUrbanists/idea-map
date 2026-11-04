@@ -12,9 +12,9 @@ for (const theme of ['light', 'dark']) test(`${theme} corner tooltips stay withi
     await expect(page.getByRole('tooltip')).toHaveText(corner === 'Top right' ? 'Warning: review before continuing' : `Tooltip near ${corner.toLowerCase()}`)
     if (corner === 'Top right') {
       await expect(trigger).toHaveCSS('background-color', 'rgb(255, 140, 0)')
-      await expect(page.locator('.idea-tooltip')).toHaveCSS('background-color', 'rgb(255, 140, 0)')
+      await expect(page.locator('.tooltip')).toHaveCSS('background-color', 'rgb(255, 140, 0)')
     }
-    const box = await page.locator('.idea-tooltip').boundingBox()
+    const box = await page.locator('.tooltip').boundingBox()
     expect(box.x).toBeGreaterThanOrEqual(0)
     expect(box.y).toBeGreaterThanOrEqual(0)
     expect(box.x + box.width).toBeLessThanOrEqual(320)
@@ -28,8 +28,8 @@ test('tooltip escapes a transformed clipping container', async ({ page }) => {
   const container = page.locator('.tooltip-story-clip')
   await page.getByRole('button', { name: 'Show hint' }).focus()
   await expect(page.getByRole('tooltip')).toHaveText('This hint can extend outside the clipped container')
-  const content = page.locator('.idea-tooltip')
-  await expect(container.locator('.idea-tooltip')).toHaveCount(0)
+  const content = page.locator('.tooltip')
+  await expect(container.locator('.tooltip')).toHaveCount(0)
   const clip = await container.boundingBox()
   const box = await content.boundingBox()
   expect(box.y + box.height).toBeGreaterThan(clip.y + clip.height)
@@ -43,7 +43,7 @@ test('portalled tooltip retains the trigger’s local theme', async ({ page }) =
   await page.goto(story)
   for (const [theme, color] of [['Light theme', 'rgb(232, 237, 243)'], ['Dark theme', 'rgb(48, 62, 78)']]) {
     await page.getByRole('region', { name: theme }).getByRole('button', { name: 'Primary save idea' }).focus()
-    await expect(page.locator('.idea-tooltip')).toHaveCSS('background-color', color)
+    await expect(page.locator('.tooltip')).toHaveCSS('background-color', color)
   }
 })
 
@@ -53,7 +53,7 @@ test('icon button tooltip supports hover, focus, and Escape', async ({ page }) =
   const button = card.getByRole('button', { name: 'Primary save idea' })
   await button.hover()
   await expect(page.getByRole('tooltip')).toHaveText('Primary save idea')
-  const content = page.locator('.idea-tooltip')
+  const content = page.locator('.tooltip')
   await expect(content).toHaveClass(/\bshadow-floating\b/)
   await expect(content).toHaveCSS('background-color', 'rgb(232, 237, 243)')
   await page.keyboard.press('Escape')
@@ -69,7 +69,7 @@ for (const width of [320, 1024]) test(`long tooltip wraps within ${width}px view
   await page.setViewportSize({ width, height: 640 })
   await page.goto('/iframe.html?id=components-tooltip--usage-long-text&viewMode=story')
   await page.getByRole('button', { name: 'About preview' }).focus()
-  const content = page.locator('.idea-tooltip')
+  const content = page.locator('.tooltip')
   await expect(content).toBeVisible()
   await expect(content).toHaveCSS('text-wrap', 'pretty')
   const dimensions = await content.evaluate(el => ({
@@ -103,7 +103,7 @@ test('touch activation closes an open tooltip and does not reopen it', async ({ 
 test('loading border animation respects reduced motion', async ({ page }) => {
   await page.goto(story)
   const button = page.getByRole('region', { name: 'Light theme' }).getByRole('button', { name: 'Saving idea' })
-  await expect(button).toHaveCSS('animation-name', /^idea-button-loading-border/)
+  await expect(button).toHaveCSS('animation-name', /^button-loading-border/)
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(button).toHaveCSS('animation-name', 'none')
 })

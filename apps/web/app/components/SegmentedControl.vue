@@ -22,6 +22,7 @@ const groupId = useId();
     role="radiogroup"
     :aria-labelledby="`${groupId}-label`"
   >
+    <legend :id="`${groupId}-label`">{{ label }}</legend>
     <div class="track corner-control">
       <label
         v-for="option in options"

@@ -22,6 +22,18 @@ place one focusable trigger in the default slot.
 
 <Canvas of={TooltipStories.UsageDefault} sourceState="none" story={{ inline: false, height: '140px' }} />
 
+## Warning
+
+Use the warning variant for a supplemental warning.
+
+```html
+<Tooltip variant="warning" label="Warning: review before continuing">
+  <Button variant="warning">Review</Button>
+</Tooltip>
+```
+
+<Canvas of={TooltipStories.UsageWarning} sourceState="none" story={{ inline: false, height: '140px' }} />
+
 ## Longer text
 
 Tooltips have a maximum width of 20 rem and shrink to fit narrow viewports.
