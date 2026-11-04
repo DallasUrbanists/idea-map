@@ -294,7 +294,12 @@ fails if a recent backup unexpectedly becomes noncurrent. It produces a plan,
 never deletes an object, and fails on incomplete,
 unexpected, or ambiguous inventories. Each prefix and listing mode is limited to
 100 pages of up to 1,000 objects; exceeding that limit fails the inventory for
-review. Bucket verification and both listing modes share a 60-second deadline.
+review. The command repeats both listing modes and checks the bucket generation
+and metadata generation again, failing if the observed inventory changes.
+Matching listings do not prove that no objects were missed, stop writers or
+lifecycle actions, or make a later deletion safe. Independently fence those
+changes and revalidate any generation immediately before an authorized action.
+Bucket verification and all listings share a 60-second deadline.
 The deadline stops waiting but does not cancel a storage SDK request already in
 flight; monitor stalled requests and process termination separately. The plan
 retains all copies in the latest

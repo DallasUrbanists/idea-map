@@ -4,7 +4,7 @@ import { confirmCompletedExports, inspectBackupRetention } from '../ops/inspect-
 
 const target = { environment: 'dev', bucket: 'synthetic-backups', projectNumber: '123456789' }
 const now = new Date('2026-11-03T12:00:00Z')
-const metadata = { name: target.bucket, projectNumber: target.projectNumber,
+const metadata = { name: target.bucket, projectNumber: target.projectNumber, generation: '11', metageneration: '1',
   iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
   versioning: { enabled: true }, softDeletePolicy: { retentionDurationSeconds: '604800' } }
 const make = (kind, days) => {
@@ -49,9 +49,9 @@ test('inventory reads all pages and separately counts old soft-deleted objects',
     },
   }
   const result = await inspectBackupRetention(storageFor(bucket), target, now)
-  assert.equal(queries.length, 9)
+  assert.equal(queries.length, 18)
   assert.equal(queries[0].versions, true)
-  assert.equal(queries.filter(query => query.softDeleted).length, 3)
+  assert.equal(queries.filter(query => query.softDeleted).length, 6)
   assert.deepEqual(new Set(queries.map(query => query.prefix)), new Set(['daily', 'weekly', 'completion'].map(kind => `idea-map-v2/dev/${kind}/`)))
   assert.equal(result.softDeleted, 1)
   assert.equal(result.oldSoftDeleted, 1)
@@ -72,6 +72,28 @@ test('inventory reads all pages and separately counts old soft-deleted objects',
   assert.equal(stale.latestDailyAgeSeconds, 5 * 86_400)
   assert.equal(stale.dailyFreshEnough, false)
   assert.deepEqual(stale.candidates, [])
+})
+
+test('inventory rejects changes to the bucket, live objects, or soft-deleted objects during listing', async () => {
+  let bucketReads = 0
+  const replacedBucket = { async getMetadata() {
+    return [{ ...metadata, generation: ++bucketReads === 1 ? '11' : '12' }]
+  }, async getFiles() { return [[], null] } }
+  await assert.rejects(inspectBackupRetention(storageFor(replacedBucket), target, now), /inventory changed/)
+
+  for (const changedSoftDelete of [false, true]) {
+    const counts = new Map()
+    const bucket = { async getMetadata() { return [metadata] }, async getFiles(query) {
+      const key = `${query.prefix}:${Boolean(query.softDeleted)}`
+      const count = (counts.get(key) ?? 0) + 1
+      counts.set(key, count)
+      const isDaily = query.prefix.endsWith('/daily/')
+      if (!isDaily || Boolean(query.softDeleted) !== changedSoftDelete) return [[], null]
+      const object = changedSoftDelete ? softDeletedObject(make('daily', 80)) : make('daily', 0)
+      return [[{ metadata: count === 1 ? object : { ...object, metageneration: '2' } }], null]
+    } }
+    await assert.rejects(inspectBackupRetention(storageFor(bucket), target, now), /inventory changed/)
+  }
 })
 
 test('inventory refuses unexpected bucket policy or an incomplete listing', async () => {

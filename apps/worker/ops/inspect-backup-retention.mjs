@@ -42,6 +42,18 @@ async function listAll(bucket, query, deadline) {
   return items
 }
 
+// Two matching observations detect changes during listing, but cannot prove
+// completeness or replace the independent writer and lifecycle fences.
+function inventoryFingerprint(objects) {
+  return objects.map(object => JSON.stringify([
+    object.name, object.generation, object.metageneration, object.timeCreated, object.timeDeleted,
+    object.softDeleteTime, object.hardDeleteTime, object.size, object.crc32c,
+    object.eventBasedHold, object.temporaryHold, object.retentionExpirationTime,
+    object.retention?.mode, object.retention?.retainUntilTime,
+    Object.entries(object.metadata ?? {}).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0),
+  ])).sort()
+}
+
 /** Match each archive to a create-only completion record; never count orphan records. */
 export function confirmCompletedExports(objects, environment, now) {
   const prefix = `idea-map-v2/${environment}/`
@@ -108,6 +120,10 @@ export async function inspectBackupRetention(storage, target, now, options = {})
   const bucket = storage.bucket(target.bucket)
   const [metadata] = await beforeDeadline(deadline, () => bucket.getMetadata())
   verifyBackupBucket(metadata, target)
+  if (typeof metadata.generation !== 'string' || !/^[1-9][0-9]*$/.test(metadata.generation) ||
+      typeof metadata.metageneration !== 'string' || !/^[1-9][0-9]*$/.test(metadata.metageneration)) {
+    throw new Error('Backup bucket identity is ambiguous')
+  }
   // Disabling soft delete does not remove generations already retained under an
   // earlier policy, while the softDeleted listing requires an enabled policy.
   if (Number(metadata.softDeletePolicy.retentionDurationSeconds) === 0) {
@@ -118,6 +134,16 @@ export async function inspectBackupRetention(storage, target, now, options = {})
   const backupPrefixes = ['daily', 'weekly', 'completion'].map(kind => `${prefix}${kind}/`)
   const objects = (await Promise.all(backupPrefixes.map(objectPrefix => listAll(bucket, { prefix: objectPrefix, versions: true }, deadline)))).flat()
   const softDeleted = (await Promise.all(backupPrefixes.map(objectPrefix => listAll(bucket, { prefix: objectPrefix, softDeleted: true }, deadline)))).flat()
+  const observedObjects = (await Promise.all(backupPrefixes.map(objectPrefix => listAll(bucket, { prefix: objectPrefix, versions: true }, deadline)))).flat()
+  const observedSoftDeleted = (await Promise.all(backupPrefixes.map(objectPrefix => listAll(bucket, { prefix: objectPrefix, softDeleted: true }, deadline)))).flat()
+  const [observedBucket] = await beforeDeadline(deadline, () => bucket.getMetadata())
+  verifyBackupBucket(observedBucket, target)
+  if (metadata.generation !== observedBucket.generation || metadata.metageneration !== observedBucket.metageneration ||
+      JSON.stringify(inventoryFingerprint(objects)) !== JSON.stringify(inventoryFingerprint(observedObjects)) ||
+      JSON.stringify(inventoryFingerprint(softDeleted)) !== JSON.stringify(inventoryFingerprint(observedSoftDeleted))) {
+    throw new Error('Backup inventory changed')
+  }
+  if (performance.now() >= deadline) throw new Error('Backup inventory timed out')
   now ??= new Date()
   if (!Number.isFinite(now.getTime())) throw new Error('Invalid inventory time')
   const normalized = objects.map(object => {

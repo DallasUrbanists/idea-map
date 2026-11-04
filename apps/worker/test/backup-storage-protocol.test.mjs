@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import { exportEncryptedBackup } from '../ops/export-encrypted-backup.mjs'
 import { inspectBackupRetention } from '../ops/inspect-backup-retention.mjs'
 import { compareCurrentRecoveryJournalRecord, listUnverifiedRecoveryJournal, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../../../packages/server/dist/recovery-journal-storage.js'
-import { encodeRecoveryConfirmation, recoveryConfirmationRecordId } from '../../../packages/server/dist/recovery-journal-record.js'
+import { encodeRecoveryConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../../../packages/server/dist/recovery-journal-record.js'
 
 const require = createRequire(import.meta.url)
 const { Storage } = require('@google-cloud/storage')
@@ -44,7 +44,7 @@ test('storage client sends create-only archives, completion metadata, and journa
       if (request.headers.authorization) throw new Error('Synthetic endpoint must not receive credentials')
       response.setHeader('content-type', 'application/json')
       if (request.method === 'GET' && url.pathname === `/storage/v1/b/${target.bucket}`) {
-        response.end(JSON.stringify({ name: target.bucket, projectNumber: target.projectNumber,
+        response.end(JSON.stringify({ name: target.bucket, projectNumber: target.projectNumber, generation: '11', metageneration: '1',
           iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
           versioning: { enabled: true }, softDeletePolicy: { retentionDurationSeconds: '604800' } }))
         return
@@ -136,19 +136,24 @@ test('storage client sends create-only archives, completion metadata, and journa
       new Set(['daily', 'weekly', 'completion'].map(kind => `idea-map-v2/dev/${kind}/`)))
     objects.delete('idea-map-v2/dev/recovery-journal/synthetic')
     const recordId = '11111111-1111-4111-8111-111111111111'
-    const record = Buffer.from(encodeRecoveryConfirmation(recordId, 'dev', '2026-11-02T10:01:00.000Z'))
+    const intent = { operationId: recordId, environment: 'dev', ideaId: '22222222-2222-4222-8222-222222222222',
+      actorId: '33333333-3333-4333-8333-333333333333', authorizedAt: '2026-11-02T10:01:00.000Z',
+      decision: { kind: 'removal', classification: 'other', reason: 'synthetic' } }
+    const record = Buffer.from(encodeRecoveryIntent(intent))
+    const changedRecord = encodeRecoveryIntent({ ...intent, authorizedAt: '2026-11-02T10:01:01.000Z' })
     await writeRecoveryJournalRecord(storage, target, recordId, record)
     const recordName = `idea-map-v2/dev/recovery-journal/${recordId}.json`
     assert.deepEqual(payloads.get(recordName), record)
     assert.equal(objects.get(recordName).metadata, undefined)
     objects.get(recordName).generation = '90071992547409931234'
     const confirmationId = recoveryConfirmationRecordId(recordId)
-    await writeRecoveryJournalRecord(storage, target, confirmationId, record)
+    const confirmation = encodeRecoveryConfirmation(recordId, 'dev', '2026-11-02T10:01:00.000Z')
+    await writeRecoveryJournalRecord(storage, target, confirmationId, confirmation)
     const confirmationName = `idea-map-v2/dev/recovery-journal/${confirmationId}.json`
     assert.deepEqual(await listUnverifiedRecoveryJournal(storage, target), { references: [
       { recordId, generation: '90071992547409931234', metageneration: '1', crc32c: objects.get(recordName).crc32c },
       { recordId: confirmationId, generation: objects.get(confirmationName).generation, metageneration: '1', crc32c: objects.get(confirmationName).crc32c },
-    ], coverageVerified: false, softDeletedChecked: true })
+    ], bucketGeneration: '11', bucketMetageneration: '1', coverageVerified: false, softDeletedChecked: true })
     assert.ok(requests.some(item => item.method === 'GET' && item.query.prefix === 'idea-map-v2/dev/recovery-journal/' && item.query.softDeleted === 'true'))
     syntheticSoftDeleted = true
     await assert.rejects(listUnverifiedRecoveryJournal(storage, target), /could not be verified/)
@@ -161,7 +166,7 @@ test('storage client sends create-only archives, completion metadata, and journa
     await assert.rejects(compareCurrentRecoveryJournalRecord(storage, target, recordId, record), /could not be verified/)
     overrideMetadataChecksum = false
     await assert.rejects(compareCurrentRecoveryJournalRecord(storage, target, recordId,
-      encodeRecoveryConfirmation(recordId, 'dev', '2026-11-02T10:01:01.000Z')), /could not be verified/)
+      changedRecord), /could not be verified/)
     const checksum = objects.get(recordName).crc32c
     objects.get(recordName).crc32c = checksum === 'AAAAAA==' ? 'AQAAAA==' : 'AAAAAA=='
     await assert.rejects(readRecoveryJournalRecord(storage, target, recordId, objects.get(recordName).generation), /could not be verified/)
@@ -169,7 +174,7 @@ test('storage client sends create-only archives, completion metadata, and journa
     omitStoredEncoding = true
     await assert.rejects(readRecoveryJournalRecord(storage, target, recordId, objects.get(recordName).generation), /could not be verified/)
     omitStoredEncoding = false
-    await assert.rejects(writeRecoveryJournalRecord(storage, target, recordId, encodeRecoveryConfirmation(recordId, 'dev', '2026-11-02T10:01:01.000Z')),
+    await assert.rejects(writeRecoveryJournalRecord(storage, target, recordId, changedRecord),
       /Journal write outcome is uncertain/)
     assert.deepEqual(payloads.get(recordName), record)
     assert.equal(errors.length, 0)
