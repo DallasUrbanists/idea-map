@@ -20,6 +20,12 @@ test('worker validates the audience and the separate caller for each route', asy
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   try {
     const url = `http://127.0.0.1:${server.address().port}`
+    const health = await fetch(`${url}/health`)
+    assert.equal(health.status, 200)
+    assert.equal(health.headers.get('cache-control'), 'private, no-store')
+    assert.equal((await fetch(`${url}/healthz`)).status, 200)
+    assert.equal(executions, 0)
+    assert.equal(repairs, 0)
     const post = (path, token, body = '{"jobId":"11111111-1111-4111-8111-111111111111"}') => fetch(`${url}${path}`, {
       method: 'POST', headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), 'content-type': 'application/json' }, body,
     })
