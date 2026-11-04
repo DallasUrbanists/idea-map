@@ -34,10 +34,9 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
     }
     if (intent.decision.kind === 'removal') removals.add(intent.ideaId)
     if (intent.decision.kind === 'hold_placement') holdPlacements.add(intent.ideaId)
-    // Unconfirmed decisions and every release need an authorized review. A
-    // release record alone never removes a hold or restores public access.
-    if (!confirmation || intent.decision.kind === 'hold_release' ||
-        (intent.decision.kind === 'hold_placement' && confirmation.recordType !== 'hold_commit_confirmation')) reviewOperations.add(operationId)
+    // Even a confirmed placement lacks the authority and held-material evidence
+    // needed to recreate it. Releases and uncertain decisions also need review.
+    if (!confirmation || intent.decision.kind !== 'removal') reviewOperations.add(operationId)
   }
   let unmatchedConfirmations = 0
   for (const operationId of confirmations.keys()) if (!intents.has(operationId)) unmatchedConfirmations++

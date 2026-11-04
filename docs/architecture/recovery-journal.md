@@ -47,12 +47,12 @@ version-one encoding when extending the format; a failed decode keeps recovery
 isolated. The transport validates the canonical record before writing, bounds
 record size and write time, uses an opaque caller-supplied record ID and a
 create-only precondition, and treats provider errors and timeouts as uncertain.
-The summary conservatively identifies ideas
-in removal and hold-placement intents, flags unconfirmed operations, placements
-without a confirmed hold ID, and all hold releases for authorized review, and
-reports confirmations without intents. It exposes associated hold IDs only as
-unverified evidence. It
-never establishes inventory coverage, removes a hold, changes a database, or
+The summary conservatively identifies ideas in removal and hold-placement
+intents, flags unconfirmed operations and all hold placements and releases for
+authorized review, and reports confirmations without intents. A confirmed hold
+ID alone does not preserve its authority or held material; the summary exposes
+associated hold IDs only as unverified evidence. It never establishes inventory
+coverage, removes a hold, changes a database, or
 authorizes public access. Its output contains private identifiers and must not
 be written to public logs. These components do not guard mutation paths, capture
 held material, or reconcile a restore. They are not connected to live removal
