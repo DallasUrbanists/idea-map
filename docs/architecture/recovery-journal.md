@@ -162,7 +162,11 @@ or malformed references fail the comparison. Its output is private; a changed
 generation requires investigation even if its content appears similar. A matching
 list does not authenticate the checkpoint, prove it was independently preserved,
 detect a missing tail after it, verify writer fencing, or establish coverage.
-The helper cannot reopen access or apply decisions.
+The helper cannot reopen access or apply decisions. An existing Secret Manager
+version is not a complete tail proof by itself: access to a newly added version
+by its exact number is strongly consistent, but
+[version listing and the latest alias are eventually consistent](https://cloud.google.com/secret-manager/docs/reference/consistency).
+Do not infer that a version does not exist from a recent list or latest read.
 
 The checkpoint needs a coordinated boundary, not merely a timestamp. Suspend
 all covered mutations, drain in-flight transactions and journal writes, verify
