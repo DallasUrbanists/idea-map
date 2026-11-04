@@ -4,7 +4,7 @@ import {
   DialogRoot, DialogTitle, DialogTrigger,
 } from 'reka-ui'
 
-defineProps<{ title: string; description: string }>()
+withDefaults(defineProps<{ title: string; description: string; placement?: 'dialog' | 'tray' }>(), { placement: 'dialog' })
 </script>
 
 <template>
@@ -12,7 +12,7 @@ defineProps<{ title: string; description: string }>()
     <DialogTrigger as-child><slot name="trigger" /></DialogTrigger>
     <DialogPortal>
       <DialogOverlay class="dialog-overlay" />
-      <DialogContent class="dialog-content">
+      <DialogContent :class="['dialog-content', { tray: placement === 'tray' }]">
         <div class="dialog-header">
           <DialogTitle class="dialog-title">{{ title }}</DialogTitle>
           <DialogClose class="dialog-close" type="button" aria-label="Close">
@@ -53,6 +53,8 @@ defineProps<{ title: string; description: string }>()
   font: var(--font-body) / var(--line-body) var(--font-family-body);
   text-wrap: pretty;
 }
+.dialog-content.tray { inset: 0 0 0 auto; transform: none; width: min(28rem, 100vw); height: 100dvh; max-height: 100dvh; border-radius: var(--radius-card) 0 0 var(--radius-card); }
+@media (max-width: 640px) { .dialog-content.tray { inset: auto 0 0; width: 100%; height: auto; max-height: 90dvh; border-radius: var(--radius-card) var(--radius-card) 0 0; } }
 .dialog-header { display: flex; align-items: flex-start; gap: var(--space-2); margin-bottom: var(--space-2); }
 .dialog-title { flex: 1; min-width: 0; overflow-wrap: anywhere; margin: 0; font: 700 var(--font-heading) / var(--line-heading) var(--font-family-heading); }
 .dialog-description { margin: 0 0 var(--space-4); color: var(--color-text-muted); }

@@ -1,0 +1,22 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './LayoutPatterns.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Layout patterns
+
+You can compose a page with shared navigation, a dialog or tray, a menu, and a notification. The example uses the same components as the individual catalog entries.
+
+<Canvas of={Stories.Default} sourceState="none" story={{ inline: false, height: '650px' }} />
+
+## Page layout
+
+You can provide `header`, `navigation`, default content, and an optional `aside` slot to `PageLayout`. The layout provides a skip link and a focusable main landmark. The `contentId` prop defaults to `main-content`; you should supply a unique ID when a page contains more than one layout. Navigation uses ordinary links and reflows at narrow widths.
+
+## Dialog and tray
+
+You can set `placement="tray"` on the existing `Dialog` component for an edge panel. The default `dialog` placement remains centered. Both placements require `title`, `description`, and a focusable `trigger` slot. The modal traps focus, closes with Escape or its close control, and restores focus to the trigger. The tray becomes a bottom panel on small screens and scrolls when its contents exceed the viewport.
+
+## Menus and notifications
+
+You should use the existing Menu and Toast components for their keyboard, dismissal, and notification behavior. You can find their item, event, and timeout contracts in the **Components / Menu** and **Components / Toast** pages. Screen-reader, physical touch-device, and nested-overlay behavior require review in each consumer.

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import AxeBuilder from '@axe-core/playwright'
 
 test('modal is named, traps focus, closes on Escape and restores the trigger', async ({ page }) => {
   await page.goto('/tests/dialog/')
@@ -52,4 +53,98 @@ test('top-right X button is named, has a touch target and restores focus on clos
   await close.click()
   await expect(dialog).toHaveCount(0)
   await expect(trigger).toBeFocused()
+})
+
+test('tray traps and restores focus, with a usable teleported menu and navigation', async ({ page }) => {
+  await page.goto('/tests/dialog/?patterns')
+  const trigger = page.getByRole('button', { name: 'Open tray' })
+  await trigger.focus()
+  await page.keyboard.press('Enter')
+  const tray = page.getByRole('dialog', { name: 'Idea details' })
+  await expect(tray).toBeVisible()
+  await expect(tray).toHaveAccessibleDescription('Explore the details in this tray.')
+  await expect(tray).toHaveCSS('position', 'fixed')
+  const close = tray.getByRole('button', { name: 'Close' })
+  await close.focus()
+  await page.keyboard.press('Shift+Tab')
+  await expect(tray.getByRole('button', { name: 'Save idea' })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(trigger).toBeFocused()
+  const menu = page.getByRole('button', { name: 'Idea tools' })
+  await menu.focus()
+  await page.keyboard.press('Enter')
+  const item = page.getByRole('menuitem', { name: 'Copy link' })
+  await expect(item).toBeVisible()
+  await expect(page.getByRole('menu')).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await page.keyboard.press('Escape')
+  await expect(menu).toBeFocused()
+  await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Nearby' })).toHaveAttribute('aria-current', 'page')
+})
+
+test('small-screen tray and navigation fit with touch targets', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
+  const page = await context.newPage()
+  await page.goto('/tests/dialog/?patterns')
+  const trigger = page.getByRole('button', { name: 'Open tray' })
+  await trigger.tap()
+  const tray = page.getByRole('dialog', { name: 'Idea details' })
+  await expect(tray).toBeVisible()
+  const bounds = await tray.boundingBox()
+  expect(bounds.x).toBeGreaterThanOrEqual(0)
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(390)
+  const close = tray.getByRole('button', { name: 'Close' })
+  const closeBounds = await close.boundingBox()
+  expect(closeBounds.width).toBeGreaterThanOrEqual(44)
+  expect(closeBounds.height).toBeGreaterThanOrEqual(44)
+  await close.tap()
+  await expect(tray).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await context.close()
+})
+
+test('capture review specimens when requested', async ({ page }) => {
+  test.skip(!process.env.SPECIMEN_DIR, 'Specimen capture is optional')
+  for (const [name, width, height, theme] of [['desktop-light', 1280, 800, 'light'], ['mobile-dark', 390, 844, 'dark']]) {
+    await page.setViewportSize({ width, height })
+    await page.goto('/tests/dialog/?patterns')
+    await page.evaluate(value => { document.documentElement.dataset.theme = value }, theme)
+    await page.screenshot({ path: `${process.env.SPECIMEN_DIR}/${name}-layout.png` })
+    await page.getByRole('button', { name: 'Open tray' }).click()
+    await expect(page.getByRole('dialog', { name: 'Idea details' })).toBeVisible()
+    await page.screenshot({ path: `${process.env.SPECIMEN_DIR}/${name}-tray.png` })
+  }
+})
+
+
+test('notification opens and dismisses without covering narrow layouts', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/tests/dialog/?patterns')
+  await page.getByRole('button', { name: 'Show notification' }).click()
+  const notification = page.getByText('Idea saved', { exact: true })
+  await expect(notification).toBeVisible()
+  await page.keyboard.press('Alt+t')
+  const dismiss = page.getByRole('button', { name: 'Dismiss notification' })
+  await expect(dismiss).toBeVisible()
+  await dismiss.click()
+  await expect(notification).not.toBeVisible()
+})
+
+test('skip link moves keyboard focus to the main content', async ({ page }) => {
+  await page.goto('/tests/dialog/?patterns')
+  await page.keyboard.press('Tab')
+  const skip = page.getByRole('link', { name: 'Skip to main content' })
+  await expect(skip).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('main')).toBeFocused()
+})
+
+
+test('tray has no automated WCAG A or AA violations at mobile size', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/tests/dialog/?patterns')
+  await page.getByRole('button', { name: 'Open tray' }).click()
+  await expect(page.getByRole('dialog', { name: 'Idea details' })).toBeVisible()
+  const results = await new AxeBuilder({ page }).include('[role="dialog"]').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
+  expect(results.violations).toEqual([])
 })
