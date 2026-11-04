@@ -184,9 +184,13 @@ decision metadata and held evidence, and measured quota, costs, and scan time.
 A complete decision record fits within a Secret Manager version's documented
 [payload limit](https://cloud.google.com/secret-manager/quotas), so a reviewed
 design could use the numbered versions as the journal instead of maintaining
-two copies of every decision. Such a change would need compatible retry,
-readback, permissions, retention, and restore procedures; it has not been
-implemented. The existing bucket journal does not implement the sequence fence;
+two copies of every decision. The [add-version request](https://cloud.google.com/secret-manager/docs/reference/rest/v1/projects.secrets/addVersion)
+has no caller-selected version ID or documented idempotency key. A lost response
+and retry can therefore create duplicate versions. Reconciliation would need to
+recognize exact retry bytes and reject conflicting decisions, without treating
+an uncertain write as absent. Such a change also needs compatible readback,
+permissions, retention, and restore procedures; it has not been implemented.
+The existing bucket journal does not implement the sequence fence;
 do not use it as proof of complete coverage.
 
 The checkpoint needs a coordinated boundary, not merely a timestamp. Suspend
