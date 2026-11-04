@@ -34,6 +34,15 @@ be able to create, update, or delete journal records; the journal writer must
 not be able to change backup archives or completion records. Review inherited
 grants and deny policies as well as the explicitly scoped grants.
 
+The current journal transport checks the environment prefix and bucket-name
+syntax, but it does not verify the bucket's owning project, policy, or effective
+permissions. Before live integration, verify the configured bucket against the
+reviewed environment and its existing foundation-owned backup bucket. Reuse the
+backup export's bucket-safeguard checks where the identity boundary permits;
+otherwise define an independently authorized preflight. A missing or ambiguous
+check must keep the access gate closed, and a check cannot rule out later policy
+changes or prove journal coverage.
+
 The server package contains an encoder and decoder for version-one intent and
 commit confirmation records and version-two hold-placement confirmations. It
 also contains a create-only transport for private JSON, a reader for a
