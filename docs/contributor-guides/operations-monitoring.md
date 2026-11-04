@@ -93,9 +93,12 @@ node apps/worker/dist/queue-snapshot-cli.js
 
 The command requests the basic task view and only creation and schedule times;
 it emits aggregate counts and ages, not task identifiers or bodies. It fails
-instead of reporting a partial result if listing or pagination fails. Restrict
-the identity and avoid publishing the output because aggregate activity can be
-sensitive. Hosted access requires separate authorization.
+instead of reporting a partial result if listing or pagination fails. The
+listing has one 30-second deadline, including credential acquisition. A timed-out
+transport may still have a request or credential operation in flight, so monitor
+process termination separately. Restrict the identity and avoid publishing the
+output because aggregate activity can be sensitive. Hosted access requires
+separate authorization.
 
 `oldest_seconds` is the age since creation of the oldest listed task, including
 tasks scheduled for the future. `due` and `oldest_due_seconds` refer to the

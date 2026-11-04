@@ -60,3 +60,14 @@ test('queue snapshot rejects malformed provider timestamps and accepts supported
     assert.equal(result.oldest_due_seconds, 3600)
   }
 })
+
+test('queue snapshot times out even when the transport ignores its abort signal', async () => {
+  let signal
+  const transport = { request(_method, _path, _body, received) {
+    signal = received
+    return new Promise(() => {})
+  } }
+  await assert.rejects(readQueueSnapshot(transport, queue, now, 20), /timed out/)
+  assert.equal(signal.aborted, true)
+  await assert.rejects(readQueueSnapshot(transport, queue, now, 0), /invalid/i)
+})
