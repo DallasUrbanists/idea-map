@@ -104,7 +104,10 @@ successful staging **promote** run ID and attempt for the same service and
 digest; the workflow verifies both records before requesting deployment access.
 
 The release workflow checks the revision's `Ready` condition, reconciled
-generation, and resolved image digest. These are provider metadata, not proof
+generation, and resolved image digest. For an image index, it verifies the
+registry manifest against the checked index digest and matches the revision to
+its single Linux amd64 image. The deployer needs read access to the image
+repository for this check. These are provider metadata, not proof
 that a database, task delivery, public routing, or the application works.
 Operators should retain the release summaries, artifact references, test
 evidence, compatibility decision, and recovery owner beyond artifact expiry.
@@ -176,7 +179,9 @@ its immutable image, database compatibility, retained secrets and provider
 configuration. Select `rollback`, the environment and service, the previous
 revision and image, and the revision currently receiving all traffic. Rollback
 does not depend on an unexpired build artifact, but the protected environment
-still requires its configured approval.
+still requires its configured approval. If the registry is unavailable, an
+operator can supply the exact immutable image digest reported by the previous
+revision; the workflow verifies it against that revision before routing.
 
 Cloud Run does not repeat its deployment health check during a traffic rollback.
 The workflow verifies recorded revision metadata before routing and the traffic
