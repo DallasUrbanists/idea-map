@@ -85,9 +85,12 @@ deletion process, and an isolated restore rehearsal.
 Those deployment controls are separate from the export command. Do not use this
 command as the sole live backup until those controls are in place and tested.
 
-The runtime needs Node, `pg_dump`, the worker package's Cloud Storage client,
-and Application Default Credentials. Use a
-`pg_dump` version compatible with the source PostgreSQL version and a direct
+The runtime needs Node, `pg_dump`, the built shared server package, the worker
+package's Cloud Storage client, and Application Default Credentials. When
+running from a checkout, build the shared package first with
+`pnpm exec tsc --build packages/server` from the repository root. The backup
+image includes the built package. Use a `pg_dump` version compatible with the
+source PostgreSQL version and a direct
 database connection. The archive preserves access grants and revocations but
 the restore omits original object owners. Prepare the reviewed roles referenced
 by the archive before restoring, and stop on missing roles or grant errors.
@@ -259,6 +262,7 @@ With `BACKUP_ENVIRONMENT`, `BACKUP_BUCKET`, and
 `BACKUP_PROJECT_NUMBER` configured, run:
 
 ```sh
+pnpm exec tsc --build packages/server
 node apps/worker/ops/inspect-backup-retention.mjs
 ```
 

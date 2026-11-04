@@ -114,11 +114,14 @@ try {
     { start: startSyntheticDump, storage, now: new Date('2026-11-03T00:00:00Z') })
   const backupFinished = Date.now()
   await sql(source, `INSERT INTO synthetic_recovery_marker(id) VALUES ('${marker}-after'); INSERT INTO idea_revisions(idea_id,version,content) VALUES ('${ideaId}',2,'{"title":"Synthetic later held material"}'::jsonb); INSERT INTO users(id) VALUES ('${director}'); INSERT INTO identities(user_id,provider,subject) VALUES ('${director}','firebase:demo-idea-map','${marker}'); INSERT INTO moderator_assignments(user_id,granted_by,grant_reason) VALUES ('${director}','${director}','synthetic grant'); INSERT INTO legal_hold_assignments(user_id,authority,authorization_reference,granted_by) VALUES ('${director}','executive_director','synthetic authority','${director}')`)
-  const journalTarget = { environment: 'dev', bucket: 'synthetic-private-backups' }
+  const journalTarget = { environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789' }
   const entries = new Map()
   const journal = { bucket: bucket => {
     if (bucket !== journalTarget.bucket) throw new Error('Unexpected synthetic journal bucket')
-    return { async getFiles(query) {
+    return { async getMetadata() { return [{ name: bucket, projectNumber: journalTarget.projectNumber,
+      iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
+      versioning: { enabled: true }, softDeletePolicy: { retentionDurationSeconds: '604800' } }] },
+    async getFiles(query) {
       if (query.prefix !== 'idea-map-v2/dev/recovery-journal/' || query.autoPaginate !== false ||
           (query.pageToken !== undefined && query.pageToken !== 'second')) throw new Error('Unexpected synthetic journal inventory')
       if (query.softDeleted === true && query.versions === undefined && query.pageToken === undefined) return [[], null]

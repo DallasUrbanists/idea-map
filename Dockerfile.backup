@@ -9,8 +9,10 @@ RUN --mount=type=secret,id=proxy_ca \
     export NODE_USE_ENV_PROXY=1 \
     && if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi \
     && pnpm install --frozen-lockfile --filter @idea-map/worker... --filter idea-map \
+    && pnpm exec tsc --build packages/server \
     && pnpm --filter @idea-map/worker deploy --prod --legacy /worker \
     && test -f /worker/ops/export-encrypted-backup.mjs \
+    && test -f /worker/node_modules/@idea-map/server/dist/backup-bucket.js \
     && test -d /worker/node_modules/@google-cloud/storage
 
 FROM postgis/postgis@sha256:4a43e3c3e5d55b9208240fc71db543b79c638766280c625a425bd0a2390989c4

@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./backup-bucket": {
+      "types": "./dist/backup-bucket.d.ts",
+      "import": "./dist/backup-bucket.js"
     }
   },
   "dependencies": {

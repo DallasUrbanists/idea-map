@@ -2,13 +2,28 @@ import { CRC32C, type Storage } from '@google-cloud/storage'
 import { finished } from 'node:stream/promises'
 import { decodeRecoveryRecord, recoveryConfirmationRecordId } from './recovery-journal-record.js'
 import { exactGenerationFile } from './storage-generation.js'
+import { verifyBackupBucket } from './backup-bucket.js'
 
 const recordIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[48][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
-type Target = { environment: 'dev' | 'prod', bucket: string }
+type Target = { environment: 'dev' | 'prod', bucket: string, projectNumber: string }
 function validTarget(target: Target): boolean {
   return typeof process.env.STORAGE_EMULATOR_HOST !== 'string' && ['dev', 'prod'].includes(target?.environment) &&
-    typeof target?.bucket === 'string' && /^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$/.test(target.bucket)
+    typeof target?.bucket === 'string' && /^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$/.test(target.bucket) &&
+    typeof target?.projectNumber === 'string' && /^[1-9][0-9]{5,19}$/.test(target.projectNumber)
+}
+
+async function verifiedBucket(storage: Storage, target: Target, timeoutMs: number) {
+  const bucket = storage.bucket(target.bucket)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const [metadata] = await Promise.race([
+      bucket.getMetadata(),
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Bucket verification timed out')), timeoutMs) }),
+    ])
+    verifyBackupBucket(metadata, target)
+    return bucket
+  } finally { if (timer) clearTimeout(timer) }
 }
 
 function validateRecordName(recordId: string, payload: Uint8Array, environment: Target['environment']): void {
@@ -39,7 +54,8 @@ export async function writeRecoveryJournalRecord(storage: Storage,
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const path = `idea-map-v2/${target.environment}/recovery-journal/${recordId}.json`
-    const stream = storage.bucket(target.bucket).file(path).createWriteStream({
+    const bucket = await verifiedBucket(storage, target, timeoutMs)
+    const stream = bucket.file(path).createWriteStream({
       resumable: false, validation: 'crc32c', timeout: timeoutMs, preconditionOpts: { ifGenerationMatch: 0 },
       metadata: { contentType: 'application/json', cacheControl: 'private, no-store' },
     })
@@ -65,6 +81,7 @@ export async function readRecoveryJournalRecord(storage: Storage, target: Target
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const path = `idea-map-v2/${target.environment}/recovery-journal/${recordId}.json`
+    await verifiedBucket(storage, target, timeoutMs)
     const file = exactGenerationFile(storage, target.bucket, path, generation)
     const stream = file.createReadStream({ validation: 'crc32c', decompress: false })
     let checksumAvailable = false
@@ -110,7 +127,7 @@ Promise<{ references: { recordId: string, generation: string }[], coverageVerifi
   const names = new Set<string>()
   const deadline = Date.now() + 30_000
   try {
-    const bucket = storage.bucket(target.bucket)
+    const bucket = await verifiedBucket(storage, target, 5000)
     const listPage = async (mode: 'versions' | 'softDeleted', pageToken?: string) => {
       const remaining = deadline - Date.now()
       if (remaining <= 0) throw new Error('Journal inventory timed out')
@@ -174,7 +191,8 @@ export async function compareCurrentRecoveryJournalRecord(storage: Storage, targ
   try {
     decodeRecoveryRecord(bytes, target.environment)
     const path = `idea-map-v2/${target.environment}/recovery-journal/${recordId}.json`
-    const file = storage.bucket(target.bucket).file(path)
+    const bucket = await verifiedBucket(storage, target, timeoutMs)
+    const file = bucket.file(path)
     const metadata = async () => {
       let timer: ReturnType<typeof setTimeout> | undefined
       try {

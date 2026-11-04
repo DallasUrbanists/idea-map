@@ -66,7 +66,7 @@ export async function preparePendingRemoval(databaseUrl: string, projectId: stri
  * This does not remove content, confirm a database mutation, or reopen access.
  */
 export async function prepareAndJournalRemoval(databaseUrl: string, projectId: string, cookie: string,
-  verifier: RegisteredSessionVerifier, target: { environment: 'dev' | 'prod', bucket: string },
+  verifier: RegisteredSessionVerifier, target: { environment: 'dev' | 'prod', bucket: string, projectNumber: string },
   storage: Storage, input: PendingRemovalInput): Promise<ModeratorAccess<'stale' | 'journaled' | 'journal_uncertain'>> {
   const result = await preparePendingRemoval(databaseUrl, projectId, cookie, verifier, target?.environment, input)
   if (result.state !== 'authorized') return result
@@ -86,7 +86,7 @@ export async function prepareAndJournalRemoval(databaseUrl: string, projectId: s
  * confirmation, proves coverage, or grants the required database privilege.
  */
 export async function applyJournaledRemoval(coordinatorDatabaseUrl: string, projectId: string, cookie: string,
-  verifier: RegisteredSessionVerifier, target: { environment: 'dev' | 'prod', bucket: string },
+  verifier: RegisteredSessionVerifier, target: { environment: 'dev' | 'prod', bucket: string, projectNumber: string },
   reader: Storage, input: { operationId: string, recordId: string, payload: Uint8Array }): Promise<ModeratorAccess<'stale' | 'journal_uncertain' | {
     state: 'applied', recordId: string, generation: string, appliedAt: string,
   }>> {
@@ -170,7 +170,7 @@ export async function prepareRemovalConfirmation(coordinatorDatabaseUrl: string,
 
 /** Create a prepared confirmation once; an uncertain write never opens the gate. */
 export async function writeRemovalConfirmation(coordinatorDatabaseUrl: string, projectId: string, cookie: string,
-  verifier: RegisteredSessionVerifier, target: { environment: 'dev' | 'prod', bucket: string },
+  verifier: RegisteredSessionVerifier, target: { environment: 'dev' | 'prod', bucket: string, projectNumber: string },
   writer: Storage, input: AppliedRemoval): Promise<ModeratorAccess<'confirmation_uncertain' | { state: 'confirmation_written', recordId: string }>> {
   const prepared = await prepareRemovalConfirmation(coordinatorDatabaseUrl, projectId, cookie, verifier, target?.environment, input)
   if (prepared.state !== 'authorized') return prepared
@@ -184,7 +184,7 @@ export async function writeRemovalConfirmation(coordinatorDatabaseUrl: string, p
 
 /** Record an exact confirmation readback without reopening public access. */
 export async function verifyRemovalConfirmation(coordinatorDatabaseUrl: string, projectId: string, cookie: string,
-  verifier: RegisteredSessionVerifier, target: { environment: 'dev' | 'prod', bucket: string },
+  verifier: RegisteredSessionVerifier, target: { environment: 'dev' | 'prod', bucket: string, projectNumber: string },
   reader: Storage, input: AppliedRemoval): Promise<ModeratorAccess<'confirmation_uncertain' | {
     state: 'confirmation_verified', recordId: string, generation: string, verifiedAt: string,
   }>> {

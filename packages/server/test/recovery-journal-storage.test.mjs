@@ -5,7 +5,10 @@ import { CRC32C } from '@google-cloud/storage'
 import { compareCurrentRecoveryJournalRecord, listUnverifiedRecoveryJournal, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
 import { encodeRecoveryConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
 
-const target = { environment: 'dev', bucket: 'synthetic-private-backups' }
+const target = { environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789' }
+const bucketMetadata = async () => [{ name: target.bucket, projectNumber: target.projectNumber,
+  iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
+  versioning: { enabled: true }, softDeletePolicy: { retentionDurationSeconds: '604800' } }]
 const id = '11111111-1111-4111-8111-111111111111'
 const payload = encodeRecoveryConfirmation(id, 'dev', '2026-11-03T12:00:00.000Z')
 const originalEmulator = process.env.STORAGE_EMULATOR_HOST
@@ -17,7 +20,7 @@ after(() => {
 
 function fake(mode = 'success') {
   const seen = []
-  const storage = { bucket(bucket) { return { file(path) { return { createWriteStream(options) {
+  const storage = { bucket(bucket) { return { getMetadata: bucketMetadata, file(path) { return { createWriteStream(options) {
     const entry = { bucket, path, options, bytes: [] }
     seen.push(entry)
     return new Writable({
@@ -73,6 +76,7 @@ test('journal storage rejects invalid destinations, IDs, bodies, and timeouts be
   for (const [destination, recordId, body, timeout] of [
     [{ ...target, environment: 'prod-other' }, id, payload, 50],
     [{ ...target, bucket: 'gs://wrong' }, id, payload, 50],
+    [{ ...target, projectNumber: 'invalid' }, id, payload, 50],
     [{ ...target, bucket: { toString: () => target.bucket } }, id, payload, 50],
     [target, '../unsafe', payload, 50], [target, id, Buffer.from('not-json'), 50],
     [target, id, Buffer.from('[]'), 50], [target, id, Buffer.from([0xff]), 50],
@@ -82,6 +86,31 @@ test('journal storage rejects invalid destinations, IDs, bodies, and timeouts be
     [target, id, Buffer.alloc(16_385), 50], [target, id, payload, 5001],
   ]) await assert.rejects(writeRecoveryJournalRecord(storage, destination, recordId, body, timeout), /Invalid journal record/)
   assert.equal(seen.length, 0)
+})
+
+test('journal operations refuse an unverified bucket before touching objects', async () => {
+  const [safe] = await bucketMetadata()
+  for (const metadata of [
+    { ...safe, projectNumber: '987654321' },
+    { ...safe, projectNumber: 123456789 },
+    { ...safe, iamConfiguration: { ...safe.iamConfiguration, publicAccessPrevention: 'inherited' } },
+    { ...safe, versioning: { enabled: false } },
+    { ...safe, lifecycle: { rule: [{ action: { type: 'Delete' } }] } },
+    { ...safe, softDeletePolicy: { retentionDurationSeconds: '604801' } },
+  ]) {
+    let objectRequests = 0
+    const storage = { bucket: () => ({ async getMetadata() { return [metadata] },
+      file() { objectRequests++; throw new Error('unexpected object access') },
+      getFiles() { objectRequests++; throw new Error('unexpected listing') },
+    }) }
+    await assert.rejects(writeRecoveryJournalRecord(storage, target, id, payload, 50), /outcome is uncertain/)
+    await assert.rejects(readRecoveryJournalRecord(storage, target, id, '1', 50), /could not be verified/)
+    await assert.rejects(compareCurrentRecoveryJournalRecord(storage, target, id, payload, 50), /could not be verified/)
+    await assert.rejects(listUnverifiedRecoveryJournal(storage, target), /could not be verified/)
+    assert.equal(objectRequests, 0)
+  }
+  const unavailable = { bucket: () => ({ getMetadata: () => new Promise(() => {}) }) }
+  await assert.rejects(writeRecoveryJournalRecord(unavailable, target, id, payload, 20), /outcome is uncertain/)
 })
 
 test('journal storage refuses an environment-directed storage emulator', async () => {
@@ -98,7 +127,7 @@ test('journal storage refuses an environment-directed storage emulator', async (
 test('journal reader selects an exact generation and validates bounded canonical bytes', async () => {
   const body = encodeRecoveryConfirmation(id, 'dev', '2026-11-03T12:00:00.000Z')
   const entries = []
-  const storage = { bucket(bucket) { return { file(path, options) {
+  const storage = { bucket(bucket) { return { getMetadata: bucketMetadata, file(path, options) {
     const file = { interceptors: [], createReadStream(readOptions) {
       entries.push({ bucket, path, options, readOptions, request: file.interceptors[0].request({ uri: '/synthetic', qs: {} }) })
       const stream = Readable.from([body])
@@ -119,7 +148,7 @@ test('journal reader selects an exact generation and validates bounded canonical
 })
 
 test('journal reader fails closed on invalid references, records, provider errors, and timeouts', async () => {
-  const storage = (chunks, withHeaders = true) => ({ bucket: () => ({ file: () => ({ interceptors: [], createReadStream: () => {
+  const storage = (chunks, withHeaders = true) => ({ bucket: () => ({ getMetadata: bucketMetadata, file: () => ({ interceptors: [], createReadStream: () => {
     const stream = Readable.from(chunks)
     if (withHeaders) process.nextTick(() => stream.emit('response', { toJSON: () => ({ headers: {
       'x-goog-stored-content-encoding': 'identity', 'x-goog-hash': 'crc32c=AAAAAA==',
@@ -136,11 +165,11 @@ test('journal reader fails closed on invalid references, records, provider error
   const wrongConfirmationId = recoveryConfirmationRecordId('22222222-2222-4222-8222-222222222222')
   await assert.rejects(readRecoveryJournalRecord(storage([encodeRecoveryConfirmation(id, 'dev', '2026-11-03T12:00:00.000Z')]),
     target, wrongConfirmationId, '1'), /could not be verified/)
-  const failing = { bucket: () => ({ file: () => ({ interceptors: [], createReadStream: () =>
+  const failing = { bucket: () => ({ getMetadata: bucketMetadata, file: () => ({ interceptors: [], createReadStream: () =>
     new Readable({ read() { this.destroy(new Error('synthetic sensitive provider error')) } }) }) }) }
   await assert.rejects(readRecoveryJournalRecord(failing, target, id, '1'), error =>
     error.message === 'Journal record could not be verified' && !error.message.includes('sensitive'))
-  const hanging = { bucket: () => ({ file: () => ({ interceptors: [], createReadStream: () => new Readable({ read() {} }) }) }) }
+  const hanging = { bucket: () => ({ getMetadata: bucketMetadata, file: () => ({ interceptors: [], createReadStream: () => new Readable({ read() {} }) }) }) }
   await assert.rejects(readRecoveryJournalRecord(hanging, target, id, '1', 20), /could not be verified/)
 })
 
@@ -154,7 +183,7 @@ test('ambiguous write readback requires the same current generation and exact sa
     size: String(body.length), contentType: 'application/json', crc32c: checksum.toString() }
   function storageFor({ metadata = [base, base], stored = body, hang = false } = {}) {
     let calls = 0
-    return { bucket: () => ({ file: () => ({ interceptors: [],
+    return { bucket: () => ({ getMetadata: bucketMetadata, file: () => ({ interceptors: [],
       getMetadata: () => hang ? new Promise(() => {}) : Promise.resolve([metadata[calls++]]),
       createReadStream: () => {
         const stream = Readable.from([stored])
@@ -187,7 +216,7 @@ test('journal inventory discovers bounded exact generations without asserting co
   const metadata = recordId => ({ name: `${prefix}${recordId}.json`, bucket: target.bucket,
     generation: '90071992547409931234', metageneration: '1', size: '123', contentType: 'application/json', crc32c: 'AAAAAA==' })
   const queries = []
-  const storageFor = pages => ({ bucket: () => ({ async getFiles(query) {
+  const storageFor = pages => ({ bucket: () => ({ getMetadata: bucketMetadata, async getFiles(query) {
     queries.push(query)
     const result = pages.shift()
     if (result instanceof Error) throw result
@@ -228,8 +257,9 @@ test('journal inventory discovers bounded exact generations without asserting co
 
 test('journal inventory fails closed when listing does not respond', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
-  const storage = { bucket: () => ({ getFiles: () => new Promise(() => {}) }) }
+  const storage = { bucket: () => ({ getMetadata: bucketMetadata, getFiles: () => new Promise(() => {}) }) }
   const rejected = assert.rejects(listUnverifiedRecoveryJournal(storage, target), /could not be verified/)
+  await new Promise(resolve => setImmediate(resolve))
   t.mock.timers.tick(5000)
   await rejected
 })

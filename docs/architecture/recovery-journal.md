@@ -34,14 +34,14 @@ be able to create, update, or delete journal records; the journal writer must
 not be able to change backup archives or completion records. Review inherited
 grants and deny policies as well as the explicitly scoped grants.
 
-The current journal transport checks the environment prefix and bucket-name
-syntax, but it does not verify the bucket's owning project, policy, or effective
-permissions. Before live integration, verify the configured bucket against the
-reviewed environment and its existing foundation-owned backup bucket. Reuse the
-backup export's bucket-safeguard checks where the identity boundary permits;
-otherwise define an independently authorized preflight. A missing or ambiguous
-check must keep the access gate closed, and a check cannot rule out later policy
-changes or prove journal coverage.
+The journal transport checks the environment prefix and bucket name, then uses
+the backup export's shared bucket-safeguard check before each storage operation.
+The caller supplies the reviewed project number; the identity needs
+`storage.buckets.get` as well as its scoped object permissions. A missing, invalid,
+or unavailable check fails closed. This verifies the returned bucket metadata,
+not effective inherited permissions, later policy changes, writer coverage, or
+journal completeness. Review the project, bucket, and identity before integration;
+measure the per-read metadata checks against the full recovery-time objective.
 
 The server package contains an encoder and decoder for version-one intent and
 commit confirmation records and version-two hold-placement confirmations. It
@@ -81,9 +81,10 @@ Do not put raw content, contact details, credentials, or reasons in object names
 custom metadata, or operational logs.
 
 Protect record bodies with the existing bucket's private access and encryption.
-Give a dedicated writer only the object creation needed for the journal prefix,
-not update, deletion, or backup-prefix access. Recovery readers need explicitly
-reviewed access to record contents. Cloud Storage object listing is authorized at
+Give a dedicated writer bucket metadata read and only the object creation needed
+for the journal prefix, not object update, deletion, or backup-prefix access.
+Recovery readers need bucket metadata read and explicitly reviewed access to
+record contents. Cloud Storage object listing is authorized at
 bucket scope, so prefix restrictions do not by themselves confine list access;
 account for that exposure when assigning the reader identity.
 

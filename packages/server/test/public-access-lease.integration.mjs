@@ -11,6 +11,10 @@ import { decodeRecoveryRecord, encodeRecoveryIntent, recoveryConfirmationRecordI
 import { pendingRemovalDatabasePool, runtimeDatabasePool } from '../dist/runtime-database.js'
 import { compareCurrentRecoveryJournalRecord, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
 
+const bucketMetadata = async () => [{ name: 'synthetic-private-backups', projectNumber: '123456789',
+  iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
+  versioning: { enabled: true }, softDeletePolicy: { retentionDurationSeconds: '604800' } }]
+
 const url = new URL(process.env.TEST_DATABASE_URL ?? 'postgres://invalid.invalid/invalid')
 if (!['127.0.0.1', 'localhost'].includes(url.hostname) || url.pathname !== '/idea_map_test_public_gate') {
   throw new Error('TEST_DATABASE_URL must name the local disposable public-gate test database')
@@ -132,7 +136,7 @@ test('authorized pending removal closes the gate atomically and retries without 
     const retried = await prepare()
     assert.deepEqual(retried, prepared)
     let stored
-    const journal = ambiguous => ({ bucket: () => ({ file: () => ({ createWriteStream: () => {
+    const journal = ambiguous => ({ bucket: () => ({ getMetadata: bucketMetadata, file: () => ({ createWriteStream: () => {
       const chunks = []
       return new Writable({
         write(chunk, _encoding, callback) { chunks.push(Buffer.from(chunk)); callback() },
@@ -143,14 +147,14 @@ test('authorized pending removal closes the gate atomically and retries without 
         },
       })
     } }) }) })
-    const target = { environment: 'dev', bucket: 'synthetic-private-backups' }
+    const target = { environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789' }
     const emulator = process.env.STORAGE_EMULATOR_HOST
     delete process.env.STORAGE_EMULATOR_HOST
     try {
       await assert.rejects(writeRecoveryJournalRecord(journal(true), target, prepared.value.recordId, prepared.value.payload), /outcome is uncertain/)
       assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
       await assert.rejects(writeRecoveryJournalRecord(journal(false), target, retried.value.recordId, retried.value.payload), /outcome is uncertain/)
-      const independentReader = { bucket: () => ({ file: () => ({ interceptors: [], createReadStream: () => {
+      const independentReader = { bucket: () => ({ getMetadata: bucketMetadata, file: () => ({ interceptors: [], createReadStream: () => {
         const stream = Readable.from([stored])
         process.nextTick(() => stream.emit('response', { toJSON: () => ({ headers: {
           'x-goog-stored-content-encoding': 'identity', 'x-goog-hash': 'crc32c=AAAAAA==',
@@ -170,7 +174,7 @@ test('authorized pending removal closes the gate atomically and retries without 
     await assert.rejects(prepare(verifier, { reason: '\ud800' }), /Invalid pending removal/)
     assert.equal((await pool.query('SELECT count(*)::int AS count FROM public.public_access_pending_decisions')).rows[0].count, 1)
     const objects = new Map()
-    const stagedJournal = lostResponse => ({ bucket: () => ({ file: name => ({ createWriteStream: () => {
+    const stagedJournal = lostResponse => ({ bucket: () => ({ getMetadata: bucketMetadata, file: name => ({ createWriteStream: () => {
       const chunks = []
       return new Writable({
         write(chunk, _encoding, callback) { chunks.push(Buffer.from(chunk)); callback() },
@@ -183,7 +187,8 @@ test('authorized pending removal closes the gate atomically and retries without 
     } }) }) })
     const uncertainInput = { ...input, operationId: randomUUID(), recordId: randomUUID() }
     const successfulInput = { ...input, operationId: randomUUID(), recordId: randomUUID() }
-    journalOperations.push(uncertainInput.operationId, successfulInput.operationId)
+    const wrongBucketInput = { ...input, operationId: randomUUID(), recordId: randomUUID() }
+    journalOperations.push(uncertainInput.operationId, successfulInput.operationId, wrongBucketInput.operationId)
     const originalEmulator = process.env.STORAGE_EMULATOR_HOST
     delete process.env.STORAGE_EMULATOR_HOST
     try {
@@ -191,6 +196,15 @@ test('authorized pending removal closes the gate atomically and retries without 
       assert.deepEqual(await stage(stagedJournal(true), uncertainInput), { state: 'authorized', value: 'journal_uncertain' })
       assert.deepEqual(await stage(stagedJournal(false), uncertainInput), { state: 'authorized', value: 'journal_uncertain' })
       assert.deepEqual(await stage(stagedJournal(false), successfulInput), { state: 'authorized', value: 'journaled' })
+      let wrongBucketObjectRequests = 0
+      const wrongBucket = { bucket: () => ({ async getMetadata() { return [{ ...(await bucketMetadata())[0], projectNumber: '987654321' }] },
+        file() { wrongBucketObjectRequests++; throw new Error('Unexpected object write') },
+      }) }
+      assert.deepEqual(await stage(wrongBucket, wrongBucketInput), { state: 'authorized', value: 'journal_uncertain' })
+      assert.equal(wrongBucketObjectRequests, 0)
+      assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
+      assert.equal((await pool.query('SELECT count(*)::int AS count FROM public.public_access_pending_decisions WHERE operation_id=$1',
+        [wrongBucketInput.operationId])).rows[0].count, 1)
     } finally {
       if (originalEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
       else process.env.STORAGE_EMULATOR_HOST = originalEmulator
@@ -234,7 +248,8 @@ test('authorized pending removal closes the gate atomically and retries without 
     concurrentOperations.push(...concurrent.map(item => item.operationId))
     const outcomes = await Promise.all(concurrent.map(item => prepare(verifier, item)))
     assert.ok(outcomes.every(result => result.state === 'authorized' && result.value.state === 'pending'))
-    assert.equal((await pool.query('SELECT count(*)::int AS count FROM public.public_access_pending_decisions')).rows[0].count, 6)
+    assert.equal((await pool.query('SELECT count(*)::int AS count FROM public.public_access_pending_decisions')).rows[0].count,
+      1 + journalOperations.length + 1 + concurrentOperations.length)
     assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
   } finally {
     await reader?.release().catch(() => {})
@@ -381,9 +396,9 @@ test('a trusted coordinator applies only the verified pending removal after read
     await waitForAborts(reader.signal)
     const body = Buffer.from(prepared.value.payload)
     const checksum = new CRC32C(); checksum.update(body)
-    const target = { environment: 'dev', bucket: 'synthetic-private-backups' }
+    const target = { environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789' }
     let reads = 0
-    const fakeReader = (payload = body, crc = checksum.toString(), generation = '90071992547409931234') => ({ bucket: bucket => ({ file: name => ({
+    const fakeReader = (payload = body, crc = checksum.toString(), generation = '90071992547409931234') => ({ bucket: bucket => ({ getMetadata: bucketMetadata, file: name => ({
       interceptors: [], async getMetadata() { reads++; return [{ bucket, name, generation, metageneration: '1', size: String(payload.length),
         contentType: 'application/json', crc32c: crc }] },
       createReadStream() {
@@ -503,7 +518,7 @@ test('a trusted coordinator applies only the verified pending removal after read
     assert.deepEqual(decodeRecoveryRecord(confirmation.value.payload, 'dev'), { version: 1, recordType: 'commit_confirmation',
       operationId, environment: 'dev', confirmedAt: confirmation.value.preparedAt })
     assert.ok(Date.parse(confirmation.value.preparedAt) >= Date.parse(applied.value.appliedAt))
-    const writer = (objects, lost) => ({ bucket: () => ({ file: name => ({ createWriteStream: options => {
+    const writer = (objects, lost) => ({ bucket: () => ({ getMetadata: bucketMetadata, file: name => ({ createWriteStream: options => {
       assert.equal(options.preconditionOpts.ifGenerationMatch, 0)
       const chunks = []
       return new Writable({ write(chunk, _encoding, callback) { chunks.push(Buffer.from(chunk)); callback() }, final(callback) {
@@ -528,7 +543,7 @@ test('a trusted coordinator applies only the verified pending removal after read
     assert.deepEqual(await compareCurrentRecoveryJournalRecord(fakeReader(recoveredBytes, confirmationChecksum.toString()),
       target, confirmationId, confirmation.value.payload), { generation: '90071992547409931234', coverageVerified: false })
     const storedReader = fakeReader(recoveredBytes, confirmationChecksum.toString())
-    const confirmationReader = { bucket(bucket) { return { file(name) {
+    const confirmationReader = { bucket(bucket) { return { getMetadata: bucketMetadata, file(name) {
       if (name !== confirmationPath || !confirmationObjects.has(name)) throw new Error('Synthetic confirmation is missing')
       return storedReader.bucket(bucket).file(name)
     } } } }

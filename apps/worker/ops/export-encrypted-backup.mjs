@@ -6,24 +6,14 @@ import { resolve } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { finished, pipeline } from 'node:stream/promises'
 import { pathToFileURL } from 'node:url'
+import { verifyBackupBucket } from '@idea-map/server/backup-bucket'
+
+export { verifyBackupBucket } from '@idea-map/server/backup-bucket'
 
 export function backupTarget(env) {
   if (typeof env.STORAGE_EMULATOR_HOST === 'string' || !['dev', 'prod'].includes(env.BACKUP_ENVIRONMENT) || !/^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$/.test(env.BACKUP_BUCKET ?? '') ||
       !/^[1-9][0-9]{5,19}$/.test(env.BACKUP_PROJECT_NUMBER ?? '')) throw new Error('Invalid backup target')
   return { environment: env.BACKUP_ENVIRONMENT, bucket: env.BACKUP_BUCKET, projectNumber: env.BACKUP_PROJECT_NUMBER }
-}
-
-export function verifyBackupBucket(bucket, config) {
-  if (bucket.name !== config.bucket || String(bucket.projectNumber) !== config.projectNumber ||
-      bucket.iamConfiguration?.publicAccessPrevention !== 'enforced' ||
-      bucket.iamConfiguration?.uniformBucketLevelAccess?.enabled !== true || bucket.versioning?.enabled !== true ||
-      Boolean(bucket.encryption?.defaultKmsKeyName) ||
-      !/^(0|[1-9][0-9]*)$/.test(String(bucket.softDeletePolicy?.retentionDurationSeconds)) ||
-      Number(bucket.softDeletePolicy.retentionDurationSeconds) > 604800 ||
-      (bucket.lifecycle !== undefined && (!Array.isArray(bucket.lifecycle.rule) ||
-        bucket.lifecycle.rule.some(rule => !['SetStorageClass', 'AbortIncompleteMultipartUpload'].includes(rule.action?.type))))) {
-    throw new Error('Bucket safeguards are not confirmed')
-  }
 }
 
 // Production exports run in the hosted backup job, never on a local machine.
