@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import pg from 'pg'
 import { CRC32C } from '@google-cloud/storage'
 import { acquirePublicAccessLease, publicAccessLeaseClient } from '../dist/public-access-lease.js'
-import { applyJournaledRemoval, pinPendingRemovalSequence, prepareAndJournalRemoval, preparePendingRemoval, prepareRemovalConfirmation, verifyRemovalConfirmation, writeRemovalConfirmation } from '../dist/pending-removal.js'
+import { applyJournaledRemoval, journalPendingRemovalSequence, pinPendingRemovalSequence, prepareAndJournalRemoval, preparePendingRemoval, prepareRemovalConfirmation, verifyRemovalConfirmation, writeRemovalConfirmation } from '../dist/pending-removal.js'
 import { decodeRecoveryRecord, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
 import { pendingRemovalDatabasePool, runtimeDatabasePool } from '../dist/runtime-database.js'
 import { compareCurrentRecoveryJournalRecord, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
@@ -266,6 +266,45 @@ test('authorized pending removal closes the gate atomically and retries without 
       { state: 'authorized', value: 'pinned' })
     await assert.rejects(pinPendingRemovalSequence(url.toString(), 'demo-idea-map', 'synthetic-cookie', verifier,
       { ...sequenceTarget, secretId: 'other-journal' }, sequenceInput), /Pending removal unavailable/)
+    const versions = []
+    const sequencePath = 'projects/123456789/secrets/synthetic-journal'
+    let loseAppend = true
+    const writer = { async request(method, path, body) {
+      assert.equal(method, 'POST'); assert.equal(path, `${sequencePath}:addVersion`)
+      const pin = await pool.query('SELECT journal_secret_id FROM public.public_access_pending_decisions WHERE operation_id=$1', [secondOperationId])
+      assert.equal(pin.rows[0].journal_secret_id, 'synthetic-journal') // The pin is visible from another transaction.
+      versions.push(Buffer.from(body.payload.data, 'base64'))
+      if (loseAppend) { loseAppend = false; throw new Error('synthetic lost response') }
+      return { status: 200, data: { name: `${sequencePath}/versions/${versions.length}`, state: 'ENABLED', clientSpecifiedPayloadChecksum: true } }
+    } }
+    const sequenceReader = { async request(method, path) {
+      assert.equal(method, 'GET')
+      const version = Number(path.match(/\/versions\/(\d+):access$/)?.[1])
+      const bytes = versions[version - 1]
+      const crc = new CRC32C(); crc.update(bytes)
+      return { status: 200, data: { name: `${sequencePath}/versions/${version}`,
+        payload: { data: bytes.toString('base64'), dataCrc32c: String(Buffer.from(crc.toString(), 'base64').readUInt32BE(0)) } } }
+    } }
+    assert.deepEqual(await journalPendingRemovalSequence(url.toString(), 'demo-idea-map', 'synthetic-cookie', verifier,
+      sequenceTarget, writer, sequenceReader, sequenceInput), { state: 'authorized', value: 'journal_uncertain' })
+    const mutableTarget = { ...sequenceTarget }, mutableInput = { ...sequenceInput, payload: Buffer.from(sequenceInput.payload) }
+    const mutateDuringVerification = { ...verifier, async getUser() {
+      mutableTarget.secretId = 'other-journal'; mutableInput.payload.fill(0); mutableInput.operationId = randomUUID()
+      return { uid: session.uid, email: session.email, emailVerified: true, disabled: false }
+    } }
+    assert.deepEqual(await journalPendingRemovalSequence(url.toString(), 'demo-idea-map', 'synthetic-cookie', mutateDuringVerification,
+      mutableTarget, writer, sequenceReader, mutableInput),
+    { state: 'authorized', value: { state: 'journaled', version: '2', coverageVerified: false } })
+    assert.deepEqual(versions[0], versions[1])
+    assert.deepEqual(await journalPendingRemovalSequence(url.toString(), 'demo-idea-map', '', verifier,
+      sequenceTarget, writer, sequenceReader, sequenceInput), { state: 'unauthenticated' })
+    await assert.rejects(journalPendingRemovalSequence(url.toString(), 'demo-idea-map', 'synthetic-cookie', verifier,
+      { ...sequenceTarget, epochId: randomUUID() }, writer, sequenceReader, sequenceInput), /Pending removal unavailable/)
+    assert.equal(versions.length, 2)
+    const deniedReader = { async request() { return { status: 403, data: {} } } }
+    assert.deepEqual(await journalPendingRemovalSequence(url.toString(), 'demo-idea-map', 'synthetic-cookie', verifier,
+      sequenceTarget, writer, deniedReader, sequenceInput), { state: 'authorized', value: 'journal_uncertain' })
+    assert.deepEqual(versions[2], versions[0])
     assert.equal((await pool.query(pinSql, pinArgs)).rows[0].outcome, 'pinned')
     await assert.rejects(pool.query(pinSql, [...pinArgs.slice(0, 6), 'other-journal', pinArgs[7]]), /ambiguous/)
     await assert.rejects(pool.query('UPDATE public.public_access_pending_decisions SET journal_epoch_id=$1 WHERE operation_id=$2',

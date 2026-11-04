@@ -2,6 +2,8 @@ import { decodeRecoveryRecord, encodeRecoveryConfirmation, encodeRecoveryIntent,
 import { withVerifiedModerator, type ModeratorAccess, type RegisteredSessionVerifier } from './moderator-authorization.js'
 import { pendingRemovalDatabasePool } from './runtime-database.js'
 import { compareCurrentRecoveryJournalRecord, writeRecoveryJournalRecord } from './recovery-journal-storage.js'
+import { encodeRecoverySequenceEntry } from './recovery-sequence.js'
+import { appendAndVerifyRecoverySequenceVersion, type RecoverySequenceTransport } from './recovery-sequence-storage.js'
 import type { Storage } from '@google-cloud/storage'
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
@@ -25,9 +27,11 @@ export async function pinPendingRemovalSequence(databaseUrl: string, projectId: 
       typeof input.recordId !== 'string' || !uuid4.test(input.recordId) || !(input.payload instanceof Uint8Array) ||
       input.payload.byteLength < 1 || input.payload.byteLength > 16_384) throw new Error('Invalid pending removal')
   const payload = Buffer.from(input.payload)
+  const destination = { ...target }
+  const operationId = input.operationId, recordId = input.recordId
   let record
-  try { record = decodeRecoveryRecord(payload, target.environment) } catch { throw new Error('Invalid pending removal') }
-  if (record.recordType !== 'intent' || record.operationId !== input.operationId || record.decision.kind !== 'removal') {
+  try { record = decodeRecoveryRecord(payload, destination.environment) } catch { throw new Error('Invalid pending removal') }
+  if (record.recordType !== 'intent' || record.operationId !== operationId || record.decision.kind !== 'removal') {
     throw new Error('Invalid pending removal')
   }
   try {
@@ -36,14 +40,38 @@ export async function pinPendingRemovalSequence(databaseUrl: string, projectId: 
       await client.query("SET LOCAL lock_timeout = '5s'")
       await client.query("SET LOCAL statement_timeout = '10s'")
       const result = await client.query<{ outcome: string }>('SELECT public.pin_pending_removal_sequence($1,$2,$3,$4,$5,$6,$7,$8) AS outcome',
-        [`firebase:${projectId}`, subject, input.operationId, input.recordId, payload.toString('utf8'),
-          target.projectNumber, target.secretId, target.epochId])
+        [`firebase:${projectId}`, subject, operationId, recordId, payload.toString('utf8'),
+          destination.projectNumber, destination.secretId, destination.epochId])
       if (result.rows[0]?.outcome !== 'pinned') throw new Error('Pending removal is ambiguous')
       return 'pinned' as const
     }, pendingRemovalDatabasePool(databaseUrl))
   } catch {
     // A failed or uncertain commit cannot authorize an external append.
     throw new Error('Pending removal unavailable')
+  }
+}
+
+/**
+ * Pin a committed saved intent, then append and read its exact sequence version.
+ * This unwired step neither applies the removal nor proves journal coverage.
+ */
+export async function journalPendingRemovalSequence(databaseUrl: string, projectId: string, cookie: string,
+  verifier: RegisteredSessionVerifier, target: { environment: 'dev' | 'prod', projectNumber: string, secretId: string, epochId: string },
+  writer: RecoverySequenceTransport, reader: RecoverySequenceTransport,
+  input: { operationId: string, recordId: string, payload: Uint8Array }): Promise<ModeratorAccess<
+    'journal_uncertain' | { state: 'journaled', version: string, coverageVerified: false }>> {
+  if (!target || !input || !(input.payload instanceof Uint8Array)) throw new Error('Invalid pending removal')
+  const destination = { ...target }
+  const saved = { operationId: input.operationId, recordId: input.recordId, payload: Buffer.from(input.payload) }
+  const pin = await pinPendingRemovalSequence(databaseUrl, projectId, cookie, verifier, destination, saved)
+  if (pin.state !== 'authorized') return pin
+  try {
+    const entry = encodeRecoverySequenceEntry({ kind: 'decision', environment: destination.environment,
+      epochId: destination.epochId, recordId: saved.recordId, data: saved.payload.toString('base64') })
+    const result = await appendAndVerifyRecoverySequenceVersion(writer, reader, destination, entry)
+    return { state: 'authorized', value: { state: 'journaled', ...result } }
+  } catch {
+    return { state: 'authorized', value: 'journal_uncertain' }
   }
 }
 

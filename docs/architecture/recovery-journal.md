@@ -417,9 +417,12 @@ requires reconciliation. An unwired server helper checks the canonical saved
 intent and current moderator, and returns success only after that transaction
 commits. A failed identity recheck rolls the pin back. Existing applied rows
 without a pin cannot be pinned automatically. The pin does not verify the
-secret, effective access, baseline or
-coverage, and the older bucket-based coordinator does not enforce it. No runtime
-role receives this function, and neither path is ready for live use.
+secret, effective access, baseline or coverage. An unwired coordinator appends
+the saved intent only after the pin commits and compares the exact numbered
+version with a separate reader. A lost append response remains uncertain; a
+retry uses the same saved bytes and target. This does not prove coverage or
+apply the removal. The older bucket-based coordinator does not enforce the pin.
+No runtime role receives this function, and neither path is ready for live use.
 
 An unwired application step accepts the saved intent and uses a separately
 authorized journal reader and database coordinator. It verifies the current
