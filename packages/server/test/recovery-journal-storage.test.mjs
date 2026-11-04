@@ -340,3 +340,14 @@ test('journal inventory rejects bucket replacement or policy changes during list
   const missingIdentity = { bucket: () => ({ async getMetadata() { return [{ ...safe, generation: undefined }] } }) }
   await assert.rejects(listUnverifiedRecoveryJournal(missingIdentity, target), /could not be verified/)
 })
+
+test('journal inventory rejects a final bucket response after its shared deadline', async t => {
+  let now = 0, calls = 0
+  t.mock.method(performance, 'now', () => now)
+  const storage = { bucket: () => ({
+    async getMetadata() { if (++calls === 2) now = 30_000; return bucketMetadata() },
+    async getFiles() { return [[], null] },
+  }) }
+  await assert.rejects(listUnverifiedRecoveryJournal(storage, target), /could not be verified/)
+  assert.equal(calls, 2)
+})

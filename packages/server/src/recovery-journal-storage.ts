@@ -200,6 +200,7 @@ Promise<{ references: { recordId: string, generation: string, metageneration: st
     if (after.generation !== bucketGeneration || after.metageneration !== bucketMetageneration) {
       throw new Error('Journal bucket changed during inventory')
     }
+    remainingTime(deadline)
     return { references, coverageVerified: false, softDeletedChecked: true }
   } catch {
     throw new Error('Journal inventory could not be verified')
