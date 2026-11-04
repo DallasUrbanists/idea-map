@@ -391,6 +391,12 @@ durable events from an independent authoritative source before allowing public
 reads or replaying side effects. If that source is unavailable, keep the
 replacement isolated and escalate; an older database backup can contain content
 that was subsequently removed.
+Pausing a scheduler does not cancel a request already in flight. Drain and
+inspect those requests before deciding which delivery work to recover. Rearming
+an outbox generation requires the separately authorized operator connection in
+the [outbox recovery procedure](../architecture/postgresql-postgis-drizzle.md#outbox-recovery);
+the restricted staging worker role cannot do it. Do not widen that runtime role
+to make a restore proceed.
 The project does not currently implement an independent authoritative record for
 those later changes. The [recovery decision journal design](../architecture/recovery-journal.md)
 describes the required record and unresolved safeguards. This procedure cannot by
