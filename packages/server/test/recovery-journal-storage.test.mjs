@@ -195,12 +195,18 @@ test('journal inventory discovers bounded exact generations without asserting co
   } }) })
   const first = { metadata: metadata(id) }
   const second = { metadata: metadata(secondId) }
-  const result = await listUnverifiedRecoveryJournal(storageFor([[[first], { pageToken: 'next', prefix: 'untrusted' }], [[second], null]]), target)
+  const result = await listUnverifiedRecoveryJournal(storageFor([
+    [[first], { pageToken: 'next', prefix: 'untrusted' }], [[second], null],
+    [[], { pageToken: 'soft-next' }], [[], null],
+  ]), target)
   assert.deepEqual(result, { references: [{ recordId: id, generation: first.metadata.generation },
-    { recordId: secondId, generation: second.metadata.generation }], coverageVerified: false, softDeletedChecked: false })
-  assert.equal(queries.length, 2)
-  assert.ok(queries.every(query => query.prefix === prefix && query.versions === true && query.autoPaginate === false))
+    { recordId: secondId, generation: second.metadata.generation }], coverageVerified: false, softDeletedChecked: true })
+  assert.equal(queries.length, 4)
+  assert.ok(queries.every(query => query.prefix === prefix && query.autoPaginate === false))
+  assert.ok(queries.slice(0, 2).every(query => query.versions === true && !query.softDeleted))
+  assert.ok(queries.slice(2).every(query => query.softDeleted === true && !query.versions))
   assert.equal(queries[1].pageToken, 'next')
+  assert.equal(queries[3].pageToken, 'soft-next')
 
   const malformed = [
     { ...first.metadata, name: `${prefix}../private.json` },
@@ -212,6 +218,9 @@ test('journal inventory discovers bounded exact generations without asserting co
   ]
   for (const value of malformed) await assert.rejects(listUnverifiedRecoveryJournal(storageFor([[[{ metadata: value }], null]]), target), /could not be verified/)
   await assert.rejects(listUnverifiedRecoveryJournal(storageFor([[[first, first], null]]), target), /could not be verified/)
+  await assert.rejects(listUnverifiedRecoveryJournal(storageFor([[[first], null], [[second], null]]), target), /could not be verified/)
+  await assert.rejects(listUnverifiedRecoveryJournal(storageFor([[[first], null], new Error('synthetic soft-deleted listing error')]), target), /could not be verified/)
+  await assert.rejects(listUnverifiedRecoveryJournal(storageFor([[[first], null], [[], { pageToken: 'repeat' }], [[], { pageToken: 'repeat' }]]), target), /could not be verified/)
   await assert.rejects(listUnverifiedRecoveryJournal(storageFor([[[], { pageToken: 'repeat' }], [[], { pageToken: 'repeat' }]]), target), /could not be verified/)
   await assert.rejects(listUnverifiedRecoveryJournal(storageFor([new Error('synthetic sensitive provider error')]), target), error =>
     error.message === 'Journal inventory could not be verified' && !error.message.includes('sensitive'))

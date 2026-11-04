@@ -114,8 +114,10 @@ try {
   const journal = { bucket: bucket => {
     if (bucket !== journalTarget.bucket) throw new Error('Unexpected synthetic journal bucket')
     return { async getFiles(query) {
-      if (query.prefix !== 'idea-map-v2/dev/recovery-journal/' || query.versions !== true || query.autoPaginate !== false ||
+      if (query.prefix !== 'idea-map-v2/dev/recovery-journal/' || query.autoPaginate !== false ||
           (query.pageToken !== undefined && query.pageToken !== 'second')) throw new Error('Unexpected synthetic journal inventory')
+      if (query.softDeleted === true && query.versions === undefined && query.pageToken === undefined) return [[], null]
+      if (query.versions !== true || query.softDeleted !== undefined) throw new Error('Unexpected synthetic journal inventory')
       const objects = [...entries.values()].sort((a, b) => a.metadata.name.localeCompare(b.metadata.name))
       return query.pageToken ? [objects.slice(2), null] : [objects.slice(0, 2), objects.length > 2 ? { pageToken: 'second' } : null]
     }, file(name) {
@@ -221,7 +223,7 @@ try {
   delete process.env.STORAGE_EMULATOR_HOST
   try {
     const inventory = await listUnverifiedRecoveryJournal(journal, journalTarget)
-    if (inventory.coverageVerified !== false || inventory.softDeletedChecked !== false || inventory.references.length !== 4) {
+    if (inventory.coverageVerified !== false || inventory.softDeletedChecked !== true || inventory.references.length !== 4) {
       throw new Error('Synthetic journal inventory failed verification')
     }
     const records = await Promise.all(inventory.references.map(reference =>

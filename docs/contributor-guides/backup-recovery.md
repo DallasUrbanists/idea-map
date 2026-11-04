@@ -39,8 +39,9 @@ public state and lacks the later hold, revision, actor, and legal-authority
 assignment. The rehearsal writes
 synthetic journal intents and confirmations to an in-memory fake around those
 decisions, records the synthetic committed hold's ID, and discovers their exact
-generations through a paginated fake inventory. It reads those generations,
-summarizes them, and suppresses the known removal in the isolated restore. It
+generations through a paginated fake inventory and checks a separate empty
+soft-deleted listing. It reads those generations, summarizes them, and suppresses
+the known removal in the isolated restore. It
 does not prove journal coverage,
 reapply the hold, reconstruct its authority, or preserve held material. The
 service must stay isolated until those remaining decisions and evidence are

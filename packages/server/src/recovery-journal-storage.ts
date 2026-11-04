@@ -99,54 +99,62 @@ export async function readRecoveryJournalRecord(storage: Storage, target: Target
 
 /**
  * Discover live record references after writers have been independently fenced.
- * A listing cannot establish a missing tail, writer coverage, or soft-deletion
- * state. Metadata requests may finish after this function's deadline.
+ * A listing cannot establish a missing tail, writer coverage, or past permanent
+ * deletion. Metadata requests may finish after this function's deadline.
  */
 export async function listUnverifiedRecoveryJournal(storage: Storage, target: Target):
-Promise<{ references: { recordId: string, generation: string }[], coverageVerified: false, softDeletedChecked: false }> {
+Promise<{ references: { recordId: string, generation: string }[], coverageVerified: false, softDeletedChecked: true }> {
   if (!validTarget(target)) throw new Error('Invalid journal target')
   const prefix = `idea-map-v2/${target.environment}/recovery-journal/`
   const references: { recordId: string, generation: string }[] = []
   const names = new Set<string>()
-  const tokens = new Set<string>()
   const deadline = Date.now() + 30_000
-  let pageToken: string | undefined
   try {
     const bucket = storage.bucket(target.bucket)
-    for (let page = 0; page < 100; page++) {
+    const listPage = async (mode: 'versions' | 'softDeleted', pageToken?: string) => {
       const remaining = deadline - Date.now()
       if (remaining <= 0) throw new Error('Journal inventory timed out')
       let timer: ReturnType<typeof setTimeout> | undefined
-      let result
       try {
-        result = await Promise.race([
-          bucket.getFiles({ prefix, versions: true, autoPaginate: false, maxResults: 1000, ...(pageToken ? { pageToken } : {}) }),
+        const result = await Promise.race([
+          bucket.getFiles({ prefix, ...(mode === 'versions' ? { versions: true } : { softDeleted: true }),
+            autoPaginate: false, maxResults: 1000, ...(pageToken ? { pageToken } : {}) }),
           new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Journal inventory timed out')), Math.min(remaining, 5000)) }),
         ])
+        if (Date.now() > deadline) throw new Error('Journal inventory timed out')
+        return result
       } finally { if (timer) clearTimeout(timer) }
-      if (Date.now() > deadline) throw new Error('Journal inventory timed out')
-      const [files, next] = result
-      for (const file of files) {
-        const value = file.metadata
-        const name = value.name
-        const recordId = typeof name === 'string' && name.startsWith(prefix) && name.endsWith('.json')
-          ? name.slice(prefix.length, -5) : ''
-        if (!recordIdPattern.test(recordId) || names.has(recordId) || value.bucket !== target.bucket || value.timeDeleted ||
-            typeof value.generation !== 'string' || !/^[1-9][0-9]*$/.test(value.generation) ||
-            typeof value.metageneration !== 'string' || !/^[1-9][0-9]*$/.test(value.metageneration) ||
-            typeof value.size !== 'string' || !/^[1-9][0-9]*$/.test(value.size) || Number(value.size) > 16_384 ||
-            value.contentType !== 'application/json' || (value.contentEncoding && value.contentEncoding !== 'identity') ||
-            typeof value.crc32c !== 'string' || !/^[A-Za-z0-9+/]{6}==$/.test(value.crc32c)) throw new Error('Journal inventory is ambiguous')
-        names.add(recordId)
-        references.push({ recordId, generation: value.generation })
-        if (references.length > 10_000) throw new Error('Journal inventory is too large')
-      }
-      if (!next) return { references, coverageVerified: false, softDeletedChecked: false }
-      if (typeof next.pageToken !== 'string' || !next.pageToken || tokens.has(next.pageToken)) throw new Error('Journal inventory pagination is ambiguous')
-      tokens.add(next.pageToken)
-      pageToken = next.pageToken
     }
-    throw new Error('Journal inventory has too many pages')
+    for (const mode of ['versions', 'softDeleted'] as const) {
+      const tokens = new Set<string>()
+      let pageToken: string | undefined
+      let finished = false
+      for (let page = 0; page < 100; page++) {
+        const [files, next] = await listPage(mode, pageToken)
+        if (mode === 'softDeleted' && files.length) throw new Error('Soft-deleted journal records require review')
+        for (const file of files) {
+          const value = file.metadata
+          const name = value.name
+          const recordId = typeof name === 'string' && name.startsWith(prefix) && name.endsWith('.json')
+            ? name.slice(prefix.length, -5) : ''
+          if (!recordIdPattern.test(recordId) || names.has(recordId) || value.bucket !== target.bucket || value.timeDeleted ||
+              typeof value.generation !== 'string' || !/^[1-9][0-9]*$/.test(value.generation) ||
+              typeof value.metageneration !== 'string' || !/^[1-9][0-9]*$/.test(value.metageneration) ||
+              typeof value.size !== 'string' || !/^[1-9][0-9]*$/.test(value.size) || Number(value.size) > 16_384 ||
+              value.contentType !== 'application/json' || (value.contentEncoding && value.contentEncoding !== 'identity') ||
+              typeof value.crc32c !== 'string' || !/^[A-Za-z0-9+/]{6}==$/.test(value.crc32c)) throw new Error('Journal inventory is ambiguous')
+          names.add(recordId)
+          references.push({ recordId, generation: value.generation })
+          if (references.length > 10_000) throw new Error('Journal inventory is too large')
+        }
+        if (!next) { finished = true; break }
+        if (typeof next.pageToken !== 'string' || !next.pageToken || tokens.has(next.pageToken)) throw new Error('Journal inventory pagination is ambiguous')
+        tokens.add(next.pageToken)
+        pageToken = next.pageToken
+      }
+      if (!finished) throw new Error('Journal inventory has too many pages')
+    }
+    return { references, coverageVerified: false, softDeletedChecked: true }
   } catch {
     throw new Error('Journal inventory could not be verified')
   }

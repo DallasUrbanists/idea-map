@@ -36,6 +36,7 @@ test('storage client sends create-only archives, completion metadata, and journa
   const errors = []
   let omitStoredEncoding = false
   let overrideMetadataChecksum = false
+  let syntheticSoftDeleted = false
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, 'http://127.0.0.1')
@@ -49,8 +50,11 @@ test('storage client sends create-only archives, completion metadata, and journa
         return
       }
       if (request.method === 'GET' && url.pathname === `/storage/v1/b/${target.bucket}/o`) {
-        response.end(JSON.stringify({ items: url.searchParams.get('softDeleted') === 'true' ? [] :
-          [...objects.values()].filter(object => object.name.startsWith(url.searchParams.get('prefix'))) }))
+        const prefix = url.searchParams.get('prefix')
+        const softDeleted = url.searchParams.get('softDeleted') === 'true'
+        const items = softDeleted ? (syntheticSoftDeleted && prefix.endsWith('/recovery-journal/')
+          ? [{ name: `${prefix}deleted.json` }] : []) : [...objects.values()].filter(object => object.name.startsWith(prefix))
+        response.end(JSON.stringify({ items }))
         return
       }
       if (request.method === 'GET' && url.pathname.startsWith(`/storage/v1/b/${target.bucket}/o/`) && url.searchParams.get('alt') === 'media') {
@@ -144,7 +148,11 @@ test('storage client sends create-only archives, completion metadata, and journa
     assert.deepEqual(await listUnverifiedRecoveryJournal(storage, target), { references: [
       { recordId, generation: '90071992547409931234' },
       { recordId: confirmationId, generation: objects.get(confirmationName).generation },
-    ], coverageVerified: false, softDeletedChecked: false })
+    ], coverageVerified: false, softDeletedChecked: true })
+    assert.ok(requests.some(item => item.method === 'GET' && item.query.prefix === 'idea-map-v2/dev/recovery-journal/' && item.query.softDeleted === 'true'))
+    syntheticSoftDeleted = true
+    await assert.rejects(listUnverifiedRecoveryJournal(storage, target), /could not be verified/)
+    syntheticSoftDeleted = false
     assert.deepEqual(Buffer.from(await readRecoveryJournalRecord(storage, target, recordId, objects.get(recordName).generation)), record)
     assert.deepEqual(await compareCurrentRecoveryJournalRecord(storage, target, recordId, record),
       { generation: '90071992547409931234', coverageVerified: false })
