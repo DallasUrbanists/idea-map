@@ -346,11 +346,14 @@ archive taken just before primary deletion could remain recoverable for about
 backups, holds, longer past soft-delete policies, or failed cleanup can exceed
 the 90-day deadline.
 
-The inventory flags live archives at least 69 days old as `expiryAttention`,
-and reports noncurrent and soft-deleted archives of that age separately as
-`expiryAttentionPending` and `expiryAttentionSoftDeleted`. Those counts give operators an early point to review whether affected copies
-can expire before their deadlines. They do not identify which archives contain a removed item or
-prove that primary deletion met its 14-day target. The actual process must
+The inventory flags live archives whose earliest possible start was at least
+69 days ago as `expiryAttention`, and reports noncurrent and soft-deleted archives of that age separately as
+`expiryAttentionPending` and `expiryAttentionSoftDeleted`. It uses midnight UTC
+on the validated archive date as the earliest possible start, so an alert may
+appear before the archive reaches that age. Those counts give operators an early
+point to review whether affected copies can expire before their deadlines. They
+do not identify which archives contain a removed item or prove that primary
+deletion met its 14-day target. The actual process must
 account for each removal's authorization time and verify when every affected
 copy becomes unrecoverable. Treating this diagnostic as an automatic age-only
 deletion policy can violate the privacy policy.

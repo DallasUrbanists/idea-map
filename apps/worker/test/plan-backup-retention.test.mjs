@@ -63,9 +63,10 @@ test('retention fails closed for insufficient, incomplete, ambiguous, or unexpec
   assert.throws(() => planBackupRetention({ ...baseline, objects: [...baseline.objects, object('daily', 30, { eventBasedHold: undefined })] }))
 })
 
-test('expiry attention starts at the conservative 69-day archive age', () => {
+test('expiry attention uses the earliest possible backup start, not upload completion', () => {
   const edge = object('daily', 69)
-  const prior = { ...edge, timeCreated: new Date(Date.parse(edge.timeCreated) + 1).toISOString() }
-  assert.equal(planBackupRetention({ environment: 'dev', complete: true, objects: [prior], now }).expiryAttention, 0)
-  assert.equal(planBackupRetention({ environment: 'dev', complete: true, objects: [edge], now }).expiryAttention, 1)
+  const midnight = Date.parse(`${edge.name.split('/')[3]}T00:00:00.000Z`)
+  const input = { environment: 'dev', complete: true, objects: [edge] }
+  assert.equal(planBackupRetention({ ...input, now: new Date(midnight + 69 * 86_400_000 - 1) }).expiryAttention, 0)
+  assert.equal(planBackupRetention({ ...input, now: new Date(midnight + 69 * 86_400_000) }).expiryAttention, 1)
 })

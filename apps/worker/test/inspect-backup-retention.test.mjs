@@ -282,3 +282,18 @@ test('soft-deleted generations with old policy retention or overdue hard deletio
   object.hardDeleteTime = 'invalid'
   await assert.rejects(inspectBackupRetention(storageFor(bucket), target, now), /ambiguous/)
 })
+
+
+test('soft-deleted copies get an early expiry warning even without their completion marker', async () => {
+  const archived = make('daily', 68)
+  const earliestStart = Date.parse(`${archived.name.split('/')[3]}T00:00:00.000Z`)
+  const evaluated = new Date(earliestStart + 69 * 86_400_000)
+  const soft = { ...archived, softDeleteTime: new Date(evaluated.getTime() - 86_400_000).toISOString(),
+    hardDeleteTime: new Date(evaluated.getTime() + 6 * 86_400_000).toISOString() }
+  const bucket = { async getMetadata() { return [metadata] }, async getFiles(query) {
+    return [query.softDeleted ? [{ metadata: soft }] : [], null]
+  } }
+  const result = await inspectBackupRetention(storageFor(bucket), target, evaluated)
+  assert.equal(result.expiryAttentionSoftDeleted, 1)
+  assert.equal(result.reviewRequired, true)
+})

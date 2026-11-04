@@ -28,7 +28,7 @@ export function planBackupRetention({ environment, complete, objects, now = new 
         typeof object.eventBasedHold !== 'boolean' || typeof object.temporaryHold !== 'boolean') {
       throw new Error('Backup state is ambiguous')
     }
-    return { ...object, kind: match[1], date: match[2], created, group: match[1] === 'daily' ? match[2] : weekOf(match[2]) }
+    return { ...object, kind: match[1], date: match[2], created, earliestStart: midnight, group: match[1] === 'daily' ? match[2] : weekOf(match[2]) }
   })
   const keepGroups = {}
   const groupCounts = {}
@@ -54,8 +54,10 @@ export function planBackupRetention({ environment, complete, objects, now = new 
     (entry.retentionExpirationTime && Date.parse(entry.retentionExpirationTime) > now.getTime()) ||
     (entry.retention && Date.parse(entry.retention.retainUntilTime) > now.getTime())).length
   // Fourteen days for primary deletion and seven for soft delete leave at most
-  // 69 days before a live archive needs attention. This is not proof that a
-  // particular archive contains a removed item or that it will expire on time.
-  const expiryAttention = entries.filter(entry => now.getTime() - entry.created >= 69 * DAY).length
+  // 69 days before an archive needs attention. The date in its name gives
+  // a conservative earliest start, even if upload completed much later. This
+  // does not prove that a particular archive contains a removed item or that
+  // it will expire on time.
+  const expiryAttention = entries.filter(entry => now.getTime() - entry.earliestStart >= 69 * DAY).length
   return { retentionSatisfied, privacyDeadlineVerified: false, groupCounts, consecutive, candidates, oldOrHeld, expiryAttention }
 }

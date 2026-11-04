@@ -193,9 +193,12 @@ export async function inspectBackupRetention(storage, target, now, options = {})
   const oldPendingArchives = pending.filter(object => now.getTime() - Date.parse(object.timeCreated) >= 76 * 86_400_000).length
   const longSoftDelete = softDeleted.filter(object => Date.parse(object.hardDeleteTime) - Date.parse(object.softDeleteTime) > 7 * 86_400_000).length
   const overdueSoftDeletion = softDeleted.filter(object => Date.parse(object.hardDeleteTime) <= evaluatedAt.getTime()).length
-  const expiryAttentionPending = pending.filter(object => now.getTime() - Date.parse(object.timeCreated) >= 69 * 86_400_000).length
+  // The validated date in an archive name is no later than the backup start.
+  // Use it even for soft-deleted copies whose completion record may be gone.
+  const earliestStart = object => Date.parse(`${backupObjectPattern.exec(object.name.slice(prefix.length))[2]}T00:00:00.000Z`)
+  const expiryAttentionPending = pending.filter(object => now.getTime() - earliestStart(object) >= 69 * 86_400_000).length
   const expiryAttentionSoftDeleted = softDeleted.filter(object => !object.name.startsWith(`${prefix}completion/`) &&
-    now.getTime() - Date.parse(object.timeCreated) >= 69 * 86_400_000).length
+    now.getTime() - earliestStart(object) >= 69 * 86_400_000).length
   const reviewRequired = plan.oldOrHeld > 0 || oldPendingArchives > 0 || oldSoftDeleted > 0 || plan.expiryAttention > 0 ||
     expiryAttentionPending > 0 || expiryAttentionSoftDeleted > 0 || longSoftDelete > 0 || overdueSoftDeletion > 0
   return { ...plan, candidates: dailyFreshEnough && weeklyFreshEnough ? plan.candidates : [],
