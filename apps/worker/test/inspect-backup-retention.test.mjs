@@ -55,6 +55,8 @@ test('inventory reads all pages and separately counts old soft-deleted objects',
   assert.deepEqual(new Set(queries.map(query => query.prefix)), new Set(['daily', 'weekly', 'completion'].map(kind => `idea-map-v2/dev/${kind}/`)))
   assert.equal(result.softDeleted, 1)
   assert.equal(result.oldSoftDeleted, 1)
+  assert.equal(result.expiryAttentionSoftDeleted, 1)
+  assert.ok(result.expiryAttention > 0)
   assert.equal(result.reviewRequired, true)
   assert.equal(result.latestDailyAgeSeconds, 0)
   assert.equal(result.dailyFreshEnough, true)
@@ -140,12 +142,13 @@ test('an old noncurrent archive requires review even when the current retention 
   assert.equal(result.dailyFreshEnough, true)
   assert.equal(result.oldOrHeld, 0)
   assert.equal(result.oldPendingArchives, 1)
+  assert.equal(result.expiryAttentionPending, 1)
   assert.equal(result.reviewRequired, true)
 })
 
 test('an old soft-deleted completion marker is not counted as an old archive', async () => {
   const marker = completion(make('daily', 80), null)
-  const objects = records.filter(item => now.getTime() - Date.parse(item.timeCreated) < 76 * 86_400_000)
+  const objects = records.filter(item => now.getTime() - Date.parse(item.timeCreated) < 69 * 86_400_000)
   const bucket = { async getMetadata() { return [metadata] },
     async getFiles(query) { return [(query.softDeleted ? [softDeletedObject(marker)] : objects).map(item => ({ metadata: item })), null] } }
   const result = await inspectBackupRetention(storageFor(bucket), target, now)

@@ -339,13 +339,21 @@ Holding a whole database archive for one person's legal hold can also retain
 other people's data beyond its deletion deadline. Resolve how held records are
 preserved separately and verify expiration of all other copies before enabling
 automated retention or relying on this process for live data.
-The diagnostic's 63-day minimum weekly archive age and an additional seven-day
-soft-delete period do not by themselves meet the removal deadline. For example,
-an archive made just before a primary copy is deleted 30 days after an authorized
-removal could remain recoverable for about 100 days after that authorization.
-The actual process must account for each removal's authorization time and verify
-when every affected copy becomes unrecoverable; treating this diagnostic plan as
-an automatic age-only deletion policy can violate the privacy policy.
+Target deletion of primary copies within 14 days of an authorized removal. With
+a 63-day minimum weekly archive age and a seven-day soft-delete period, an
+archive taken just before primary deletion could remain recoverable for about
+84 days. That leaves roughly six days for cleanup and provider delays; missed
+backups, holds, longer past soft-delete policies, or failed cleanup can exceed
+the 90-day deadline.
+
+The inventory flags live archives at least 69 days old as `expiryAttention`,
+and reports noncurrent and soft-deleted archives of that age separately as
+`expiryAttentionPending` and `expiryAttentionSoftDeleted`. Those counts give operators an early point to review whether affected copies
+can expire before their deadlines. They do not identify which archives contain a removed item or
+prove that primary deletion met its 14-day target. The actual process must
+account for each removal's authorization time and verify when every affected
+copy becomes unrecoverable. Treating this diagnostic as an automatic age-only
+deletion policy can violate the privacy policy.
 Age-based lifecycle rules alone cannot guarantee the required number of
 successful backups after failed runs. A deletion process must account for both
 the minimum backup counts and the privacy deadline, and independently verify

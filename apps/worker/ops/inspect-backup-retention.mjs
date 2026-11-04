@@ -193,12 +193,16 @@ export async function inspectBackupRetention(storage, target, now, options = {})
   const oldPendingArchives = pending.filter(object => now.getTime() - Date.parse(object.timeCreated) >= 76 * 86_400_000).length
   const longSoftDelete = softDeleted.filter(object => Date.parse(object.hardDeleteTime) - Date.parse(object.softDeleteTime) > 7 * 86_400_000).length
   const overdueSoftDeletion = softDeleted.filter(object => Date.parse(object.hardDeleteTime) <= evaluatedAt.getTime()).length
-  const reviewRequired = plan.oldOrHeld > 0 || oldPendingArchives > 0 || oldSoftDeleted > 0 ||
-    longSoftDelete > 0 || overdueSoftDeletion > 0
+  const expiryAttentionPending = pending.filter(object => now.getTime() - Date.parse(object.timeCreated) >= 69 * 86_400_000).length
+  const expiryAttentionSoftDeleted = softDeleted.filter(object => !object.name.startsWith(`${prefix}completion/`) &&
+    now.getTime() - Date.parse(object.timeCreated) >= 69 * 86_400_000).length
+  const reviewRequired = plan.oldOrHeld > 0 || oldPendingArchives > 0 || oldSoftDeleted > 0 || plan.expiryAttention > 0 ||
+    expiryAttentionPending > 0 || expiryAttentionSoftDeleted > 0 || longSoftDelete > 0 || overdueSoftDeletion > 0
   return { ...plan, candidates: dailyFreshEnough && weeklyFreshEnough ? plan.candidates : [],
     dailyFreshEnough, latestDailyAgeSeconds, weeklyFreshEnough, latestWeeklyAgeSeconds,
     pendingLifecycle: pending.length, pendingCompletions: pendingCompletions.length, orphanCompletions,
-    softDeleted: softDeleted.length, oldSoftDeleted, longSoftDelete, overdueSoftDeletion, oldPendingArchives, reviewRequired }
+    softDeleted: softDeleted.length, oldSoftDeleted, longSoftDelete, overdueSoftDeletion, oldPendingArchives,
+    expiryAttentionPending, expiryAttentionSoftDeleted, reviewRequired }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
