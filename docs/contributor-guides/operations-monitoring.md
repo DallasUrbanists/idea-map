@@ -1,7 +1,7 @@
 # Inspect operations signals
 
 Operators can inspect aggregate database and queue activity without exposing
-job or message details.
+job or message details, and review service costs across providers.
 
 The following contents links navigate within this guide:
 
@@ -11,6 +11,7 @@ The following contents links navigate within this guide:
 - [Inspect the provider queue](#inspect-the-provider-queue)
 - [Prepare scheduled collection](#prepare-scheduled-collection)
 - [Inspect provider metrics](#inspect-provider-metrics)
+- [Review costs across providers](#review-costs-across-providers)
 
 ## When to use this guide
 
@@ -244,3 +245,42 @@ not account for every retained branch or history copy, so inspect those provider
 signals separately. This manual comparison is not a configured growth alert;
 verify the available history and a tested notification path before relying on
 it for unattended monitoring.
+
+## Review costs across providers
+
+An operator can compare charges and usage across the services in the
+[cloud cost model](https://github.com/DallasUrbanists/idea-map/wiki/Cloud-Infrastructure-and-Cost-Model).
+Agree on an owner, review interval, reporting currency, and escalation thresholds
+before relying on this review. Use named, authorized access to each account and
+avoid placing account identifiers, invoices, or credentials in public logs.
+
+1. Record the reporting period, collection time, currency, and the environments
+    and accounts covered. Include shared or account-level charges and identify
+    any costs that cannot be allocated between environments.
+2. In [Cloud Billing reports](https://cloud.google.com/billing/docs/how-to/reports),
+    inspect the approved Google Cloud projects and any relevant shared charges.
+    Check the scope of existing [budgets and alerts](https://cloud.google.com/billing/docs/how-to/budgets)
+    and their recipients before proposing changes; a project-filtered budget can
+    omit account-level charges. Record whether each figure includes credits,
+    discounts, taxes, or adjustments.
+3. In the Neon organization's billing view, inspect its usage and charges,
+    including compute, storage, history, and transfer. Check the scope and
+    recipients of any existing [spending limit](https://neon.com/blog/introducing-organization-spending-limits).
+    In Resend, review the plan, [usage and billing history](https://resend.com/changelog/pay-as-you-go-pricing),
+    including enabled overages. Review other enabled providers and subscriptions
+    separately.
+4. Compare like periods and currencies, and avoid counting charges twice when a
+    provider's products share an invoice. Mark unavailable, delayed, estimated,
+    or unallocated amounts as unknown; do not substitute zero. Compare the
+    documented total and its coverage with the agreed thresholds, and escalate
+    gaps or unexpected changes to the cost owner.
+5. Record the reviewed scope, totals, missing data, owner, and follow-up in the
+    approved private operations record. Reconcile estimates against finalized
+    invoices when available.
+
+Provider cost reporting and notifications can lag usage. An alerts-only Google
+Cloud budget is a warning, not a spending cap; Neon limits and provider quotas
+also have their own scope and behavior. Verify current settings and recipients,
+test notification delivery when authorized, and monitor any uncovered accounts
+separately. This manual procedure does not configure alerts, establish a review
+cadence, or prove complete cost coverage.
