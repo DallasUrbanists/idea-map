@@ -10,7 +10,8 @@ const bucketMetadata = async () => [{ name: target.bucket, projectNumber: target
   iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
   versioning: { enabled: true }, softDeletePolicy: { retentionDurationSeconds: '604800' } }]
 const id = '11111111-1111-4111-8111-111111111111'
-const payload = encodeRecoveryConfirmation(id, 'dev', '2026-11-03T12:00:00.000Z')
+const payload = encodeRecoveryIntent({ operationId: id, environment: 'dev', ideaId: id, actorId: id,
+  authorizedAt: '2026-11-03T12:00:00.000Z', decision: { kind: 'removal', classification: 'other', reason: 'synthetic' } })
 const originalEmulator = process.env.STORAGE_EMULATOR_HOST
 delete process.env.STORAGE_EMULATOR_HOST
 after(() => {
@@ -60,6 +61,8 @@ test('journal storage accepts the deterministic confirmation record ID', async (
   const intent = encodeRecoveryIntent({ operationId: id, environment: 'dev', ideaId: id, actorId: id,
     authorizedAt: '2026-11-03T12:00:00.000Z', decision: { kind: 'removal', classification: 'other', reason: 'synthetic' } })
   await assert.rejects(writeRecoveryJournalRecord(storage, target, confirmationId, intent), /Invalid journal record/)
+  await assert.rejects(writeRecoveryJournalRecord(storage, target, id,
+    encodeRecoveryConfirmation(id, 'dev', '2026-11-03T12:00:00.000Z')), /Invalid journal record/)
   assert.equal(seen.length, 1)
 })
 
@@ -152,7 +155,7 @@ test('journal storage refuses an environment-directed storage emulator', async (
 })
 
 test('journal reader selects an exact generation and validates bounded canonical bytes', async () => {
-  const body = encodeRecoveryConfirmation(id, 'dev', '2026-11-03T12:00:00.000Z')
+  const body = payload
   const entries = []
   const storage = { bucket(bucket) { return { getMetadata: bucketMetadata, file(path, options) {
     const file = { interceptors: [], createReadStream(readOptions) {
@@ -189,6 +192,8 @@ test('journal reader fails closed on invalid references, records, provider error
     await assert.rejects(readRecoveryJournalRecord(storage(chunks), target, id, '1'), /could not be verified/)
   }
   await assert.rejects(readRecoveryJournalRecord(storage([encodeRecoveryConfirmation(id, 'dev', '2026-11-03T12:00:00.000Z')], false), target, id, '1'), /could not be verified/)
+  await assert.rejects(readRecoveryJournalRecord(storage([encodeRecoveryConfirmation(id, 'dev', '2026-11-03T12:00:00.000Z')]),
+    target, id, '1'), /could not be verified/)
   const wrongConfirmationId = recoveryConfirmationRecordId('22222222-2222-4222-8222-222222222222')
   await assert.rejects(readRecoveryJournalRecord(storage([encodeRecoveryConfirmation(id, 'dev', '2026-11-03T12:00:00.000Z')]),
     target, wrongConfirmationId, '1'), /could not be verified/)
@@ -201,7 +206,7 @@ test('journal reader fails closed on invalid references, records, provider error
 })
 
 test('ambiguous write readback requires the same current generation and exact saved bytes', async () => {
-  const body = encodeRecoveryConfirmation(id, 'dev', '2026-11-03T12:00:00.000Z')
+  const body = payload
   const generation = '90071992547409931234'
   const path = `idea-map-v2/dev/recovery-journal/${id}.json`
   const checksum = new CRC32C()
@@ -223,7 +228,8 @@ test('ambiguous write readback requires the same current generation and exact sa
   }
   assert.deepEqual(await compareCurrentRecoveryJournalRecord(storageFor(), target, id, body),
     { generation, coverageVerified: false })
-  const other = encodeRecoveryConfirmation(id, 'dev', '2026-11-03T12:00:01.000Z')
+  const other = encodeRecoveryIntent({ operationId: id, environment: 'dev', ideaId: id, actorId: id,
+    authorizedAt: '2026-11-03T12:00:01.000Z', decision: { kind: 'removal', classification: 'other', reason: 'synthetic' } })
   for (const storage of [
     storageFor({ stored: other }),
     storageFor({ metadata: [base, { ...base, generation: '2' }] }),

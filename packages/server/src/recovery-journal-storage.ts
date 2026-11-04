@@ -34,7 +34,8 @@ async function verifiedBucket(storage: Storage, target: Target, timeoutMs: numbe
 
 function validateRecordName(recordId: string, payload: Uint8Array, environment: Target['environment']): void {
   const record = decodeRecoveryRecord(payload, environment)
-  if (recordId[14] === '8' && (record.recordType === 'intent' || recoveryConfirmationRecordId(record.operationId) !== recordId)) {
+  if ((record.recordType === 'intent' && recordId[14] !== '4') ||
+      (record.recordType !== 'intent' && recoveryConfirmationRecordId(record.operationId) !== recordId)) {
     throw new Error('Journal record name is incompatible')
   }
 }

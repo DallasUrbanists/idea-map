@@ -353,8 +353,8 @@ Intent IDs remain UUIDv4, so the two kinds cannot share an object name. Preserve
 the namespace and derivation for retries and older records; an incompatible
 change requires a reviewed format migration. The database independently checks
 the derived ID and a unique index rejects collisions among pending confirmations.
-Journal readers reject a UUIDv8 name that does not match its confirmation's
-operation ID; older UUIDv4 confirmation names remain readable for review.
+Journal writers and readers require a UUIDv4 name for an intent and the derived
+UUIDv8 name for its confirmation. A different name fails closed.
 It records the application's top-level transaction ID and rejects confirmation
 in that same transaction, including after a savepoint. An older applied row
 without that transaction evidence requires authorized review. Transaction IDs
