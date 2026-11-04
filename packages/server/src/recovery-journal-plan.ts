@@ -64,7 +64,7 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
     reviewOperations: [...reviewOperations].sort(), unmatchedConfirmations, coverageVerified: false as const }
 }
 
-type JournalReference = { recordId: string, generation: string }
+type JournalReference = { recordId: string, generation: string, metageneration: string, crc32c: string }
 const recordId = /^[0-9a-f]{8}-[0-9a-f]{4}-[48][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
 /**
@@ -74,15 +74,17 @@ const recordId = /^[0-9a-f]{8}-[0-9a-f]{4}-[48][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 export function compareUnverifiedRecoveryCheckpoint(checkpoint: JournalReference[], current: JournalReference[]) {
   function index(references: JournalReference[]) {
     if (!Array.isArray(references) || references.length > 10_000) throw new Error('Recovery checkpoint is invalid')
-    const result = new Map<string, string>()
+    const result = new Map<string, JournalReference>()
     for (const reference of references) {
-      if (!reference || typeof reference !== 'object' || Object.keys(reference).sort().join(',') !== 'generation,recordId' ||
+      if (!reference || typeof reference !== 'object' || Object.keys(reference).sort().join(',') !== 'crc32c,generation,metageneration,recordId' ||
           typeof reference.recordId !== 'string' || !recordId.test(reference.recordId) ||
           typeof reference.generation !== 'string' || !/^[1-9][0-9]*$/.test(reference.generation) ||
-          reference.generation.length > 20 || result.has(reference.recordId)) {
+          reference.generation.length > 20 || typeof reference.metageneration !== 'string' ||
+          !/^[1-9][0-9]{0,19}$/.test(reference.metageneration) || typeof reference.crc32c !== 'string' ||
+          !/^[A-Za-z0-9+/]{6}==$/.test(reference.crc32c) || result.has(reference.recordId)) {
         throw new Error('Recovery checkpoint is invalid')
       }
-      result.set(reference.recordId, reference.generation)
+      result.set(reference.recordId, reference)
     }
     return result
   }
@@ -91,9 +93,11 @@ export function compareUnverifiedRecoveryCheckpoint(checkpoint: JournalReference
   const missing: string[] = []
   const changed: string[] = []
   const additional: string[] = []
-  for (const [id, generation] of expected) {
-    if (!observed.has(id)) missing.push(id)
-    else if (observed.get(id) !== generation) changed.push(id)
+  for (const [id, reference] of expected) {
+    const actual = observed.get(id)
+    if (!actual) missing.push(id)
+    else if (actual.generation !== reference.generation || actual.metageneration !== reference.metageneration ||
+      actual.crc32c !== reference.crc32c) changed.push(id)
   }
   for (const id of observed.keys()) if (!expected.has(id)) additional.push(id)
   return { missing: missing.sort(), changed: changed.sort(), additional: additional.sort(), coverageVerified: false as const }

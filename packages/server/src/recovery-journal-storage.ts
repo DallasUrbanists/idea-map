@@ -132,10 +132,10 @@ export async function readRecoveryJournalRecord(storage: Storage, target: Target
  * deletion. Metadata requests may finish after this function's deadline.
  */
 export async function listUnverifiedRecoveryJournal(storage: Storage, target: Target):
-Promise<{ references: { recordId: string, generation: string }[], coverageVerified: false, softDeletedChecked: true }> {
+Promise<{ references: { recordId: string, generation: string, metageneration: string, crc32c: string }[], coverageVerified: false, softDeletedChecked: true }> {
   if (!validTarget(target)) throw new Error('Invalid journal target')
   const prefix = `idea-map-v2/${target.environment}/recovery-journal/`
-  const references: { recordId: string, generation: string }[] = []
+  const references: { recordId: string, generation: string, metageneration: string, crc32c: string }[] = []
   const names = new Set<string>()
   const deadline = performance.now() + 30_000
   try {
@@ -172,7 +172,7 @@ Promise<{ references: { recordId: string, generation: string }[], coverageVerifi
               value.contentType !== 'application/json' || (value.contentEncoding && value.contentEncoding !== 'identity') ||
               typeof value.crc32c !== 'string' || !/^[A-Za-z0-9+/]{6}==$/.test(value.crc32c)) throw new Error('Journal inventory is ambiguous')
           names.add(recordId)
-          references.push({ recordId, generation: value.generation })
+          references.push({ recordId, generation: value.generation, metageneration: value.metageneration, crc32c: value.crc32c })
           if (references.length > 10_000) throw new Error('Journal inventory is too large')
         }
         if (!next) { finished = true; break }

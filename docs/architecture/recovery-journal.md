@@ -147,8 +147,8 @@ client request. Review reader permissions and request limits before integration.
 
 The reference inventory lists only the journal prefix with version listing,
 rejects noncurrent objects, unexpected names, ambiguous pagination and invalid
-metadata, and returns opaque IDs with exact generations. It also lists the
-prefix for soft-deleted objects and fails if any are present or that listing
+metadata, and returns opaque IDs with exact generations, metagenerations, and
+checksums. It also lists the prefix for soft-deleted objects and fails if any are present or that listing
 fails. It requires the writer fence before listing: new objects can otherwise be
 missed between pages. It does not read record bodies and always reports coverage
 as unverified. Its size, page and time limits can cause a safe failure; its
@@ -157,9 +157,10 @@ bucket-wide list permission before use. Permanently deleted records, missing
 tails, older backups, and unauthorized writers need separate evidence.
 
 A checkpoint comparison helper can identify missing, changed, or additional
-record IDs relative to a separately supplied list of exact generations. Duplicate
-or malformed references fail the comparison. Its output is private; a changed
-generation requires investigation even if its content appears similar. A matching
+record IDs relative to a separately supplied list of exact generations,
+metagenerations, and checksums. Duplicate or malformed references fail the
+comparison. Its output is private; a changed generation, metageneration, or
+checksum requires investigation even if its content appears similar. A matching
 list does not authenticate the checkpoint, prove it was independently preserved,
 detect a missing tail after it, verify writer fencing, or establish coverage.
 The helper cannot reopen access or apply decisions. An existing Secret Manager

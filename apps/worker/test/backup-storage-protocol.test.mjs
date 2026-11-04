@@ -146,8 +146,8 @@ test('storage client sends create-only archives, completion metadata, and journa
     await writeRecoveryJournalRecord(storage, target, confirmationId, record)
     const confirmationName = `idea-map-v2/dev/recovery-journal/${confirmationId}.json`
     assert.deepEqual(await listUnverifiedRecoveryJournal(storage, target), { references: [
-      { recordId, generation: '90071992547409931234' },
-      { recordId: confirmationId, generation: objects.get(confirmationName).generation },
+      { recordId, generation: '90071992547409931234', metageneration: '1', crc32c: objects.get(recordName).crc32c },
+      { recordId: confirmationId, generation: objects.get(confirmationName).generation, metageneration: '1', crc32c: objects.get(confirmationName).crc32c },
     ], coverageVerified: false, softDeletedChecked: true })
     assert.ok(requests.some(item => item.method === 'GET' && item.query.prefix === 'idea-map-v2/dev/recovery-journal/' && item.query.softDeleted === 'true'))
     syntheticSoftDeleted = true
