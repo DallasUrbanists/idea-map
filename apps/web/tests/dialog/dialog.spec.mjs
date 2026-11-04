@@ -199,6 +199,8 @@ test('long tray can be scrolled and reopened repeatedly on a short narrow viewpo
     await expect(action).toBeInViewport()
     await action.click()
     await expect(page.getByText('Nested notice', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Dismiss notification' }).click()
+    await expect(page.getByText('Nested notice', { exact: true })).not.toBeVisible()
     await tray.getByRole('button', { name: 'Close', exact: true }).first().scrollIntoViewIfNeeded()
     await tray.getByRole('button', { name: 'Close', exact: true }).first().click()
     await expect(tray).toHaveCount(0)
