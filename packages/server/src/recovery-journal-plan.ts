@@ -30,7 +30,7 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
     if (existing !== undefined && existing !== ideaId) throw new Error('Recovery inventory is ambiguous')
     holdIdeas.set(holdId, ideaId)
   }
-  const holdIdentities: { operationId: string, ideaId: string, holdId: string }[] = []
+  const holdIdentities: { operationId: string, ideaId: string, holdId: string, placementAuthorityId?: string, placedAt?: string }[] = []
   for (const [operationId, intent] of intents) {
     const confirmation = confirmations.get(operationId)
     if (confirmation && Date.parse(confirmation.confirmedAt) < Date.parse(intent.authorizedAt)) throw new Error('Recovery inventory is ambiguous')
@@ -38,7 +38,11 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
       if (intent.decision.kind !== 'hold_placement' || placedHoldIds.has(confirmation.holdId)) throw new Error('Recovery inventory is ambiguous')
       placedHoldIds.add(confirmation.holdId)
       checkHoldIdea(confirmation.holdId, intent.ideaId)
-      holdIdentities.push({ operationId, ideaId: intent.ideaId, holdId: confirmation.holdId })
+      if (confirmation.version === 3 && Date.parse(confirmation.placedAt) < Date.parse(intent.authorizedAt)) {
+        throw new Error('Recovery inventory is ambiguous')
+      }
+      holdIdentities.push({ operationId, ideaId: intent.ideaId, holdId: confirmation.holdId,
+        ...(confirmation.version === 3 ? { placementAuthorityId: confirmation.placementAuthorityId, placedAt: confirmation.placedAt } : {}) })
     }
     if (intent.decision.kind === 'removal') removals.add(intent.ideaId)
     if (intent.decision.kind === 'hold_placement') holdPlacements.add(intent.ideaId)

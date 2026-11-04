@@ -44,8 +44,8 @@ journal completeness. Review the project, bucket, and identity before integratio
 measure the per-read metadata checks against the full recovery-time objective.
 
 The server package contains an encoder and decoder for version-one intent and
-commit confirmation records and version-two hold-placement confirmations. It
-also contains a create-only transport for private JSON, a reader for a
+commit confirmation records and version-two and version-three hold-placement
+confirmations. It also contains a create-only transport for private JSON, a reader for a
 specifically identified object generation, an unwired live-reference inventory,
 and an unverified recovery summary. The
 encoder checks required fields and sizes but cannot verify authority, legal
@@ -230,9 +230,12 @@ idea and case or apply it automatically.
 The hold ID alone is not enough to recreate a database hold. The hold also refers
 to an idea, a person, and a legal-authority assignment, and records its placement
 time. An older archive may lack any of those rows or the assignment that was valid
-at placement. The current version-two confirmation does not capture the committed
-assignment ID or placement time. Preserve and verify the necessary authorization
-and referenced records through a reviewed recovery design; do not synthesize an
+at placement. A version-three confirmation can preserve the committed assignment
+ID and exact microsecond placement time. Its caller must obtain both from the known committed
+hold; an ID does not preserve the assignment's authority evidence or the actor's
+identity. The older version-one and version-two records do not contain these
+fields. Preserve and verify the necessary authorization and referenced records
+through a reviewed recovery design; do not synthesize an
 assignment or substitute a new hold ID to make a restore pass. Keep the target
 isolated when the original evidence or its relationships cannot be established.
 

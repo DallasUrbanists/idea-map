@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { compareUnverifiedRecoveryCheckpoint, summarizeUnverifiedRecovery } from '../dist/recovery-journal-plan.js'
-import { encodeRecoveryConfirmation, encodeRecoveryHoldConfirmation, encodeRecoveryIntent } from '../dist/recovery-journal-record.js'
+import { encodeRecoveryConfirmation, encodeRecoveryHoldConfirmation, encodeRecoveryHoldEvidence, encodeRecoveryIntent } from '../dist/recovery-journal-record.js'
 
 const operation = n => `11111111-1111-4111-8111-${String(n).padStart(12, '0')}`
 const idea = '22222222-2222-4222-8222-222222222222'
@@ -91,4 +91,18 @@ test('checkpoint comparison exposes missing, changed, and additional exact gener
   assert.throws(() => compareUnverifiedRecoveryCheckpoint([], [reference(1, '01')]), /invalid/)
   assert.throws(() => compareUnverifiedRecoveryCheckpoint([], [{ ...reference(1, '1'), extra: true }]), /invalid/)
   assert.throws(() => compareUnverifiedRecoveryCheckpoint([], [reference(1, '1'.repeat(21))]), /invalid/)
+})
+
+test('hold evidence identifies the original authority and placement time for review', () => {
+  const holdId = '44444444-4444-4444-8444-444444444444'
+  const authority = '55555555-5555-4555-8555-555555555555'
+  const placedAt = '2026-11-03T12:00:00.123456Z'
+  const evidence = encodeRecoveryHoldEvidence(operation(1), 'dev', '2026-11-03T12:01:00.000Z', holdId, authority, placedAt)
+  const result = summarizeUnverifiedRecovery([intent(1, hold), evidence], 'dev')
+  assert.deepEqual(result.holdIdentities, [{ operationId: operation(1), ideaId: idea, holdId,
+    placementAuthorityId: authority, placedAt }])
+  assert.deepEqual(result.reviewOperations, [operation(1)])
+  assert.equal(result.coverageVerified, false)
+  const premature = encodeRecoveryHoldEvidence(operation(1), 'dev', '2026-11-03T12:01:00.000Z', holdId, authority, '2026-11-03T11:59:59.999999Z')
+  assert.throws(() => summarizeUnverifiedRecovery([intent(1, hold), premature], 'dev'), /ambiguous/)
 })

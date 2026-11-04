@@ -9,7 +9,7 @@ import { createRequire } from 'node:module'
 import { pipeline } from 'node:stream/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { dumpArguments, exportEncryptedBackup } from '../apps/worker/ops/export-encrypted-backup.mjs'
-import { encodeRecoveryConfirmation, encodeRecoveryHoldConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../packages/server/dist/recovery-journal-record.js'
+import { encodeRecoveryConfirmation, encodeRecoveryHoldEvidence, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../packages/server/dist/recovery-journal-record.js'
 import { compareUnverifiedRecoveryCheckpoint, summarizeUnverifiedRecovery } from '../packages/server/dist/recovery-journal-plan.js'
 import { listUnverifiedRecoveryJournal, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../packages/server/dist/recovery-journal-storage.js'
 import { acquirePublicAccessLease } from '../packages/server/dist/public-access-lease.js'
@@ -164,6 +164,8 @@ try {
   const removalOperation = randomUUID()
   const holdOperation = randomUUID()
   let committedHoldId
+  let committedAuthorityId
+  let committedPlacedAt
   let syntheticCheckpoint
   const authorizedAt = new Date().toISOString()
   const base = { environment: 'dev', ideaId, actorId: director, authorizedAt }
@@ -183,9 +185,12 @@ try {
     if (holdOutcome !== 'processed') throw new Error('Synthetic legal hold failed')
     committedHoldId = await sql(source, `SELECT id FROM legal_holds WHERE idea_id='${ideaId}' AND case_reference='synthetic case' AND released_at IS NULL`)
     if (!/^[0-9a-f-]{36}$/.test(committedHoldId)) throw new Error('Synthetic hold identity is ambiguous')
-    const confirmedAt = new Date().toISOString()
+    committedAuthorityId = await sql(source, `SELECT placement_authority_id FROM legal_holds WHERE id='${committedHoldId}'`)
+    committedPlacedAt = await sql(source, `SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') FROM legal_holds WHERE id='${committedHoldId}'`)
+    const confirmedAt = await sql(source, `SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`)
     await writeRecoveryJournalRecord(journal, journalTarget, recoveryConfirmationRecordId(removalOperation), encodeRecoveryConfirmation(removalOperation, 'dev', confirmedAt))
-    await writeRecoveryJournalRecord(journal, journalTarget, recoveryConfirmationRecordId(holdOperation), encodeRecoveryHoldConfirmation(holdOperation, 'dev', confirmedAt, committedHoldId))
+    await writeRecoveryJournalRecord(journal, journalTarget, recoveryConfirmationRecordId(holdOperation),
+      encodeRecoveryHoldEvidence(holdOperation, 'dev', confirmedAt, committedHoldId, committedAuthorityId, committedPlacedAt))
   } finally {
     if (previousEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
     else process.env.STORAGE_EMULATOR_HOST = previousEmulator
@@ -256,7 +261,8 @@ try {
       summary.holdPlacements.length !== 1 || summary.holdPlacements[0] !== ideaId ||
       summary.holdReviewIdeas.length !== 1 || summary.holdReviewIdeas[0] !== ideaId || summary.holdIdentities.length !== 1 ||
       summary.holdIdentities[0].operationId !== holdOperation || summary.holdIdentities[0].ideaId !== ideaId ||
-      summary.holdIdentities[0].holdId !== committedHoldId || summary.reviewOperations.length !== 1 ||
+      summary.holdIdentities[0].holdId !== committedHoldId || summary.holdIdentities[0].placementAuthorityId !== committedAuthorityId ||
+      summary.holdIdentities[0].placedAt !== committedPlacedAt || summary.reviewOperations.length !== 1 ||
       summary.reviewOperations[0] !== holdOperation || summary.unmatchedConfirmations !== 0) {
     throw new Error('Synthetic journal summary failed verification')
   }
