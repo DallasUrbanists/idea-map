@@ -15,7 +15,7 @@ import { encodeUnverifiedHeldManifest } from '../packages/server/dist/recovery-h
 import { verifySequenceHeldCaptures, verifyUnverifiedHeldCapture } from '../packages/server/dist/recovery-held-verification.js'
 import { suppressKnownRemovalsFromSequence, suppressUnverifiedRestoredRemovals } from '../packages/server/dist/recovery-suppression.js'
 import { appendAndVerifyRecoverySequenceVersion, readUnverifiedRecoverySequence } from '../packages/server/dist/recovery-sequence-storage.js'
-import { writeUnverifiedHeldMaterial } from '../packages/server/dist/recovery-journal-storage.js'
+import { writeUnverifiedHeldMaterial } from '../packages/server/dist/recovery-held-storage.js'
 import { acquirePublicAccessLease } from '../packages/server/dist/public-access-lease.js'
 import { readPublishedIdea } from '../packages/server/dist/published-ideas.js'
 import { readMediaPreview } from '../packages/server/dist/media-preview.js'

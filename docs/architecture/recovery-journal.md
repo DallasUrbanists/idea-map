@@ -1,9 +1,10 @@
 # Recovery decision journal
 
 Recovery operators need an independent record of removals and legal-hold
-decisions made after a database backup. This design uses the foundation's private
-backup bucket when it is provisioned and keeps PostgreSQL as the application's
-authority. The journal and pending-removal components are not wired into live
+decisions made after a database backup. This design uses numbered versions in
+the existing Secret Manager service and keeps PostgreSQL as the application's
+authority. Selected held artifacts would use the existing private backup bucket.
+The journal and pending-removal components are not wired into live
 decision mutations. The public request guard remains incomplete. A restored
 service must remain isolated until its decisions can be reconciled and the
 [recovery procedure](../contributor-guides/backup-recovery.md) is satisfied.
@@ -19,46 +20,30 @@ The following contents links navigate within this guide:
 ## Purpose and boundaries
 
 An older database archive can contain content that was later withdrawn, or lack
-a later legal hold. The journal preserves evidence of those decisions outside
-PostgreSQL so recovery can fail closed. A foundation definition is not proof
-that a backup bucket exists in a particular environment. The journal does not
-replace database backups, authorize a removal or hold, invalidate public caches,
-or by itself preserve
-all held material. Sharing the existing bucket also means it is not independent
-of a loss or compromise of that bucket.
+a later legal hold. The intended journal preserves evidence of those decisions outside
+PostgreSQL so recovery can fail closed. Secret Manager and the existing backup
+bucket are separately operated services; that separation does not prove
+independence from a shared project compromise or administrative error. The
+journal does not replace database backups, authorize a removal or hold,
+invalidate public caches, or preserve all held material.
 
-Separate development and production environments use separate bucket prefixes
-under `idea-map-v2/ENVIRONMENT/recovery-journal/`. No new database, bucket,
-provider, or independent Terraform state is assumed. The backup writer must not
-be able to create, update, or delete journal records; the journal writer must
-not be able to change backup archives or completion records. Review inherited
-grants and deny policies as well as the explicitly scoped grants.
-
-The journal transport checks the environment prefix and bucket name, then uses
-the backup export's shared bucket-safeguard check before each storage operation.
-The caller supplies the reviewed project number; the identity needs
-`storage.buckets.get` as well as its scoped object permissions. A missing, invalid,
-or unavailable check fails closed. This verifies the returned bucket metadata,
-not effective inherited permissions, later policy changes, writer coverage, or
-journal completeness. Review the project, bucket, and identity before integration;
-measure the per-read metadata checks against the full recovery-time objective.
+The proposed single decision store uses a separately owned secret per environment
+and a pinned epoch. No new provider, database, or independent Terraform state is
+assumed. No secret or permissions have been provisioned for this design. Review
+inherited access, secret replacement and deletion, and writer separation before
+relying on it. Held artifacts remain separately scoped in the backup bucket.
 
 The server package contains an encoder and decoder for version-one intent and
 commit confirmation records and version-two and version-three hold-placement
-confirmations. It also contains a create-only transport for private JSON, a reader for a
-specifically identified object generation, an unwired live-reference inventory,
-and an unverified recovery summary. The
-encoder checks required fields and sizes but cannot verify authority, legal
+confirmations, a numbered sequence transport, and an unverified recovery summary.
+The encoder checks required fields and sizes but cannot verify authority, legal
 meaning, or whether a reason or reference is non-sensitive; its caller must
 establish those facts. The decoder rejects unknown versions, extra fields,
 duplicate keys, noncanonical bytes, and a different environment. Preserve the
 version-one encoding when extending the format; a failed decode keeps recovery
-isolated. The transport validates the canonical record before writing, bounds
-record size and write time, uses an opaque caller-supplied record ID and a
-create-only precondition, and treats provider errors and timeouts as uncertain.
-Each write, generation read, and comparison has one monotonic deadline that
-includes bucket verification. That is not a deadline for the complete removal
-workflow; SDK metadata requests may continue after the caller times out.
+isolated. Each numbered append or read has a bounded deadline; an uncertain
+append may still create a version.
+
 The summary conservatively identifies ideas in removal and hold-placement
 intents, flags unconfirmed operations and all hold placements and releases for
 authorized review, and reports the operation IDs of confirmations without intents
@@ -79,24 +64,22 @@ or hold operations and are not sufficient to enable them.
 
 ## Record and access
 
-Use versioned, create-only records with a unique operation ID and an opaque
-object name. An intent and its confirmation use distinct record IDs and contain
-the same operation ID in their bodies. A retry reuses the original record ID and
-bytes. A record identifies its environment, operation, affected idea,
-decision type, and time. Hold records also preserve the authorized person,
-scope, non-sensitive case reference and reason, and authorization or delegation
-reference; release evidence includes any required legal review. These fields
-follow the [Privacy Policy](../policies/privacy-policy.md#retention-and-deletion).
-Do not put raw content, contact details, credentials, or reasons in object names,
-custom metadata, or operational logs.
+Use canonical records with a unique operation ID and opaque record ID inside
+each numbered version. An intent and its confirmation use distinct record IDs
+and contain the same operation ID in their bodies. A retry reuses the original
+record ID and bytes; a lost response can create another identical version. A
+record identifies its environment, operation, affected idea, decision type and
+time. Hold records also preserve the authorized person, scope, non-sensitive
+case reference and reason, and authorization or delegation reference; release
+evidence includes any required legal review. Follow the
+[Privacy Policy](../policies/privacy-policy.md#retention-and-deletion).
+Do not put raw content, contact details, credentials or reasons in resource
+names, metadata or operational logs.
 
-Protect record bodies with the existing bucket's private access and encryption.
-Give a dedicated writer bucket metadata read and only the object creation needed
-for the journal prefix, not object update, deletion, or backup-prefix access.
-Recovery readers need bucket metadata read and explicitly reviewed access to
-record contents. Cloud Storage object listing is authorized at
-bucket scope, so prefix restrictions do not by themselves confine list access;
-account for that exposure when assigning the reader identity.
+Use separate reviewed writer and reader identities. The writer must not disable,
+destroy, or replace secret versions or change backup objects. Review effective
+inherited permissions, administrator access, encryption, retention and recovery
+access before integration.
 
 ## Write and reconcile
 
@@ -116,36 +99,13 @@ from bypassing the journal. Review those paths and effective privileges before
 establishing coverage.
 
 The intended write protocol records an intent before the associated database
-transaction can commit, while the transaction holds the relevant idea lock. The
-writer must use a create-only precondition and a bounded timeout. A confirmation
-may be written only after a database commit is known to have succeeded. A lost
-response, rollback, or failed confirmation can leave an intent without proof of
-the outcome; recovery must treat it as uncertain rather than infer a commit.
-
-The intent must exist before commit even when storage returns an ambiguous
-response. A timeout is not proof that the object was not created, and a retry
-must reuse the operation ID rather than create a second decision. A failed
-create-only precondition does not prove the existing record matches: a
-separately authorized journal reader must verify its exact contents before the
-operation can rely on it. The create-only writer cannot perform that read. A
-database commit response can also be lost after commit. Do not write a negative
-confirmation based only on an exception. Reconciliation must account for both
-cases and keep uncertain material private.
-
-The generation-specific reader bounds the record size and read time, rejects
-unknown encodings or unavailable checksums, and validates the record format and
-environment. It requires a separately authorized reader and a known object ID
-and generation. A checksum detects accidental corruption, not an unauthorized
-replacement, and a successful read does not verify who wrote the record, discover
-other records, or prove inventory coverage.
-
-An unwired readback helper compares a known record's current generation, checksum,
-and canonical bytes with the saved intent, then checks that the generation and
-its metadata have not changed during the read. It can help an authorized reader
-investigate an ambiguous create-only write, but does not authorize the decision,
-prove future availability or journal coverage, or reopen access. Its metadata
-deadline stops waiting for a response; it does not cancel the underlying storage
-client request. Review reader permissions and request limits before integration.
+transaction can commit. The writer uses a bounded timeout and a separately
+authorized reader compares the exact numbered version and canonical bytes. A
+confirmation may be written only after a database commit is known to have
+succeeded. A lost response, rollback or failed confirmation can leave an intent
+without proof of the outcome; recovery must treat it as uncertain rather than
+infer a commit. A timed-out append may still create a version, so a retry uses
+the same saved bytes. Do not write a negative confirmation based on an exception.
 
 An existing Secret Manager version is not a complete tail proof by itself:
 access to a newly added version
@@ -196,21 +156,18 @@ baseline, writer fence and coverage. An unwired Google transport targets only
 the Secret Manager API and uses short-lived application credentials; local tests
 inject fake credentials and responses. No live secret, effective permissions,
 mutation path, or recovery path has been tested or connected to this transport.
-The existing bucket-based decision transport remains a separate, unwired
-prototype; do not run both as independent authoritative journals. Choosing and
-integrating one design requires review of its permissions, retention, recovery
-and unavailability behavior. Held material would remain separately scoped in
-the existing backup bucket.
+The numbered sequence is the only decision transport in this branch. It is
+unwired and has not been tested against a live secret. Held material remains
+separately scoped in the existing backup bucket.
 
 Secret Manager charges for enabled and disabled versions, not only requests.
-As one illustrative scenario, 10 new versions per day retained for 90 days
-would reach about 900 active versions, or roughly $54 per month at the published
-$0.06 per active version-month before the shared free tier. This excludes other
-operations, locations, taxes, retries and other services, and actual costs are
-prorated. Review [current pricing](https://cloud.google.com/secret-manager/pricing),
-expected volume, retention and safe rollover before adopting or provisioning
-either sequence design. Do not destroy versions needed by a retained backup or
-an active hold merely to reduce cost.
+For example, ten new versions per day retained for 90 days would reach about
+900 active versions, or roughly $54 per month at the published $0.06 per active
+version-month before the shared free tier. This excludes other operations,
+locations, taxes, retries and services, and actual costs are prorated. Review
+[current pricing](https://cloud.google.com/secret-manager/pricing), expected
+volume, retention and safe rollover before provisioning. Do not destroy versions
+needed by a retained backup or an active hold merely to reduce cost.
 
 The checkpoint needs a coordinated boundary, not merely a timestamp. Suspend
 all covered mutations, drain in-flight transactions and journal writes, verify
@@ -226,15 +183,14 @@ to finish before taking the journal inventory. Include old service revisions,
 scheduled jobs, queued work, operator tools, and direct database writers in the
 fence. Stop or isolate the relevant execution paths and verify the effective
 access boundary with separately authorized checks. A successful IAM revocation
-alone is not an immediate fence: [Cloud Storage access changes are eventually
-consistent](https://cloud.google.com/storage/docs/consistency#eventually_consistent_operations),
-and requests already in flight may still complete. Account for propagation and
-credential lifetimes, drain or resolve outstanding operations, and repeat the
-inventory after the fence is established. If those steps cannot be verified,
+alone is not an immediate fence: permission changes need time to propagate and
+requests already in flight may still complete. Account for propagation and
+credential lifetimes, drain or resolve outstanding operations, and read through
+a new fence after the boundary is established. If those steps cannot be verified,
 keep the replacement isolated.
 
 Verify the checkpoint, integrity, and complete coverage through the fence. An
-object timestamp or a backup start time alone cannot identify every concurrent committed transaction: replay the
+version timestamp or a backup start time alone cannot identify every concurrent committed transaction: replay the
 verified relevant overlap conservatively, and require authorized reconciliation
 where order or outcome is unclear. If writers cannot be fenced or completeness
 cannot be verified, keep the restored service isolated.
@@ -367,7 +323,7 @@ an uncertain outcome without reopening the gate. It does not remove content or
 confirm a database mutation. Keep the returned bytes private and do not infer
 success from a failed or uncertain call.
 
-For the alternative numbered-sequence design, an unwired database function can
+An unwired database function can
 pin the pending removal to one project number, secret ID and journal epoch while
 the gate is closed. It rechecks the original moderator and saved intent; retries
 must use the same target. A trigger prevents changing the pin or applying a
@@ -381,8 +337,8 @@ secret, effective access, baseline or coverage. An unwired coordinator appends
 the saved intent only after the pin commits and compares the exact numbered
 version with a separate reader. A lost append response remains uncertain; a
 retry uses the same saved bytes and target. This does not prove coverage or
-apply the removal. The older bucket-based coordinator does not enforce the pin.
-No runtime role receives this function, and neither path is ready for live use.
+apply the removal. No runtime role receives this function, and the path is not
+ready for live use.
 
 An unwired sequence application step reads the exact numbered intent again,
 then checks the saved bytes, original moderator, committed pin and matching
@@ -402,26 +358,14 @@ successful reads do not authenticate the baseline, fence or writer cutoff and do
 not authorize opening public access. The local rehearsal uses a synthetic
 sequence and demonstrates only this fail-closed behavior.
 
-An unwired application step accepts the saved intent and uses a separately
-authorized journal reader and database coordinator. It verifies the current
-moderator before reading the journal, compares the exact canonical intent and
-live object generation, and rechecks the identity before committing. A restricted
-database function verifies the saved intent and actor, waits for the exclusive
-read-drain lock, and calls the existing removal transaction. It stores the
-verified generation and application time atomically with that mutation. A retry
-with the same generation returns the saved time without repeating the removal;
-a changed generation, stale revision, failed read, or uncertain transaction keeps
-the gate closed for review. PostgreSQL cannot verify Cloud Storage itself: only
-the separately trusted coordinator may receive execute permission for this
-function, and effective inherited grants must be checked. The normal preparation
-role must not be able to apply removals directly. This step does not write a
-confirmation, establish journal coverage, resolve other pending decisions, or
-open the gate. It is not wired to a live endpoint or granted to a runtime role.
+The normal preparation role must not be able to apply removals directly.
+Only a trusted coordinator can attest to an external sequence read. Check
+inherited database and cloud permissions before any live integration.
 
 An unwired confirmation step runs in a separate transaction after a known
 application commit. It stores a stable confirmation timestamp and a deterministic
 UUIDv8 record ID derived from the operation ID with a fixed SHA-256 namespace.
-Intent IDs remain UUIDv4, so the two kinds cannot share an object name. Preserve
+Intent IDs remain UUIDv4, so the two kinds cannot share a record ID. Preserve
 the namespace and derivation for retries and older records; an incompatible
 change requires a reviewed format migration. The database independently checks
 the derived ID and a unique index rejects collisions among pending confirmations.
@@ -434,16 +378,12 @@ are scoped to a database cluster, so an ID reused on a replacement cluster can
 also conservatively block preparation and require review. This check does not
 establish journal coverage or make a restored database safe to expose.
 
-After the confirmation transaction is known to have committed, the create-only
-writer can write the same canonical confirmation bytes on each retry. A lost
-response or a create-only conflict remains uncertain until a separately
-authorized reader compares the current generation and exact bytes. Neither a
-successful write nor a matching read reopens the gate or proves completeness.
-An unwired coordinator can compare the current confirmation's exact bytes and
-generation, then record that verification in a separate authorized transaction.
-A database function checks the original moderator, closed gate, saved ID and
-preparation time; only a trusted coordinator may attest to the storage read.
-Retries preserve the first verified generation and time. The current preparation,
+After the confirmation transaction commits, retrying the append uses the same
+canonical bytes. A lost response or failed read remains uncertain until an
+authorized reader verifies an exact numbered version. The coordinator records
+the first verified version and time; it never reopens the gate.
+
+The current preparation,
 application, and confirmation steps require the original moderator to remain
 active and able to authenticate. If that person loses access or is unavailable,
 they cannot finish the pending operation through these steps. Keep the gate

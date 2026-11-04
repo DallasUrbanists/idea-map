@@ -1,19 +1,13 @@
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import { randomUUID } from 'node:crypto'
-import { Readable, Writable } from 'node:stream'
 import { test } from 'node:test'
 import pg from 'pg'
 import { CRC32C } from '@google-cloud/storage'
 import { acquirePublicAccessLease, publicAccessLeaseClient } from '../dist/public-access-lease.js'
-import { applyJournaledRemoval, applySequenceJournaledRemoval, journalPendingRemovalSequence, journalSequenceRemovalConfirmation, pinPendingRemovalSequence, prepareAndJournalRemoval, preparePendingRemoval, prepareRemovalConfirmation, verifyRemovalConfirmation, verifySequenceRemovalConfirmation, writeRemovalConfirmation } from '../dist/pending-removal.js'
+import { applySequenceJournaledRemoval, journalPendingRemovalSequence, journalSequenceRemovalConfirmation, pinPendingRemovalSequence, preparePendingRemoval, prepareRemovalConfirmation, verifySequenceRemovalConfirmation } from '../dist/pending-removal.js'
 import { decodeRecoveryRecord, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
 import { pendingRemovalDatabasePool, runtimeDatabasePool } from '../dist/runtime-database.js'
-import { compareCurrentRecoveryJournalRecord, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
-
-const bucketMetadata = async () => [{ name: 'synthetic-private-backups', projectNumber: '123456789',
-  iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
-  versioning: { enabled: true }, softDeletePolicy: { retentionDurationSeconds: '604800' } }]
 
 const url = new URL(process.env.TEST_DATABASE_URL ?? 'postgres://invalid.invalid/invalid')
 if (!['127.0.0.1', 'localhost'].includes(url.hostname) || url.pathname !== '/idea_map_test_public_gate') {
@@ -85,7 +79,6 @@ test('authorized pending removal closes the gate atomically and retries without 
   const pool = new pg.Pool({ connectionString: url.toString(), max: 6, connectionTimeoutMillis: 2000 })
   let reader, otherReader, pendingOperationId, secondOperationId, restrictedUrl, restrictedPool, roleCreated = false
   const concurrentOperations = []
-  const journalOperations = []
   const role = `gate_runtime_${randomUUID().replaceAll('-', '')}`
   try {
     const actor = (await pool.query('INSERT INTO public.users DEFAULT VALUES RETURNING id')).rows[0].id
@@ -135,83 +128,10 @@ test('authorized pending removal closes the gate atomically and retries without 
     assert.deepEqual(Buffer.from(prepared.value.payload), Buffer.from(rows[0].intent))
     const retried = await prepare()
     assert.deepEqual(retried, prepared)
-    let stored
-    const journal = ambiguous => ({ bucket: () => ({ getMetadata: bucketMetadata, file: () => ({ createWriteStream: () => {
-      const chunks = []
-      return new Writable({
-        write(chunk, _encoding, callback) { chunks.push(Buffer.from(chunk)); callback() },
-        final(callback) {
-          if (stored) return callback(new Error('synthetic precondition failure'))
-          stored = Buffer.concat(chunks)
-          callback(ambiguous ? new Error('synthetic lost response') : undefined)
-        },
-      })
-    } }) }) })
-    const target = { environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789' }
-    const emulator = process.env.STORAGE_EMULATOR_HOST
-    delete process.env.STORAGE_EMULATOR_HOST
-    try {
-      await assert.rejects(writeRecoveryJournalRecord(journal(true), target, prepared.value.recordId, prepared.value.payload), /outcome is uncertain/)
-      assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
-      await assert.rejects(writeRecoveryJournalRecord(journal(false), target, retried.value.recordId, retried.value.payload), /outcome is uncertain/)
-      const independentReader = { bucket: () => ({ getMetadata: bucketMetadata, file: () => ({ interceptors: [], createReadStream: () => {
-        const stream = Readable.from([stored])
-        process.nextTick(() => stream.emit('response', { toJSON: () => ({ headers: {
-          'x-goog-stored-content-encoding': 'identity', 'x-goog-hash': 'crc32c=AAAAAA==',
-        } }) }))
-        return stream
-      } }) }) }
-      const observed = await readRecoveryJournalRecord(independentReader, target, prepared.value.recordId, '101')
-      assert.deepEqual(Buffer.from(observed), Buffer.from(retried.value.payload))
-    } finally {
-      if (emulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
-      else process.env.STORAGE_EMULATOR_HOST = emulator
-    }
-    assert.deepEqual(stored, Buffer.from(rows[0].intent))
-    assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
     await assert.rejects(prepare(verifier, { recordId: randomUUID() }), /Pending removal unavailable/)
     await assert.rejects(prepare(verifier, { reason: 'different synthetic reason' }), /Pending removal unavailable/)
     await assert.rejects(prepare(verifier, { reason: '\ud800' }), /Invalid pending removal/)
     assert.equal((await pool.query('SELECT count(*)::int AS count FROM public.public_access_pending_decisions')).rows[0].count, 1)
-    const objects = new Map()
-    const stagedJournal = lostResponse => ({ bucket: () => ({ getMetadata: bucketMetadata, file: name => ({ createWriteStream: () => {
-      const chunks = []
-      return new Writable({
-        write(chunk, _encoding, callback) { chunks.push(Buffer.from(chunk)); callback() },
-        final(callback) {
-          if (objects.has(name)) return callback(new Error('synthetic precondition failure'))
-          objects.set(name, Buffer.concat(chunks))
-          callback(lostResponse ? new Error('synthetic lost response') : undefined)
-        },
-      })
-    } }) }) })
-    const uncertainInput = { ...input, operationId: randomUUID(), recordId: randomUUID() }
-    const successfulInput = { ...input, operationId: randomUUID(), recordId: randomUUID() }
-    const wrongBucketInput = { ...input, operationId: randomUUID(), recordId: randomUUID() }
-    journalOperations.push(uncertainInput.operationId, successfulInput.operationId, wrongBucketInput.operationId)
-    const originalEmulator = process.env.STORAGE_EMULATOR_HOST
-    delete process.env.STORAGE_EMULATOR_HOST
-    try {
-      const stage = (storage, decision) => prepareAndJournalRemoval(url.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, target, storage, decision)
-      assert.deepEqual(await stage(stagedJournal(true), uncertainInput), { state: 'authorized', value: 'journal_uncertain' })
-      assert.deepEqual(await stage(stagedJournal(false), uncertainInput), { state: 'authorized', value: 'journal_uncertain' })
-      assert.deepEqual(await stage(stagedJournal(false), successfulInput), { state: 'authorized', value: 'journaled' })
-      let wrongBucketObjectRequests = 0
-      const wrongBucket = { bucket: () => ({ async getMetadata() { return [{ ...(await bucketMetadata())[0], projectNumber: '987654321' }] },
-        file() { wrongBucketObjectRequests++; throw new Error('Unexpected object write') },
-      }) }
-      assert.deepEqual(await stage(wrongBucket, wrongBucketInput), { state: 'authorized', value: 'journal_uncertain' })
-      assert.equal(wrongBucketObjectRequests, 0)
-      assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
-      assert.equal((await pool.query('SELECT count(*)::int AS count FROM public.public_access_pending_decisions WHERE operation_id=$1',
-        [wrongBucketInput.operationId])).rows[0].count, 1)
-    } finally {
-      if (originalEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
-      else process.env.STORAGE_EMULATOR_HOST = originalEmulator
-    }
-    assert.equal(objects.size, 2)
-    assert.ok([...objects.values()].every(value => !value.toString('utf8').includes(input.reason)))
-    assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
     assert.equal((await pool.query("SELECT has_table_privilege('public', 'public.public_access_pending_decisions', 'SELECT') AS allowed")).rows[0].allowed, false)
     const functionName = 'public.prepare_pending_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text)'
     assert.equal((await pool.query('SELECT has_function_privilege($1,$2,$3) AS allowed', ['public', functionName, 'EXECUTE'])).rows[0].allowed, false)
@@ -330,7 +250,7 @@ test('authorized pending removal closes the gate atomically and retries without 
     assert.equal((await pool.query('SELECT journal_project_number FROM public.public_access_pending_decisions WHERE operation_id=$1',
       [concurrent[0].operationId])).rows[0].journal_project_number, null)
     assert.equal((await pool.query('SELECT count(*)::int AS count FROM public.public_access_pending_decisions')).rows[0].count,
-      1 + journalOperations.length + 1 + concurrentOperations.length)
+      2 + concurrentOperations.length)
     assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
     const sequenceApply = 'public.apply_pending_sequence_removal(text,text,uuid,uuid,text,text,text,text,text,uuid)'
     assert.equal((await pool.query('SELECT has_function_privilege($1,$2,$3) AS allowed', ['public', sequenceApply, 'EXECUTE'])).rows[0].allowed, false)
@@ -395,7 +315,6 @@ test('authorized pending removal closes the gate atomically and retries without 
     if (pendingOperationId) await pool.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id = $1', [pendingOperationId])
     if (secondOperationId) await pool.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id = $1', [secondOperationId])
     if (concurrentOperations.length) await pool.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id = ANY($1::uuid[])', [concurrentOperations])
-    if (journalOperations.length) await pool.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id = ANY($1::uuid[])', [journalOperations])
     await pool.query('UPDATE public.public_access_gate SET is_open = false WHERE singleton = true')
     if (roleCreated) {
       await pool.query(`REVOKE EXECUTE ON FUNCTION public.lock_active_moderator(text,text), public.prepare_pending_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text), public.apply_pending_sequence_removal(text,text,uuid,uuid,text,text,text,text,text,uuid), public.pin_pending_removal_sequence(text,text,uuid,uuid,text,text,text,uuid), public.prepare_pending_removal_confirmation(text,text,uuid,uuid,text,text,timestamptz,uuid), public.verify_pending_sequence_confirmation(text,text,uuid,uuid,timestamptz,text,text,text,text,uuid) FROM "${role}"`)
@@ -468,23 +387,31 @@ test('a limited read role detects a waiting closer without permission to update 
   }
 })
 
-test('a trusted coordinator applies only the verified pending removal after readers drain', async () => {
+test('sequence coordinator drains readers and preserves a committed confirmation across uncertain responses', async () => {
   const admin = new pg.Pool({ connectionString: url.toString(), max: 6, connectionTimeoutMillis: 2000 })
-  const suffix = randomUUID().replaceAll('-', '')
-  const prepareRole = `gate_prepare_${suffix}`
-  const coordinatorRole = `gate_coordinator_${suffix}`
-  const subject = `apply-${suffix}`
-  const prepareFunction = 'public.prepare_pending_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text)'
-  const applyFunction = 'public.apply_pending_removal(text,text,uuid,uuid,text,text)'
-  const confirmationFunction = 'public.prepare_pending_removal_confirmation(text,text,uuid,uuid,text,text,timestamptz,uuid)'
-  const verificationFunction = 'public.verify_pending_removal_confirmation(text,text,uuid,uuid,timestamptz,text)'
-  const prepareUrl = new URL(url)
+  const suffix = randomUUID().replaceAll('-', ''), role = `sequence_coordinator_${suffix}`, subject = `sequence-${suffix}`
   const coordinatorUrl = new URL(url)
-  let reader, actor, contact, idea, revision, operationId, preview, staleIdea, staleRevision, staleOperation, applying
-  let preparePool, coordinatorPool, prepareUsed = false, coordinatorUsed = false
-  const createdRoles = []
-  const originalEmulator = process.env.STORAGE_EMULATOR_HOST
-  delete process.env.STORAGE_EMULATOR_HOST
+  coordinatorUrl.username = role; coordinatorUrl.password = 'synthetic-only'
+  const target = { environment: 'dev', projectNumber: '123456789', secretId: 'synthetic-journal', epochId: randomUUID() }
+  const parent = `projects/${target.projectNumber}/secrets/${target.secretId}`, versions = []
+  let reader, actor, contact, idea, revision, preview, operationId, staleIdea, staleRevision, staleOperation
+  let roleCreated = false, runtimeUsed = false, applying
+  const writer = { async request(method, path, body) {
+    assert.equal(method, 'POST'); assert.equal(path, `${parent}:addVersion`)
+    versions.push(Buffer.from(body.payload.data, 'base64'))
+    return { status: 200, data: { name: `${parent}/versions/${versions.length}`, state: 'ENABLED', clientSpecifiedPayloadChecksum: true } }
+  } }
+  const read = { async request(method, path) {
+    assert.equal(method, 'GET')
+    const match = new RegExp(`^${parent}/versions/([1-9][0-9]*):access$`).exec(path)
+    assert.ok(match)
+    const bytes = versions[Number(match[1]) - 1]
+    if (!bytes) return { status: 404, data: null }
+    const crc = new CRC32C(); crc.update(bytes)
+    return { status: 200, data: { name: `${parent}/versions/${match[1]}`,
+      payload: { data: bytes.toString('base64'), dataCrc32c: String(Buffer.from(crc.toString(), 'base64').readUInt32BE(0)) } } }
+  } }
+  const denied = { async request() { return { status: 403, data: {} } } }
   try {
     actor = (await admin.query('INSERT INTO public.users DEFAULT VALUES RETURNING id')).rows[0].id
     await admin.query("INSERT INTO public.identities(user_id,provider,subject) VALUES ($1,'firebase:demo-idea-map',$2)", [actor, subject])
@@ -494,25 +421,9 @@ test('a trusted coordinator applies only the verified pending removal after read
     revision = (await admin.query("INSERT INTO public.idea_revisions(idea_id,version,content,review_state) VALUES ($1,1,'{}'::jsonb,'approved') RETURNING id", [idea])).rows[0].id
     await admin.query('INSERT INTO public.approved_revisions(idea_id,revision_id) VALUES ($1,$2)', [idea, revision])
     preview = (await admin.query("INSERT INTO public.media_previews(idea_id,revision_id,object_name,generation,content_type,published) VALUES ($1,$2,$3,'1','image/png',true) RETURNING id", [idea, revision, `synthetic/${suffix}`])).rows[0].id
-    await admin.query(`CREATE ROLE "${prepareRole}" LOGIN PASSWORD 'synthetic-only'`)
-    createdRoles.push(prepareRole)
-    await admin.query(`CREATE ROLE "${coordinatorRole}" LOGIN PASSWORD 'synthetic-only'`)
-    createdRoles.push(coordinatorRole)
-    await admin.query(`GRANT USAGE ON SCHEMA public TO "${prepareRole}", "${coordinatorRole}"`)
-    await admin.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text), ${prepareFunction} TO "${prepareRole}"`)
-    await admin.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text), ${applyFunction}, ${confirmationFunction}, ${verificationFunction} TO "${coordinatorRole}"`)
-    prepareUrl.username = prepareRole; prepareUrl.password = 'synthetic-only'
-    coordinatorUrl.username = coordinatorRole; coordinatorUrl.password = 'synthetic-only'
-    preparePool = new pg.Pool({ connectionString: prepareUrl.toString() })
-    coordinatorPool = new pg.Pool({ connectionString: coordinatorUrl.toString() })
-    await assert.rejects(preparePool.query(`SELECT * FROM ${applyFunction.slice(0, applyFunction.indexOf('('))}($1,$2,$3,$4,$5,$6)`,
-      ['firebase:demo-idea-map', subject, randomUUID(), randomUUID(), '1', '{}']), { code: '42501' })
-    await assert.rejects(coordinatorPool.query('SELECT public.remove_published_idea($1,$2,$3,$4,$5,$6)',
-      ['firebase:demo-idea-map', subject, idea, revision, 'other', 'synthetic']), { code: '42501' })
-    await assert.rejects(coordinatorPool.query('SELECT * FROM public.public_access_pending_decisions'), { code: '42501' })
-    assert.equal((await admin.query('SELECT has_function_privilege($1,$2,$3) AS allowed', ['public', applyFunction, 'EXECUTE'])).rows[0].allowed, false)
-    assert.equal((await admin.query('SELECT has_function_privilege($1,$2,$3) AS allowed', ['public', confirmationFunction, 'EXECUTE'])).rows[0].allowed, false)
-    assert.equal((await admin.query('SELECT has_function_privilege($1,$2,$3) AS allowed', ['public', verificationFunction, 'EXECUTE'])).rows[0].allowed, false)
+    await admin.query(`CREATE ROLE "${role}" LOGIN PASSWORD 'synthetic-only'`); roleCreated = true
+    await admin.query(`GRANT USAGE ON SCHEMA public TO "${role}"`)
+    await admin.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text), public.prepare_pending_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text), public.pin_pending_removal_sequence(text,text,uuid,uuid,text,text,text,uuid), public.apply_pending_sequence_removal(text,text,uuid,uuid,text,text,text,text,text,uuid), public.prepare_pending_removal_confirmation(text,text,uuid,uuid,text,text,timestamptz,uuid), public.verify_pending_sequence_confirmation(text,text,uuid,uuid,timestamptz,text,text,text,text,uuid) TO "${role}"`)
     const session = { uid: subject, email: `${suffix}@example.invalid`, email_verified: true, firebase: { sign_in_provider: 'password' } }
     const verifier = { async verifySessionCookie() { return session }, async getUser() { return { uid: subject, email: session.email, emailVerified: true, disabled: false } } }
     const input = { operationId: randomUUID(), recordId: randomUUID(), ideaId: idea, approvedRevisionId: revision,
@@ -520,46 +431,26 @@ test('a trusted coordinator applies only the verified pending removal after read
     operationId = input.operationId
     await admin.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true')
     reader = await acquirePublicAccessLease(admin)
-    prepareUsed = true
-    const prepared = await preparePendingRemoval(prepareUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, 'dev', input)
-    assert.equal(prepared.state, 'authorized')
-    assert.equal(prepared.value.state, 'pending')
-    await assert.rejects(admin.query('UPDATE public.public_access_pending_decisions SET applied_at=clock_timestamp() WHERE operation_id=$1', [operationId]), { code: '23514' })
-    await assert.rejects(admin.query("UPDATE public.public_access_pending_decisions SET journal_generation='1' WHERE operation_id=$1", [operationId]), /application is immutable/)
-    await assert.rejects(admin.query("UPDATE public.public_access_pending_decisions SET journal_generation='1',applied_at=clock_timestamp(),applied_transaction_id='1' WHERE operation_id=$1", [operationId]), /Pending removal is ambiguous/)
+    runtimeUsed = true
+    const prepared = await preparePendingRemoval(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, 'dev', input)
+    assert.equal(prepared.state, 'authorized'); assert.equal(prepared.value.state, 'pending')
     await waitForAborts(reader.signal)
-    const body = Buffer.from(prepared.value.payload)
-    const checksum = new CRC32C(); checksum.update(body)
-    const target = { environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789' }
-    let reads = 0
-    const fakeReader = (payload = body, crc = checksum.toString(), generation = '90071992547409931234') => ({ bucket: bucket => ({ getMetadata: bucketMetadata, file: name => ({
-      interceptors: [], async getMetadata() { reads++; return [{ bucket, name, generation, metageneration: '1', size: String(payload.length),
-        contentType: 'application/json', crc32c: crc }] },
-      createReadStream() {
-        const stream = Readable.from([payload])
-        process.nextTick(() => stream.emit('response', { toJSON: () => ({ headers: {
-          'x-goog-stored-content-encoding': 'identity', 'x-goog-hash': `crc32c=${crc}`,
-        } }) }))
-        return stream
-      },
-    }) }) })
-    const argumentsFor = { operationId, recordId: input.recordId, payload: body }
-    const execute = (v = verifier, source = fakeReader(), value = argumentsFor) => {
-      coordinatorUsed = true
-      return applyJournaledRemoval(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', v, target, source, value)
-    }
-    const unauthenticated = { ...verifier, async verifySessionCookie() { throw Object.assign(new Error('synthetic'), { code: 'auth/session-cookie-revoked' }) } }
-    assert.deepEqual(await execute(unauthenticated), { state: 'unauthenticated' })
-    assert.equal(reads, 0)
-    await assert.rejects(execute(verifier, fakeReader(), { ...argumentsFor, payload: Buffer.alloc(16_385) }), /Invalid pending removal/)
-    assert.equal(reads, 0)
-    const incorrectChecksum = checksum.toString() === 'AAAAAA==' ? 'AQAAAA==' : 'AAAAAA=='
-    assert.deepEqual(await execute(verifier, fakeReader(body, incorrectChecksum)), { state: 'authorized', value: 'journal_uncertain' })
-    assert.equal((await admin.query('SELECT publication_state FROM public.ideas WHERE id=$1', [idea])).rows[0].publication_state, 'approved')
+    const saved = { operationId, recordId: input.recordId, payload: prepared.value.payload }
+    const journaled = await journalPendingRemovalSequence(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, target, writer, read, saved)
+    assert.deepEqual(journaled, { state: 'authorized', value: { state: 'journaled', version: '1', coverageVerified: false } })
+    const limited = new pg.Pool({ connectionString: coordinatorUrl.toString() })
+    try {
+      await assert.rejects(limited.query('SELECT public.remove_published_idea($1,$2,$3,$4,$5,$6)',
+        ['firebase:demo-idea-map', subject, idea, revision, 'other', 'synthetic']), { code: '42501' })
+      await assert.rejects(limited.query('SELECT * FROM public.apply_pending_removal($1,$2,$3,$4,$5,$6)',
+        ['firebase:demo-idea-map', subject, operationId, input.recordId, '1', Buffer.from(saved.payload).toString('utf8')]), { code: '42501' })
+    } finally { await limited.end() }
+    const application = { ...saved, version: '1' }
+    const execute = (v = verifier, source = read) => applySequenceJournaledRemoval(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', v, target, source, application)
+    assert.deepEqual(await execute(verifier, denied), { state: 'authorized', value: 'journal_uncertain' })
     let checks = 0
     const revoked = { ...verifier, async getUser() { return { uid: subject, email: session.email, emailVerified: true, disabled: ++checks > 1 } } }
-    applying = execute(revoked)
-    applying.catch(() => {})
+    applying = execute(revoked); applying.catch(() => {})
     let waiting = false
     for (let attempt = 0; attempt < 100; attempt++) {
       waiting = (await admin.query("SELECT EXISTS(SELECT 1 FROM pg_locks WHERE locktype='advisory' AND mode='ExclusiveLock' AND NOT granted) AS waiting")).rows[0].waiting
@@ -567,138 +458,38 @@ test('a trusted coordinator applies only the verified pending removal after read
       await new Promise(resolve => setTimeout(resolve, 20))
     }
     assert.equal(waiting, true)
-    await assert.rejects(reader.release(), /Public access unavailable/)
-    reader = undefined
-    assert.deepEqual(await applying, { state: 'unauthenticated' })
-    applying = undefined
+    await assert.rejects(reader.release(), /Public access unavailable/); reader = undefined
+    assert.deepEqual(await applying, { state: 'unauthenticated' }); applying = undefined
     assert.equal((await admin.query('SELECT publication_state FROM public.ideas WHERE id=$1', [idea])).rows[0].publication_state, 'approved')
-    assert.deepEqual((await admin.query('SELECT journal_generation,applied_at,applied_transaction_id FROM public.public_access_pending_decisions WHERE operation_id=$1', [operationId])).rows[0],
-      { journal_generation: null, applied_at: null, applied_transaction_id: null })
-    const confirmationId = recoveryConfirmationRecordId(operationId)
-    await assert.rejects(admin.query('UPDATE public.public_access_pending_decisions SET confirmation_record_id=$1 WHERE operation_id=$2', [confirmationId, operationId]), /must commit before confirmation/)
-    const differentConfirmationId = `${confirmationId.slice(0, -1)}${confirmationId.endsWith('0') ? '1' : '0'}`
-    await assert.rejects(coordinatorPool.query('SELECT * FROM public.prepare_pending_removal_confirmation($1,$2,$3,$4,$5,$6,$7,$8)',
-      ['firebase:demo-idea-map', subject, operationId, input.recordId, '90071992547409931234', body.toString('utf8'), new Date(), differentConfirmationId]),
-    /Pending removal is ambiguous/)
-    const transaction = await coordinatorPool.connect()
+    const transaction = await admin.connect()
     try {
       await transaction.query('BEGIN ISOLATION LEVEL READ COMMITTED')
       await transaction.query('SAVEPOINT synthetic_application')
-      const interim = (await transaction.query('SELECT * FROM public.apply_pending_removal($1,$2,$3,$4,$5,$6)',
-        ['firebase:demo-idea-map', subject, operationId, input.recordId, '90071992547409931234', body.toString('utf8')])).rows[0]
+      const interim = (await transaction.query('SELECT * FROM public.apply_pending_sequence_removal($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+        ['firebase:demo-idea-map', subject, operationId, input.recordId, '1', Buffer.from(saved.payload).toString('utf8'),
+          'dev', target.projectNumber, target.secretId, target.epochId])).rows[0]
       assert.equal(interim.outcome, 'applied')
       await transaction.query('RELEASE SAVEPOINT synthetic_application')
       await assert.rejects(transaction.query('SELECT * FROM public.prepare_pending_removal_confirmation($1,$2,$3,$4,$5,$6,$7,$8)',
-        ['firebase:demo-idea-map', subject, operationId, input.recordId, '90071992547409931234', body.toString('utf8'), interim.applied_at, confirmationId]),
-      /must commit before confirmation/)
+        ['firebase:demo-idea-map', subject, operationId, input.recordId, '1', Buffer.from(saved.payload).toString('utf8'),
+          interim.applied_at, recoveryConfirmationRecordId(operationId)]), /must commit before confirmation/)
     } finally { await transaction.query('ROLLBACK'); transaction.release() }
-    assert.equal((await admin.query('SELECT publication_state FROM public.ideas WHERE id=$1', [idea])).rows[0].publication_state, 'approved')
-    const directTransaction = await admin.connect()
-    try {
-      await directTransaction.query('BEGIN ISOLATION LEVEL READ COMMITTED')
-      await directTransaction.query('SAVEPOINT synthetic_application')
-      await directTransaction.query('SELECT * FROM public.apply_pending_removal($1,$2,$3,$4,$5,$6)',
-        ['firebase:demo-idea-map', subject, operationId, input.recordId, '90071992547409931234', body.toString('utf8')])
-      await directTransaction.query('RELEASE SAVEPOINT synthetic_application')
-      await assert.rejects(directTransaction.query('UPDATE public.public_access_pending_decisions SET confirmation_record_id=$1,confirmation_prepared_at=clock_timestamp() WHERE operation_id=$2',
-        [confirmationId, operationId]), /must commit before confirmation/)
-    } finally { await directTransaction.query('ROLLBACK'); directTransaction.release() }
-    const decoded = decodeRecoveryRecord(body, 'dev')
-    const forged = Buffer.from(encodeRecoveryIntent({ operationId: decoded.operationId, environment: decoded.environment,
-      ideaId: decoded.ideaId, actorId: decoded.actorId, authorizedAt: decoded.authorizedAt,
-      decision: { ...decoded.decision, classification: 'violation' } }))
-    const forgedChecksum = new CRC32C(); forgedChecksum.update(forged)
-    await assert.rejects(execute(verifier, fakeReader(forged, forgedChecksum.toString()), { ...argumentsFor, payload: forged }), /Pending removal unavailable/)
-    await assert.rejects(execute(verifier, fakeReader(), { ...argumentsFor, recordId: randomUUID() }), /Pending removal unavailable/)
     const applied = await execute()
-    assert.equal(applied.state, 'authorized')
-    assert.equal(applied.value.state, 'applied')
-    assert.equal(applied.value.recordId, input.recordId)
-    assert.equal(applied.value.generation, '90071992547409931234')
-    assert.equal(Number.isFinite(Date.parse(applied.value.appliedAt)), true)
+    assert.equal(applied.state, 'authorized'); assert.equal(applied.value.state, 'applied')
     assert.deepEqual(await execute(), applied)
-    await assert.rejects(execute(verifier, fakeReader(body, checksum.toString(), '90071992547409931235')), /Pending removal unavailable/)
     assert.equal((await admin.query('SELECT publication_state FROM public.ideas WHERE id=$1', [idea])).rows[0].publication_state, 'withdrawn')
     assert.equal((await admin.query('SELECT published FROM public.media_previews WHERE id=$1', [preview])).rows[0].published, false)
-    assert.equal((await admin.query('SELECT count(*)::int AS count FROM public.moderator_removals WHERE idea_id=$1', [idea])).rows[0].count, 1)
-    assert.equal((await admin.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
-    assert.match((await admin.query('SELECT applied_transaction_id FROM public.public_access_pending_decisions WHERE operation_id=$1', [operationId])).rows[0].applied_transaction_id, /^[1-9][0-9]*$/)
-    await assert.rejects(admin.query("UPDATE public.public_access_pending_decisions SET applied_transaction_id='1' WHERE operation_id=$1", [operationId]), /application is immutable/)
-    const confirmationInput = { ...argumentsFor, generation: applied.value.generation, appliedAt: applied.value.appliedAt }
-    const prepareConfirmation = () => prepareRemovalConfirmation(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, 'dev', confirmationInput)
-    // Model a pre-migration applied row with no top-level transaction evidence.
-    // The trigger override is local to this rolled-back synthetic transaction.
-    const legacy = await admin.connect()
-    try {
-      await legacy.query('BEGIN')
-      await legacy.query("SET LOCAL session_replication_role = 'replica'")
-      await legacy.query('UPDATE public.public_access_pending_decisions SET applied_transaction_id=NULL WHERE operation_id=$1', [operationId])
-      await assert.rejects(legacy.query('SELECT * FROM public.prepare_pending_removal_confirmation($1,$2,$3,$4,$5,$6,$7,$8)',
-        ['firebase:demo-idea-map', subject, operationId, input.recordId, applied.value.generation, body.toString('utf8'), applied.value.appliedAt, confirmationId]),
-      /must commit before confirmation/)
-    } finally { await legacy.query('ROLLBACK'); legacy.release() }
-    let confirmationChecks = 0
-    const revokedConfirmation = { ...verifier, async getUser() { return { uid: subject, email: session.email,
-      emailVerified: true, disabled: ++confirmationChecks > 1 } } }
-    assert.deepEqual(await prepareRemovalConfirmation(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie',
-      revokedConfirmation, 'dev', confirmationInput), { state: 'unauthenticated' })
-    assert.deepEqual((await admin.query('SELECT confirmation_record_id,confirmation_prepared_at FROM public.public_access_pending_decisions WHERE operation_id=$1', [operationId])).rows[0],
-      { confirmation_record_id: null, confirmation_prepared_at: null })
-    const confirmation = await prepareConfirmation()
-    assert.equal(confirmation.state, 'authorized')
-    assert.equal(confirmation.value.recordId, confirmationId)
-    assert.deepEqual(await prepareConfirmation(), confirmation)
-    await assert.rejects(admin.query("UPDATE public.public_access_pending_decisions SET confirmation_prepared_at=confirmation_prepared_at + interval '1 second' WHERE operation_id=$1", [operationId]), /confirmation is immutable/)
-    assert.deepEqual(decodeRecoveryRecord(confirmation.value.payload, 'dev'), { version: 1, recordType: 'commit_confirmation',
-      operationId, environment: 'dev', confirmedAt: confirmation.value.preparedAt })
-    assert.ok(Date.parse(confirmation.value.preparedAt) >= Date.parse(applied.value.appliedAt))
-    const writer = (objects, lost) => ({ bucket: () => ({ getMetadata: bucketMetadata, file: name => ({ createWriteStream: options => {
-      assert.equal(options.preconditionOpts.ifGenerationMatch, 0)
-      const chunks = []
-      return new Writable({ write(chunk, _encoding, callback) { chunks.push(Buffer.from(chunk)); callback() }, final(callback) {
-        if (objects.has(name)) return callback(new Error('synthetic precondition failure'))
-        objects.set(name, Buffer.concat(chunks))
-        callback(lost ? new Error('synthetic lost response') : undefined)
-      } })
-    } }) }) })
-    const writeConfirmation = (objects, lost) => writeRemovalConfirmation(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier,
-      target, writer(objects, lost), confirmationInput)
-    const successfulObjects = new Map()
-    assert.deepEqual(await writeConfirmation(successfulObjects, false), { state: 'authorized', value: { state: 'confirmation_written', recordId: confirmationId } })
-    assert.deepEqual([...successfulObjects.values()], [Buffer.from(confirmation.value.payload)])
-    // A second isolated fake models a write whose success response was lost.
-    const confirmationObjects = new Map()
-    assert.deepEqual(await writeConfirmation(confirmationObjects, true), { state: 'authorized', value: 'confirmation_uncertain' })
-    assert.deepEqual(await writeConfirmation(confirmationObjects, false), { state: 'authorized', value: 'confirmation_uncertain' })
-    const confirmationPath = `idea-map-v2/dev/recovery-journal/${confirmationId}.json`
-    const recoveredBytes = confirmationObjects.get(confirmationPath)
-    assert.deepEqual(recoveredBytes, Buffer.from(confirmation.value.payload))
-    const confirmationChecksum = new CRC32C(); confirmationChecksum.update(recoveredBytes)
-    assert.deepEqual(await compareCurrentRecoveryJournalRecord(fakeReader(recoveredBytes, confirmationChecksum.toString()),
-      target, confirmationId, confirmation.value.payload), { generation: '90071992547409931234', coverageVerified: false })
-    const storedReader = fakeReader(recoveredBytes, confirmationChecksum.toString())
-    const confirmationReader = { bucket(bucket) { return { getMetadata: bucketMetadata, file(name) {
-      if (name !== confirmationPath || !confirmationObjects.has(name)) throw new Error('Synthetic confirmation is missing')
-      return storedReader.bucket(bucket).file(name)
-    } } } }
-    const verifyConfirmation = (v = verifier, source = confirmationReader) => verifyRemovalConfirmation(
-      coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', v, target, source, confirmationInput)
-    await assert.rejects(preparePool.query('SELECT * FROM public.verify_pending_removal_confirmation($1,$2,$3,$4,$5,$6)',
-      ['firebase:demo-idea-map', subject, operationId, confirmationId, confirmation.value.preparedAt, '1']), { code: '42501' })
-    assert.deepEqual(await verifyConfirmation(verifier, fakeReader(body, checksum.toString())),
+    const confirmationInput = { ...saved, generation: '1', appliedAt: applied.value.appliedAt }
+    const confirmationId = recoveryConfirmationRecordId(operationId)
+    const confirmation = await prepareRemovalConfirmation(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, 'dev', confirmationInput)
+    assert.equal(confirmation.state, 'authorized'); assert.equal(confirmation.value.recordId, confirmationId)
+    assert.deepEqual(await journalSequenceRemovalConfirmation(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, target, writer, denied, confirmationInput),
       { state: 'authorized', value: 'confirmation_uncertain' })
-    assert.deepEqual((await admin.query('SELECT confirmation_generation,confirmation_verified_at FROM public.public_access_pending_decisions WHERE operation_id=$1', [operationId])).rows[0],
-      { confirmation_generation: null, confirmation_verified_at: null })
-    let verificationChecks = 0
-    const revokedVerification = { ...verifier, async getUser() { return { uid: subject, email: session.email,
-      emailVerified: true, disabled: ++verificationChecks > 3 } } }
-    assert.deepEqual(await verifyConfirmation(revokedVerification), { state: 'unauthenticated' })
-    assert.deepEqual((await admin.query('SELECT confirmation_generation,confirmation_verified_at FROM public.public_access_pending_decisions WHERE operation_id=$1', [operationId])).rows[0],
-      { confirmation_generation: null, confirmation_verified_at: null })
-    // Simulate a database commit whose success response is lost. Preparation
-    // uses the first transaction; verification commits in the second.
-    const runtimePool = pendingRemovalDatabasePool(coordinatorUrl.toString())
-    const originalConnect = runtimePool.connect
+    const journaledConfirmation = await journalSequenceRemovalConfirmation(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, target, writer, read, confirmationInput)
+    assert.deepEqual(journaledConfirmation, { state: 'authorized', value: { state: 'confirmation_journaled', recordId: confirmationId, version: '3', coverageVerified: false } })
+    assert.deepEqual(versions[1], versions[2])
+    const verify = () => verifySequenceRemovalConfirmation(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, target, read, confirmationInput, '3')
+    const runtimePool = pendingRemovalDatabasePool(coordinatorUrl.toString()), originalConnect = runtimePool.connect
     let connected = 0
     runtimePool.connect = async function (...args) {
       const client = await originalConnect.apply(this, args)
@@ -706,61 +497,43 @@ test('a trusted coordinator applies only the verified pending removal after read
         const originalQuery = client.query
         client.query = async function (...queryArgs) {
           const value = await originalQuery.apply(this, queryArgs)
-          if (queryArgs[0] === 'COMMIT') {
-            client.query = originalQuery
-            throw new Error('synthetic lost commit response')
-          }
+          if (queryArgs[0] === 'COMMIT') { client.query = originalQuery; throw new Error('synthetic lost commit response') }
           return value
         }
       }
       return client
     }
-    try { await assert.rejects(verifyConfirmation(), /Pending removal unavailable/) }
-    finally { runtimePool.connect = originalConnect }
+    try { await assert.rejects(verify(), /Pending removal unavailable/) } finally { runtimePool.connect = originalConnect }
     const committed = (await admin.query('SELECT confirmation_generation,confirmation_verified_at FROM public.public_access_pending_decisions WHERE operation_id=$1', [operationId])).rows[0]
-    assert.equal(committed.confirmation_generation, '90071992547409931234')
-    assert.ok(committed.confirmation_verified_at instanceof Date)
-    assert.equal((await admin.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
-    const verified = await verifyConfirmation()
-    assert.equal(verified.state, 'authorized')
+    assert.equal(committed.confirmation_generation, '3')
+    const verified = await verify()
+    assert.equal(verified.state, 'authorized'); assert.equal(verified.value.state, 'confirmation_verified')
     assert.equal(verified.value.verifiedAt, committed.confirmation_verified_at.toISOString())
-    assert.equal(verified.value.state, 'confirmation_verified')
-    assert.equal(verified.value.recordId, confirmationId)
-    assert.equal(verified.value.generation, '90071992547409931234')
-    assert.ok(Date.parse(verified.value.verifiedAt) >= Date.parse(confirmation.value.preparedAt))
-    assert.deepEqual(await verifyConfirmation(), verified)
-    await assert.rejects(verifyConfirmation(verifier, fakeReader(recoveredBytes, confirmationChecksum.toString(), '90071992547409931235')),
-      /Pending removal unavailable/)
-    await assert.rejects(admin.query("UPDATE public.public_access_pending_decisions SET confirmation_generation='9' WHERE operation_id=$1", [operationId]),
-      /Confirmation verification is immutable/)
-    assert.equal((await admin.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
+    assert.deepEqual(await verify(), verified)
     staleIdea = (await admin.query("INSERT INTO public.ideas(author_contact_id,publication_state) VALUES ($1,'approved') RETURNING id", [contact])).rows[0].id
     staleRevision = (await admin.query("INSERT INTO public.idea_revisions(idea_id,version,content,review_state) VALUES ($1,1,'{}'::jsonb,'approved') RETURNING id", [staleIdea])).rows[0].id
     await admin.query('INSERT INTO public.approved_revisions(idea_id,revision_id) VALUES ($1,$2)', [staleIdea, staleRevision])
     const staleInput = { ...input, operationId: randomUUID(), recordId: randomUUID(), ideaId: staleIdea, approvedRevisionId: staleRevision }
     staleOperation = staleInput.operationId
-    const stalePrepared = await preparePendingRemoval(prepareUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, 'dev', staleInput)
-    assert.equal(stalePrepared.state, 'authorized')
-    assert.equal(stalePrepared.value.state, 'pending')
-    const staleBody = Buffer.from(stalePrepared.value.payload)
-    const staleChecksum = new CRC32C(); staleChecksum.update(staleBody)
+    const stalePrepared = await preparePendingRemoval(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, 'dev', staleInput)
+    assert.equal(stalePrepared.state, 'authorized'); assert.equal(stalePrepared.value.state, 'pending')
+    const staleSaved = { operationId: staleOperation, recordId: staleInput.recordId, payload: stalePrepared.value.payload }
+    const staleJournaled = await journalPendingRemovalSequence(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, target, writer, read, staleSaved)
+    assert.equal(staleJournaled.state, 'authorized'); assert.equal(staleJournaled.value.state, 'journaled')
     await admin.query("UPDATE public.ideas SET publication_state='private' WHERE id=$1", [staleIdea])
-    assert.deepEqual(await execute(verifier, fakeReader(staleBody, staleChecksum.toString()),
-      { operationId: staleOperation, recordId: staleInput.recordId, payload: staleBody }), { state: 'authorized', value: 'stale' })
+    assert.deepEqual(await applySequenceJournaledRemoval(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier,
+      target, read, { ...staleSaved, version: staleJournaled.value.version }), { state: 'authorized', value: 'stale' })
     assert.equal((await admin.query('SELECT applied_at FROM public.public_access_pending_decisions WHERE operation_id=$1', [staleOperation])).rows[0].applied_at, null)
-    assert.equal((await admin.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
+    assert.equal((await admin.query('SELECT is_open FROM public.public_access_gate WHERE singleton=true')).rows[0].is_open, false)
   } finally {
     await reader?.release().catch(() => {})
     if (applying) await applying.catch(() => {})
-    await preparePool?.end()
-    await coordinatorPool?.end()
-    if (prepareUsed) await pendingRemovalDatabasePool(prepareUrl.toString()).end()
-    if (coordinatorUsed) await pendingRemovalDatabasePool(coordinatorUrl.toString()).end()
+    if (runtimeUsed) await pendingRemovalDatabasePool(coordinatorUrl.toString()).end()
     if (operationId) await admin.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id=$1', [operationId])
     if (staleOperation) await admin.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id=$1', [staleOperation])
     if (idea) {
       await admin.query('DELETE FROM public.moderator_removals WHERE idea_id=$1', [idea])
-      await admin.query("DELETE FROM public.outbox WHERE job_id IN (SELECT id FROM public.jobs WHERE idempotency_key=$1)", [`removal:${idea}:${revision}`])
+      await admin.query('DELETE FROM public.outbox WHERE job_id IN (SELECT id FROM public.jobs WHERE idempotency_key=$1)', [`removal:${idea}:${revision}`])
       await admin.query('DELETE FROM public.jobs WHERE idempotency_key=$1', [`removal:${idea}:${revision}`])
       await admin.query('DELETE FROM public.media_previews WHERE idea_id=$1', [idea])
       await admin.query('DELETE FROM public.approved_revisions WHERE idea_id=$1', [idea])
@@ -773,15 +546,8 @@ test('a trusted coordinator applies only the verified pending removal after read
       await admin.query('DELETE FROM public.ideas WHERE id=$1', [staleIdea])
     }
     if (contact) await admin.query('DELETE FROM public.contacts WHERE id=$1', [contact])
-    // Moderator assignments are immutable. Their synthetic actor and identity
-    // remain in this disposable database, as in the other moderation tests.
     await admin.query('UPDATE public.public_access_gate SET is_open=false WHERE singleton=true')
-    if (createdRoles.length) {
-      await admin.query(`DROP OWNED BY ${createdRoles.map(role => `"${role}"`).join(', ')}`)
-      await admin.query(`DROP ROLE ${createdRoles.map(role => `"${role}"`).join(', ')}`)
-    }
+    if (roleCreated) { await admin.query(`DROP OWNED BY "${role}"`); await admin.query(`DROP ROLE "${role}"`) }
     await admin.end()
-    if (originalEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
-    else process.env.STORAGE_EMULATOR_HOST = originalEmulator
   }
 })

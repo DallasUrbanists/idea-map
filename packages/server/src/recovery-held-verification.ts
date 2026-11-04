@@ -2,7 +2,7 @@ import type { Storage } from '@google-cloud/storage'
 import { decodeRecoveryRecord } from './recovery-journal-record.js'
 import { summarizeUnverifiedRecovery } from './recovery-journal-plan.js'
 import { matchUnverifiedHeldManifest } from './recovery-held-manifest.js'
-import { readUnverifiedHeldMaterial } from './recovery-journal-storage.js'
+import { readUnverifiedHeldMaterial } from './recovery-held-storage.js'
 import { readUnverifiedRecoverySequence, type RecoverySequenceTransport } from './recovery-sequence-storage.js'
 
 type Target = { environment: 'dev' | 'prod', bucket: string, projectNumber: string }

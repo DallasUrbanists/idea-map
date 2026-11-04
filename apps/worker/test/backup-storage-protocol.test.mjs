@@ -6,9 +6,7 @@ import { Readable } from 'node:stream'
 import { test } from 'node:test'
 import { exportEncryptedBackup } from '../ops/export-encrypted-backup.mjs'
 import { inspectBackupRetention } from '../ops/inspect-backup-retention.mjs'
-import { compareCurrentRecoveryJournalRecord, readRecoveryJournalRecord, readUnverifiedHeldMaterial,
-  writeRecoveryJournalRecord, writeUnverifiedHeldMaterial } from '../../../packages/server/dist/recovery-journal-storage.js'
-import { encodeRecoveryConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../../../packages/server/dist/recovery-journal-record.js'
+import { readUnverifiedHeldMaterial, writeUnverifiedHeldMaterial } from '../../../packages/server/dist/recovery-held-storage.js'
 
 const require = createRequire(import.meta.url)
 const { Storage } = require('@google-cloud/storage')
@@ -27,7 +25,7 @@ function crc32c(data) {
   return result.toString('base64')
 }
 
-test('storage client sends create-only archives, completion metadata, and journal records', async () => {
+test('storage client sends create-only archives, completion metadata, and held material', async () => {
   const isolatedEnv = ['STORAGE_EMULATOR_HOST', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy']
   const previousEnv = new Map(isolatedEnv.map(key => [key, process.env[key]]))
   for (const key of isolatedEnv) delete process.env[key]
@@ -36,7 +34,6 @@ test('storage client sends create-only archives, completion metadata, and journa
   const payloads = new Map()
   const errors = []
   let omitStoredEncoding = false
-  let overrideMetadataChecksum = false
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, 'http://127.0.0.1')
@@ -71,7 +68,7 @@ test('storage client sends create-only archives, completion metadata, and journa
         const name = decodeURIComponent(url.pathname.slice(`/storage/v1/b/${target.bucket}/o/`.length))
         const object = objects.get(name)
         if (!object) throw new Error('Missing synthetic object')
-        response.end(JSON.stringify(overrideMetadataChecksum ? { ...object, crc32c: 'AAAAAA==' } : object))
+        response.end(JSON.stringify(object))
         return
       }
       if (request.method !== 'POST' || url.pathname !== `/upload/storage/v1/b/${target.bucket}/o` ||
@@ -124,7 +121,7 @@ test('storage client sends create-only archives, completion metadata, and journa
     assert.equal(markers[0].size, '0')
     assert.equal(markers[0].metadata.daily_generation, objects.get(exported.objects[0]).generation)
     assert.equal(markers[0].metadata.weekly_generation, objects.get(exported.objects[1]).generation)
-    objects.set('idea-map-v2/dev/recovery-journal/synthetic', { name: 'idea-map-v2/dev/recovery-journal/synthetic' })
+    objects.set('idea-map-v2/dev/held-material/synthetic', { name: 'idea-map-v2/dev/held-material/synthetic' })
     const inventory = await inspectBackupRetention(storage, target, new Date('2026-11-02T10:02:00.000Z'))
     assert.equal(inventory.retentionSatisfied, false)
     assert.deepEqual(inventory.groupCounts, { daily: 1, weekly: 1 })
@@ -132,50 +129,20 @@ test('storage client sends create-only archives, completion metadata, and journa
     assert.equal(inventory.latestDailyAgeSeconds, 120)
     assert.deepEqual(new Set(requests.filter(item => item.path.endsWith('/o') && item.method === 'GET').map(item => item.query.prefix)),
       new Set(['daily', 'weekly', 'completion'].map(kind => `idea-map-v2/dev/${kind}/`)))
-    objects.delete('idea-map-v2/dev/recovery-journal/synthetic')
-    const recordId = '11111111-1111-4111-8111-111111111111'
-    const intent = { operationId: recordId, environment: 'dev', ideaId: '22222222-2222-4222-8222-222222222222',
-      actorId: '33333333-3333-4333-8333-333333333333', authorizedAt: '2026-11-02T10:01:00.000Z',
-      decision: { kind: 'removal', classification: 'other', reason: 'synthetic' } }
-    const record = Buffer.from(encodeRecoveryIntent(intent))
-    const changedRecord = encodeRecoveryIntent({ ...intent, authorizedAt: '2026-11-02T10:01:01.000Z' })
-    await writeRecoveryJournalRecord(storage, target, recordId, record)
-    const recordName = `idea-map-v2/dev/recovery-journal/${recordId}.json`
-    assert.deepEqual(payloads.get(recordName), record)
-    assert.equal(objects.get(recordName).metadata, undefined)
-    objects.get(recordName).generation = '90071992547409931234'
-    const confirmationId = recoveryConfirmationRecordId(recordId)
-    const confirmation = encodeRecoveryConfirmation(recordId, 'dev', '2026-11-02T10:01:00.000Z')
-    await writeRecoveryJournalRecord(storage, target, confirmationId, confirmation)
-    const confirmationName = `idea-map-v2/dev/recovery-journal/${confirmationId}.json`
-    assert.deepEqual(Buffer.from(await readRecoveryJournalRecord(storage, target, recordId, objects.get(recordName).generation)), record)
-    assert.deepEqual(await compareCurrentRecoveryJournalRecord(storage, target, recordId, record),
-      { generation: '90071992547409931234', coverageVerified: false })
-    overrideMetadataChecksum = true
-    assert.notEqual(objects.get(recordName).crc32c, 'AAAAAA==')
-    await assert.rejects(compareCurrentRecoveryJournalRecord(storage, target, recordId, record), /could not be verified/)
-    overrideMetadataChecksum = false
-    await assert.rejects(compareCurrentRecoveryJournalRecord(storage, target, recordId,
-      changedRecord), /could not be verified/)
-    const checksum = objects.get(recordName).crc32c
-    objects.get(recordName).crc32c = checksum === 'AAAAAA==' ? 'AQAAAA==' : 'AAAAAA=='
-    await assert.rejects(readRecoveryJournalRecord(storage, target, recordId, objects.get(recordName).generation), /could not be verified/)
-    objects.get(recordName).crc32c = checksum
-    omitStoredEncoding = true
-    await assert.rejects(readRecoveryJournalRecord(storage, target, recordId, objects.get(recordName).generation), /could not be verified/)
-    omitStoredEncoding = false
-    await assert.rejects(writeRecoveryJournalRecord(storage, target, recordId, changedRecord),
-      /Journal write outcome is uncertain/)
-    assert.deepEqual(payloads.get(recordName), record)
+    objects.delete('idea-map-v2/dev/held-material/synthetic')
     const heldId = '77777777-7777-4777-8777-777777777777'
     const heldBytes = Buffer.from('synthetic held material')
     const held = await writeUnverifiedHeldMaterial(storage, target, heldId, heldBytes)
     assert.equal(held.coverageVerified, false)
     assert.deepEqual(Buffer.from(await readUnverifiedHeldMaterial(storage, target, heldId, held)), heldBytes)
+    omitStoredEncoding = true
+    await assert.rejects(readUnverifiedHeldMaterial(storage, target, heldId, held), /could not be verified/)
+    omitStoredEncoding = false
+    await assert.rejects(writeUnverifiedHeldMaterial(storage, target, heldId, heldBytes), /outcome is uncertain/)
     const heldName = `idea-map-v2/dev/held-material/${heldId}.bin`
     assert.equal(objects.get(heldName).metadata, undefined)
     assert.equal(errors.length, 0)
-    assert.equal(requests.filter(item => item.method === 'POST').length, 7)
+    assert.equal(requests.filter(item => item.method === 'POST').length, 5)
     assert.deepEqual(new Set(requests.filter(item => item.path.endsWith('/o') && item.method === 'GET').map(item => item.query.prefix)),
       new Set(['daily', 'weekly', 'completion'].map(kind => `idea-map-v2/dev/${kind}/`)))
     assert.ok(requests.every(item => ['GET', 'POST'].includes(item.method)))

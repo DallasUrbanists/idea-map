@@ -234,8 +234,8 @@ bucket grant, dedicated identities, secret grant, and paused scheduler. The
 custom role grants bucket metadata read and creation in the daily, weekly, and
 completion prefixes only. Inspect inherited permissions and deny policies, and
 verify the prefix conditions with synthetic objects. Confirm the effective
-identity cannot write to the journal prefix, update or delete objects, or
-release holds.
+identity cannot write held-material objects, access the decision secret, update
+or delete objects, or release holds.
 
 The job uses one task, no automatic retries, and a bounded execution timeout.
 The supported cron schedules run at a fixed minute every day, or at an evenly
