@@ -14,9 +14,13 @@ variable "enable_backup_freshness_alert" {
   default     = false
   validation {
     condition = !var.enable_backup_freshness_alert || (
-      var.enable_backup_job && length(var.monitoring_notification_channels) > 0 && var.backup_freshness_seconds >= 3600
+      var.enable_backup_job && length(var.monitoring_notification_channels) > 0 && var.backup_freshness_seconds >= 3600 &&
+      var.backup_freshness_seconds > local.backup_job_timeout_seconds + lookup({
+        "*"   = 3600, "*/2" = 7200, "*/3" = 10800, "*/4" = 14400,
+        "*/6" = 21600, "*/8" = 28800, "*/12" = 43200
+      }, try(split(" ", var.backup_schedule)[1], ""), 86400)
     )
-    error_message = "Backup freshness alerts require the job, existing channels, and a reviewed absence window."
+    error_message = "Backup freshness alerts require the job, existing channels, and a window longer than the schedule interval plus the 35-minute job timeout."
   }
 }
 

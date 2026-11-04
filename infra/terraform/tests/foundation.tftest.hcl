@@ -385,6 +385,7 @@ run "backup_job_uses_create_only_access_and_paused_schedule" {
     condition = google_cloud_run_v2_job.backup[0].template[0].task_count == 1 && (
       google_cloud_run_v2_job.backup[0].template[0].parallelism == 1 &&
       google_cloud_run_v2_job.backup[0].template[0].template[0].max_retries == 0 &&
+      google_cloud_run_v2_job.backup[0].template[0].template[0].timeout == "2100s" &&
       google_cloud_run_v2_job.backup[0].template[0].template[0].service_account == "backup-writer@synthetic.invalid"
       ) && anytrue([
         for entry in google_cloud_run_v2_job.backup[0].template[0].template[0].containers[0].env :
@@ -423,6 +424,37 @@ run "backup_freshness_requires_reviewed_window" {
   expect_failures = [var.enable_backup_freshness_alert]
 }
 
+run "backup_freshness_rejects_daily_schedule" {
+  command = plan
+  variables {
+    enable_backup_job                = true
+    enable_backup_freshness_alert    = true
+    backup_job_image                 = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/backup@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    backup_project_number            = "123456789"
+    backup_database_secret_id        = "synthetic-backup-db"
+    backup_database_secret_version   = "1"
+    backup_schedule                  = "0 0 * * *"
+    backup_freshness_seconds         = 84600
+    monitoring_notification_channels = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
+  }
+  expect_failures = [var.enable_backup_freshness_alert]
+}
+
+run "backup_freshness_rejects_window_inside_job_timeout" {
+  command = plan
+  variables {
+    enable_backup_job                = true
+    enable_backup_freshness_alert    = true
+    backup_job_image                 = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/backup@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    backup_project_number            = "123456789"
+    backup_database_secret_id        = "synthetic-backup-db"
+    backup_database_secret_version   = "1"
+    backup_schedule                  = "0 */12 * * *"
+    backup_freshness_seconds         = 45300
+    monitoring_notification_channels = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
+  }
+  expect_failures = [var.enable_backup_freshness_alert]
+}
 run "backup_freshness_rejects_invalid_window" {
   command = plan
   variables { backup_freshness_seconds = 85000 }

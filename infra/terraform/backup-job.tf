@@ -1,3 +1,7 @@
+locals {
+  backup_job_timeout_seconds = 2100
+}
+
 variable "enable_backup_job" {
   description = "Opt in to a backup job and a scheduler that starts paused."
   type        = bool
@@ -105,7 +109,7 @@ resource "google_cloud_run_v2_job" "backup" {
     template {
       service_account = google_service_account.backup_writer[0].email
       max_retries     = 0
-      timeout         = "2100s"
+      timeout         = "${local.backup_job_timeout_seconds}s"
       containers {
         image = var.backup_job_image
         resources { limits = { cpu = "1", memory = "512Mi" } }

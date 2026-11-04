@@ -231,8 +231,10 @@ completed-export signals. Both use existing reviewed
 `backup_freshness_seconds` to a reviewed whole-minute absence window. Choose an
 export schedule and alert window that leave room for a failed run, the job's
 maximum duration, detection and provider delays, and a response before the
-data-loss objective is exceeded. A daily schedule or a completion timestamp
-alone does not prove that objective.
+data-loss objective is exceeded. The alert window must exceed the interval
+between scheduled runs plus the 35-minute job timeout; because the maximum
+window is 23.5 hours, a daily schedule cannot be paired with this alert. This
+minimum does not account for provider delay or prove the data-loss objective.
 
 The freshness metric begins collecting after it is created and needs a first
 successful measurement before an absence alert can fire. A deleted or shut-down
