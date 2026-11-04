@@ -53,10 +53,9 @@ reports confirmations without intents. It exposes associated hold IDs only as
 unverified evidence. It
 never establishes inventory coverage, removes a hold, changes a database, or
 authorizes public access. Its output contains private identifiers and must not
-be written to public logs. These components do not discover records, guard
-mutation paths, capture held material, establish coverage, or reconcile a
-restore. They are not connected to live removal or hold operations and are not
-sufficient to enable them.
+be written to public logs. These components do not guard mutation paths, capture
+held material, or reconcile a restore. They are not connected to live removal
+or hold operations and are not sufficient to enable them.
 
 ## Record and access
 
