@@ -29,6 +29,12 @@ test('assessment identifies each breached threshold without emitting sensitive d
   assert.deepEqual(operationsEvents([]).map(event => event.event), ['operations_assessment_healthy', 'operations_assessment_completed'])
 })
 
+test('a recently created task that is already overdue is reported separately', () => {
+  const database = emptyDatabase()
+  const queue = { count: 1, oldest_seconds: 5, due: 1, oldest_due_seconds: 300 }
+  assert.deepEqual(assessOperations(database, queue, limits), ['queue_due_age'])
+})
+
 test('assessment refuses partial, inconsistent, or invalid observations and thresholds', () => {
   const database = emptyDatabase()
   const queue = emptyQueue()

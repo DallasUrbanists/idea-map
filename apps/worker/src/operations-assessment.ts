@@ -32,6 +32,7 @@ export function assessOperations(database: DatabaseSnapshot, queue: QueueSnapsho
   if (database.backlog.oldest_seconds !== null && database.backlog.oldest_seconds >= thresholds.backlogSeconds) alerts.push('outbox_age')
   if (database.overdue.oldest_seconds !== null && database.overdue.oldest_seconds >= thresholds.overdueSeconds) alerts.push('overdue_age')
   if (queue.oldest_seconds !== null && queue.oldest_seconds >= thresholds.queueSeconds) alerts.push('queue_age')
+  if (queue.oldest_due_seconds !== null && queue.oldest_due_seconds >= thresholds.queueSeconds) alerts.push('queue_due_age')
   if (['failed', 'bounced', 'suppressed', 'delayed', 'complained']
     .some(key => database.email[key as keyof DatabaseSnapshot['email']] >= thresholds.emailEvents)) alerts.push('email_events')
   return alerts

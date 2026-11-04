@@ -137,7 +137,9 @@ four `operations_thresholds`. The thresholds are whole numbers:
 `outbox_seconds`, `overdue_seconds`, and `queue_seconds` are ages in seconds;
 `email_events` is a count for each type of event during the preceding 24 hours.
 The threshold is breached when the corresponding value reaches it. The queue
-age includes future-scheduled tasks, and the outbox age includes future work;
+threshold applies separately to creation age and current-attempt overdue age;
+the emitted signals distinguish them. Creation age includes future-scheduled
+tasks, and the outbox age includes future work;
 choose thresholds with the deployment's schedules in mind. Email events are not
 unique messages, and a zero count does not verify delivery or webhook health.
 
