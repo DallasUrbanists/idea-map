@@ -43,8 +43,10 @@ generations through a paginated fake inventory and checks a separate empty
 soft-deleted listing. It reads those generations, compares a second inventory,
 identifies the synthetic idea for hold review, and uses the suppression primitive
 for the known removal in the isolated restore. It also stores and reads back one
-synthetic title from the later revision as a bounded held-material artifact. That
-single value is not a complete hold scope or a reconstruction of the revision.
+synthetic title from the later revision as a bounded held-material artifact. A
+synthetic manifest links that artifact to the hold and is itself referenced by a
+version-three confirmation. That single value is not a complete hold scope or a
+reconstruction of the revision.
 It verifies that an open gate
 blocks suppression and that a retry is idempotent. With
 the gate still closed, it checks
@@ -74,7 +76,7 @@ does not show that an older archive contains a later gate closure. These checks
 do not establish a hosted network or IAM fence.
 
 The rehearsal records the synthetic hold's committed assignment facts and exact
-placement time in a version-two confirmation. These facts do not authenticate
+placement time in a version-three confirmation. These facts do not authenticate
 the person or written delegation, recreate missing referenced rows, or preserve
 held content. It also compares its journal
 inventory with an earlier fixture checkpoint and detects a deliberately omitted

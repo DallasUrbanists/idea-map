@@ -9,8 +9,9 @@ import { createRequire } from 'node:module'
 import { pipeline } from 'node:stream/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { dumpArguments, exportEncryptedBackup } from '../apps/worker/ops/export-encrypted-backup.mjs'
-import { decodeRecoveryRecord, encodeRecoveryConfirmation, encodeRecoveryHoldConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../packages/server/dist/recovery-journal-record.js'
+import { decodeRecoveryRecord, encodeRecoveryConfirmation, encodeRecoveryHoldManifestConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../packages/server/dist/recovery-journal-record.js'
 import { compareUnverifiedRecoveryCheckpoint } from '../packages/server/dist/recovery-journal-plan.js'
+import { encodeUnverifiedHeldManifest, matchUnverifiedHeldManifest } from '../packages/server/dist/recovery-held-manifest.js'
 import { prepareUnverifiedRecoveryInventory } from '../packages/server/dist/recovery-inventory.js'
 import { suppressKnownRemovalsFromJournal, suppressUnverifiedRestoredRemovals } from '../packages/server/dist/recovery-suppression.js'
 import { listUnverifiedRecoveryJournal, readUnverifiedHeldMaterial, writeRecoveryJournalRecord,
@@ -186,12 +187,14 @@ try {
   const removalOperation = randomUUID()
   const holdOperation = randomUUID()
   const heldArtifact = randomUUID()
+  const manifestArtifact = randomUUID()
   let committedHoldId
   let committedAuthorityId
   let committedPlacedAt
   let committedAuthority
   let syntheticCheckpoint
   let heldReference
+  let manifestReference
   const authorizedAt = new Date().toISOString()
   const base = { environment: 'dev', ideaId, actorId: director, authorizedAt }
   const previousEmulator = process.env.STORAGE_EMULATOR_HOST
@@ -217,10 +220,18 @@ try {
       'authorizationReference', authorization_reference)::text FROM legal_hold_assignments WHERE id='${committedAuthorityId}'`))
     const confirmedAt = await sql(source, `SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`)
     await writeRecoveryJournalRecord(journal, journalTarget, recoveryConfirmationRecordId(removalOperation), encodeRecoveryConfirmation(removalOperation, 'dev', confirmedAt))
-    await writeRecoveryJournalRecord(journal, journalTarget, recoveryConfirmationRecordId(holdOperation),
-      encodeRecoveryHoldConfirmation(holdOperation, 'dev', confirmedAt, committedHoldId, committedAuthorityId, committedPlacedAt, committedAuthority))
     const heldTitle = await sql(source, `SELECT content->>'title' FROM idea_revisions WHERE idea_id='${ideaId}' AND version=2`)
+    const heldRevision = await sql(source, `SELECT id FROM idea_revisions WHERE idea_id='${ideaId}' AND version=2`)
     heldReference = await writeUnverifiedHeldMaterial(journal, journalTarget, heldArtifact, Buffer.from(heldTitle))
+    const manifest = encodeUnverifiedHeldManifest({ environment: 'dev', operationId: holdOperation, ideaId, holdId: committedHoldId,
+      entries: [{ kind: 'revision', sourceId: heldRevision, sourceGeneration: null, artifactId: heldArtifact,
+        generation: heldReference.generation, size: heldReference.size, sha256: heldReference.sha256 }] })
+    manifestReference = await writeUnverifiedHeldMaterial(journal, journalTarget, manifestArtifact, manifest)
+    const manifestConfirmedAt = await sql(source, `SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`)
+    await writeRecoveryJournalRecord(journal, journalTarget, recoveryConfirmationRecordId(holdOperation),
+      encodeRecoveryHoldManifestConfirmation(holdOperation, 'dev', manifestConfirmedAt, committedHoldId, committedAuthorityId,
+        committedPlacedAt, committedAuthority, { artifactId: manifestArtifact, generation: manifestReference.generation,
+          size: manifestReference.size, sha256: manifestReference.sha256 }))
   } finally {
     if (previousEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
     else process.env.STORAGE_EMULATOR_HOST = previousEmulator
@@ -306,8 +317,24 @@ try {
     }
     recoveryRecords = preparedInventory.records
     summary = preparedInventory.summary
-    const heldTitle = await readUnverifiedHeldMaterial(journal, journalTarget, heldArtifact, heldReference)
-    if (heldReference.coverageVerified !== false || Buffer.from(heldTitle).toString() !== 'Synthetic later held material') {
+    const holdIntent = recoveryRecords.find(record => {
+      const decoded = decodeRecoveryRecord(record, 'dev')
+      return decoded.operationId === holdOperation && decoded.recordType === 'intent'
+    })
+    const holdConfirmation = recoveryRecords.find(record => {
+      const decoded = decodeRecoveryRecord(record, 'dev')
+      return decoded.operationId === holdOperation && decoded.recordType === 'hold_commit_confirmation'
+    })
+    if (!holdIntent || !holdConfirmation) throw new Error('Synthetic hold records are missing')
+    const selected = summary.holdIdentities[0]?.heldManifest
+    if (!selected) throw new Error('Synthetic held manifest reference is missing')
+    const manifest = await readUnverifiedHeldMaterial(journal, journalTarget, selected.artifactId, selected)
+    const match = matchUnverifiedHeldManifest(holdIntent, holdConfirmation, manifest, 'dev')
+    const entry = match.manifest.entries[0]
+    if (!entry || match.manifest.entries.length !== 1 || match.coverageVerified !== false) throw new Error('Synthetic held manifest is ambiguous')
+    const heldTitle = await readUnverifiedHeldMaterial(journal, journalTarget, entry.artifactId, entry)
+    if (heldReference.coverageVerified !== false || manifestReference.coverageVerified !== false ||
+        Buffer.from(heldTitle).toString() !== 'Synthetic later held material') {
       throw new Error('Synthetic held material readback failed')
     }
   } finally {

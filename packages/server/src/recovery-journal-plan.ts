@@ -1,4 +1,4 @@
-import { decodeRecoveryRecord, type HoldAuthorityEvidence } from './recovery-journal-record.js'
+import { decodeRecoveryRecord, type HeldArtifactReference, type HoldAuthorityEvidence } from './recovery-journal-record.js'
 
 /**
  * Summarize decoded records conservatively. This does not prove the inventory
@@ -39,7 +39,7 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
     holdCases.set(holdId, normalizedCase)
   }
   const holdIdentities: { operationId: string, ideaId: string, holdId: string,
-    placementAuthorityId: string, placedAt: string, authorityEvidence: HoldAuthorityEvidence }[] = []
+    placementAuthorityId: string, placedAt: string, authorityEvidence: HoldAuthorityEvidence, heldManifest?: HeldArtifactReference }[] = []
   for (const [operationId, intent] of intents) {
     const confirmation = confirmations.get(operationId)
     if (confirmation && Date.parse(confirmation.confirmedAt) < Date.parse(intent.authorizedAt)) throw new Error('Recovery inventory is ambiguous')
@@ -58,7 +58,8 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
       }
       assignments.set(confirmation.placementAuthorityId, evidence)
       holdIdentities.push({ operationId, ideaId: intent.ideaId, holdId: confirmation.holdId,
-        placementAuthorityId: confirmation.placementAuthorityId, placedAt: confirmation.placedAt, authorityEvidence: confirmation.authorityEvidence })
+        placementAuthorityId: confirmation.placementAuthorityId, placedAt: confirmation.placedAt, authorityEvidence: confirmation.authorityEvidence,
+        ...(confirmation.version === 3 ? { heldManifest: confirmation.heldManifest } : {}) })
     }
     if (intent.decision.kind === 'removal') removals.add(intent.ideaId)
     if (intent.decision.kind === 'hold_placement') holdPlacements.add(intent.ideaId)

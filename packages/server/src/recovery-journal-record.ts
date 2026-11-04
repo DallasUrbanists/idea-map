@@ -25,6 +25,8 @@ export type HoldAuthorityEvidence = { actorId: string, authority: 'executive_dir
 type HoldConfirmationRecord = { version: 2, recordType: 'hold_commit_confirmation', operationId: string,
   environment: 'dev' | 'prod', confirmedAt: string, holdId: string, placementAuthorityId: string, placedAt: string,
   authorityEvidence: HoldAuthorityEvidence }
+export type HeldArtifactReference = { artifactId: string, generation: string, size: number, sha256: string }
+type HoldManifestConfirmationRecord = Omit<HoldConfirmationRecord, 'version'> & { version: 3, heldManifest: HeldArtifactReference }
 
 function text(value: unknown, maxBytes: number): value is string {
   return typeof value === 'string' && value.trim().length > 0 && Buffer.byteLength(value) <= maxBytes &&
@@ -116,15 +118,30 @@ export function encodeRecoveryHoldConfirmation(operationId: string, environment:
     confirmedAt, holdId, placementAuthorityId, placedAt, authorityEvidence: authority }))
 }
 
+/** Bind an independently stored manifest reference to a known committed hold. */
+export function encodeRecoveryHoldManifestConfirmation(operationId: string, environment: 'dev' | 'prod', confirmedAt: string,
+  holdId: string, placementAuthorityId: string, placedAt: string, authorityEvidence: HoldAuthorityEvidence,
+  heldManifest: HeldArtifactReference): Uint8Array {
+  if (!heldManifest || typeof heldManifest !== 'object' || !keys(heldManifest, ['artifactId', 'generation', 'size', 'sha256']) ||
+      typeof heldManifest.artifactId !== 'string' || !operationIdPattern.test(heldManifest.artifactId) ||
+      typeof heldManifest.generation !== 'string' || !/^[1-9][0-9]{0,19}$/.test(heldManifest.generation) ||
+      !Number.isSafeInteger(heldManifest.size) || heldManifest.size < 1 || heldManifest.size > 16 * 1024 * 1024 ||
+      typeof heldManifest.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(heldManifest.sha256)) throw new Error('Invalid recovery confirmation')
+  const prior = JSON.parse(Buffer.from(encodeRecoveryHoldConfirmation(operationId, environment, confirmedAt,
+    holdId, placementAuthorityId, placedAt, authorityEvidence)).toString('utf8')) as HoldConfirmationRecord
+  return Buffer.from(JSON.stringify({ ...prior, version: 3, heldManifest: { artifactId: heldManifest.artifactId,
+    generation: heldManifest.generation, size: heldManifest.size, sha256: heldManifest.sha256 } }))
+}
+
 /** Reject noncanonical, wrong-environment, or incompatible records during recovery. */
-export function decodeRecoveryRecord(payload: Uint8Array, environment: 'dev' | 'prod'): IntentRecord | ConfirmationRecord | HoldConfirmationRecord {
+export function decodeRecoveryRecord(payload: Uint8Array, environment: 'dev' | 'prod'): IntentRecord | ConfirmationRecord | HoldConfirmationRecord | HoldManifestConfirmationRecord {
   try {
     if (!(payload instanceof Uint8Array) || payload.byteLength < 1 || payload.byteLength > 16_384 || !['dev', 'prod'].includes(environment)) {
       throw new Error('Invalid record')
     }
     const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(payload))
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid record')
-    const record = value as IntentRecord | ConfirmationRecord | HoldConfirmationRecord
+    const record = value as IntentRecord | ConfirmationRecord | HoldConfirmationRecord | HoldManifestConfirmationRecord
     if (record.environment !== environment) throw new Error('Invalid record')
     let canonical: Uint8Array
     if (record.version === 1 && record.recordType === 'intent') {
@@ -138,6 +155,10 @@ export function decodeRecoveryRecord(payload: Uint8Array, environment: 'dev' | '
       if (!keys(record, ['version', 'recordType', 'operationId', 'environment', 'confirmedAt', 'holdId', 'placementAuthorityId', 'placedAt', 'authorityEvidence'])) throw new Error('Invalid record')
       canonical = encodeRecoveryHoldConfirmation(record.operationId, record.environment, record.confirmedAt, record.holdId,
         record.placementAuthorityId, record.placedAt, record.authorityEvidence)
+    } else if (record.version === 3 && record.recordType === 'hold_commit_confirmation') {
+      if (!keys(record, ['version', 'recordType', 'operationId', 'environment', 'confirmedAt', 'holdId', 'placementAuthorityId', 'placedAt', 'authorityEvidence', 'heldManifest'])) throw new Error('Invalid record')
+      canonical = encodeRecoveryHoldManifestConfirmation(record.operationId, record.environment, record.confirmedAt, record.holdId,
+        record.placementAuthorityId, record.placedAt, record.authorityEvidence, record.heldManifest)
     } else throw new Error('Invalid record')
     if (!Buffer.from(payload).equals(Buffer.from(canonical))) throw new Error('Invalid record')
     return record

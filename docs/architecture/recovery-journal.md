@@ -44,7 +44,7 @@ journal completeness. Review the project, bucket, and identity before integratio
 measure the per-read metadata checks against the full recovery-time objective.
 
 The server package contains an encoder and decoder for version-one intent and
-commit confirmation records and version-two hold-placement
+commit confirmation records and version-two and version-three hold-placement
 confirmations. It also contains a create-only transport for private JSON, a reader for a
 specifically identified object generation, an unwired live-reference inventory,
 and an unverified recovery summary. The
@@ -510,14 +510,21 @@ An unwired storage primitive can write one already-scoped private artifact to th
 existing backup bucket under a caller-supplied UUIDv4, then read its exact generation
 and check its size and SHA-256 digest. It uses a create-only write and returns
 uncertain on a failed response; a failed write can still leave an object behind.
-Each artifact is limited to 16 MiB, so larger material cannot be captured by this
-primitive. The caller must generate a random, opaque ID and keep IDs, references,
-hashes, and bytes private. The caller
+Each artifact must contain between one byte and 16 MiB, so empty or larger
+material cannot be captured by this primitive. The caller must generate a random,
+opaque ID and keep IDs, references, hashes, and bytes private. The caller
 must establish authority and scope, capture every required revision and media
 generation under the appropriate locks, and protect the references separately.
-This primitive does none of those things and does not implement a manifest,
-retention, legal-hold release, disposition, or complete recovery. Do not use it
-to authorize deletion or enable a live hold workflow. Review permissions for the
+An unwired manifest format can associate selected revision or media references
+and exact artifact generations with one hold; a version-three confirmation can
+reference the stored manifest. The caller must read that exact generation before
+reconciliation checks the manifest's digest, environment, operation, idea and
+hold IDs. A revision entry can represent only
+part of a revision, and the manifest does not establish what the authorized
+scope requires or that every listed artifact exists. The primitives do not
+authenticate the scope, capture all evidence, implement retention, legal-hold
+release or disposition, or establish complete recovery. Do not use them to
+authorize deletion or enable a live hold workflow. Review permissions for the
 separate `held-material` prefix before any live integration.
 The retention and disposition work in
 [#56](https://github.com/DallasUrbanists/idea-map/issues/56) owns application-data
