@@ -223,8 +223,17 @@ uses an opaque nonce. The codec checks supplied version numbers from one through
 a selected fence, rejects missing or conflicting entries, and tolerates identical
 retries. It also decodes and summarizes the decisions without asserting coverage.
 A matching sequence does not authenticate its source or baseline, prove all
-writers used it, establish the fence, or allow access to reopen. The codec is not
-a Secret Manager client and is not connected to any live mutation or recovery.
+writers used it, establish the fence, or allow access to reopen. An unwired
+transport wrapper can append canonical entries with CRC32C and read explicit
+numbered versions through a selected fence. It limits concurrency and elapsed
+waiting, rejects missing or altered versions, and treats failed appends as
+uncertain. A separate-reader helper compares the exact newly appended bytes but
+does not prove effective identity separation. A timed-out request can still finish
+if the injected transport ignores cancellation. Its returned sequence remains
+unverified: callers must establish the actual secret's identity, authenticated
+baseline, writer fence and coverage.
+Only provider fakes are implemented; no real Secret Manager client or credentials
+are connected to a live mutation or recovery.
 The existing bucket-based decision transport remains a separate, unwired
 prototype; do not run both as independent authoritative journals. Choosing and
 integrating one design requires review of its permissions, retention, recovery
