@@ -10,13 +10,15 @@ async function listAll(bucket, query) {
   const items = []
   const tokens = new Set()
   let next = { ...query, autoPaginate: false, maxResults: 1000 }
+  let pages = 0
   while (next) {
+    if (++pages > 100) throw new Error('Inventory has too many pages')
     const [page, following] = await bucket.getFiles(next)
     if (page.some(file => !file.metadata?.name?.startsWith(query.prefix))) throw new Error('Inventory prefix is ambiguous')
     items.push(...page.map(file => file.metadata))
     if (items.length > 100_000) throw new Error('Inventory is too large')
     if (!following) break
-    if (!following.pageToken || tokens.has(following.pageToken)) throw new Error('Inventory pagination is ambiguous')
+    if (typeof following.pageToken !== 'string' || !following.pageToken || tokens.has(following.pageToken)) throw new Error('Inventory pagination is ambiguous')
     tokens.add(following.pageToken)
     next = { ...query, autoPaginate: false, maxResults: 1000, pageToken: following.pageToken }
   }

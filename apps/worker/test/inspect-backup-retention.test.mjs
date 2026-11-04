@@ -220,3 +220,13 @@ test('stale weekly backups suppress candidates even with fresh daily backups and
   assert.equal(stale.weeklyFreshEnough, false)
   assert.deepEqual(stale.candidates, [])
 })
+
+test('inventory bounds pagination even when each empty page supplies a new token', async () => {
+  let pages = 0
+  const bucket = { async getMetadata() { return [metadata] }, async getFiles() {
+    pages++
+    return [[], { pageToken: String(pages) }]
+  } }
+  await assert.rejects(inspectBackupRetention({ bucket: () => bucket }, target, now), /too many pages/)
+  assert.ok(pages <= 300)
+})
