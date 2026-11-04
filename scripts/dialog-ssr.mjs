@@ -11,8 +11,8 @@ const { createServer } = await import(pathToFileURL(require.resolve('vite')).hre
 test('the closed dialog trigger renders on the server', async () => {
   const server = await createServer({ configFile: 'tests/dialog/vite.config.mjs', server: { middlewareMode: true }, appType: 'custom' })
   try {
-    const { default: IdeaDialog } = await server.ssrLoadModule('/app/components/IdeaDialog.vue')
-    const html = await renderToString(createSSRApp({ render: () => h(IdeaDialog, { title: 'Title', description: 'Description' }, { trigger: () => h('button', 'Open dialog') }) }))
+    const { default: Dialog } = await server.ssrLoadModule('/app/components/Dialog.vue')
+    const html = await renderToString(createSSRApp({ render: () => h(Dialog, { title: 'Title', description: 'Description' }, { trigger: () => h('button', 'Open dialog') }) }))
     assert.match(html, /<button[^>]*>Open dialog<\/button>/)
   } finally { await server.close() }
 })

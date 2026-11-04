@@ -1,0 +1,18 @@
+.sbdocs .container-table th {
+  white-space: nowrap;
+}
+
+.container-table {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.container-sample {
+  display: inline-block;
+  width: 112px;
+  height: 64px;
+  box-sizing: border-box;
+  margin: 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}

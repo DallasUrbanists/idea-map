@@ -1,0 +1,90 @@
+import { Meta } from '@storybook/addon-docs/blocks'
+import samples from './fluent-emoji-samples.json'
+import license from './fluent-emoji-license.txt?raw'
+import './icons-and-emojis.css'
+
+<Meta title="Components/Emojis" />
+
+export const EmojiSamples = ({ names }) => <div className="emoji-samples">{names.map((name) => {
+  const icon = samples[name];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">${icon.body}</svg>`;
+  return <figure className="emoji-sample" key={name}><img alt="" src={`data:image/svg+xml,${encodeURIComponent(svg)}`} /><figcaption>{name}</figcaption></figure>;
+})}</div>;
+
+# Emojis
+
+Use this reference to display emoji characters in text. For interface artwork, see <a href="./?path=/docs/components-icons--docs" target="_top">Icons</a>.
+
+## Emoji usage
+
+Use Fluent Emoji artwork for emoji characters, not as interface icons. Download
+the selected SVG from the [Fluent Emoji collection](https://allsvgicons.com/pack/fluent-emoji/)
+and include it with the application. For example, after saving the artwork as
+`/emoji/house.svg`:
+
+```html
+<img class="emoji" src="/emoji/house.svg" alt="🏠">
+```
+
+```css
+img.emoji {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.1em;
+}
+```
+
+The `1em` dimensions follow the font size of the text. Keep the original emoji
+as the image's alternative text. Fluent Emoji is a collection of named artwork;
+it does not itself replace emoji characters in user-generated text. Until an
+accessible mapping and renderer are provided, leave those characters as text.
+Fluent Emoji artwork is by Microsoft Corporation and is licensed under the MIT
+license.
+
+<details><summary>Fluent Emoji license</summary><pre>{license}</pre></details>
+
+## Emoji samples
+
+These 100 samples come from `@iconify-json/fluent-emoji` 1.2.7, which distributes
+Microsoft's Fluent Emoji artwork in Iconify format. Country flags are not
+included in this collection.
+
+### Travel & Places
+
+<EmojiSamples names={['house', 'mountain', 'beach-with-umbrella', 'cityscape', 'camping', 'desert', 'desert-island', 'national-park', 'statue-of-liberty', 'world-map']} />
+
+### Transportation
+
+<EmojiSamples names={['automobile', 'bus', 'train', 'bicycle', 'airplane', 'ship', 'rocket', 'taxi', 'ambulance', 'fire-engine']} />
+
+### Animals & Nature
+
+<EmojiSamples names={['dog', 'deciduous-tree', 'cat', 'fox', 'butterfly', 'sunflower', 'cactus', 'evergreen-tree', 'rainbow', 'sun']} />
+
+### Activities
+
+<EmojiSamples names={['soccer-ball', 'artist-palette', 'basketball', 'tennis', 'guitar', 'video-game', 'performing-arts', 'game-die', 'chess-pawn', 'fishing-pole']} />
+
+### Topics & Events
+
+<EmojiSamples names={['party-popper', 'wrapped-gift', 'balloon', 'confetti-ball', 'calendar', 'trophy', 'fireworks', 'graduation-cap', 'birthday-cake', 'reminder-ribbon']} />
+
+### Food & Drink
+
+<EmojiSamples names={['pizza', 'hot-beverage', 'red-apple', 'banana', 'hamburger', 'french-fries', 'taco', 'sushi', 'ice-cream', 'watermelon']} />
+
+### People & Body
+
+<EmojiSamples names={['waving-hand', 'thumbs-up', 'clapping-hands', 'handshake', 'raised-hand', 'person', 'person-walking', 'person-running', 'person-biking', 'flexed-biceps']} />
+
+### Symbols & Signs
+
+<EmojiSamples names={['red-heart', 'check-mark-button', 'warning', 'stop-sign', 'recycling-symbol', 'red-question-mark', 'red-exclamation-mark', 'information', 'plus', 'peace-symbol']} />
+
+### Objects
+
+<EmojiSamples names={['light-bulb', 'mobile-phone', 'open-book', 'desktop-computer', 'telephone', 'camera', 'alarm-clock', 'locked', 'key', 'umbrella']} />
+
+### Flags
+
+<EmojiSamples names={['black-flag', 'chequered-flag', 'crossed-flags', 'flag-in-hole', 'pirate-flag', 'rainbow-flag', 'transgender-flag', 'triangular-flag', 'white-flag', 'closed-mailbox-with-raised-flag']} />

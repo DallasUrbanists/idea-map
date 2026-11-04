@@ -1,0 +1,46 @@
+import { Meta } from '@storybook/addon-docs/blocks'
+import { getTokenValue } from './token-reference.js'
+import './size-space-tables.css'
+
+<Meta title="Foundations/Size and space" />
+
+export const spacingRows = [
+  { token: '--gap-tight', use: 'Keep objects nearly touching, such as adjacent buttons.' },
+  { token: '--gap-compact', use: 'Add small, nimble separation, such as padding inside tooltips.' },
+  { token: '--gap-standard', use: 'Use as the default separation in most situations.' },
+  { token: '--gap-paragraph', use: 'Separate text with a gap that adjusts to its font size.' },
+  { token: '--gap-spread', use: 'Separate items that are not related to each other.' },
+];
+
+export const SpacingRows = () => [...spacingRows]
+  .sort((a, b) => a.token < b.token ? -1 : a.token > b.token ? 1 : 0)
+  .map(({ token, use }) => (
+    <tr key={token}>
+      <th scope="row"><code>{token}</code></th>
+      <td><span className="spacing-sample" aria-hidden="true" style={{width: `var(${token})`}} /></td>
+      <td>{getTokenValue(token)}</td>
+      <td>{use}</td>
+    </tr>
+  ));
+
+# Size and space
+
+Choose a gap by the relationship between elements.
+
+## Spacing
+
+The values come from the shared token stylesheet. Each sample bar uses the token
+as its width. The paragraph gap scales with the current font size.
+
+<div role="region" aria-label="Spacing tokens" tabIndex="0" style={{maxWidth: '100%', overflowX: 'auto'}}>
+<table>
+  <thead><tr><th scope="col">Token</th><th scope="col">Sample</th><th scope="col">Value</th><th scope="col">Use</th></tr></thead>
+  <tbody>
+    <SpacingRows />
+  </tbody>
+</table>
+</div>
+
+Interactive targets stay at least 44 by 44 px.
+
+Existing components also use earlier spacing tokens; their suffixes are not always pixel values.

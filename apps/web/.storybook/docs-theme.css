@@ -1,0 +1,127 @@
+/* Storybook's docs renderer has its own defaults; map them to our foundations. */
+.sbdocs.sbdocs-wrapper {
+  box-sizing: border-box;
+  padding: var(--page-top) var(--gutter) var(--page-bottom);
+  background-color: var(--color-page);
+  background-image: var(--page-background);
+  color: var(--color-text);
+  font: var(--font-body) / var(--line-body) var(--font-family-body);
+}
+
+.sbdocs .sbdocs-content {
+  max-width: var(--size-page-width);
+  color: var(--color-text);
+  font: var(--font-body) / var(--line-body) var(--font-family-body);
+  overflow-wrap: anywhere;
+}
+
+/* Canvas has a separate Storybook surface from the surrounding docs page. */
+.sbdocs.sbdocs-preview {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-color: var(--color-border-soft);
+  border-radius: var(--radius-card);
+  box-shadow: none;
+}
+
+.sbdocs .sbdocs-content h1,
+.sbdocs .sbdocs-content h2,
+.sbdocs .sbdocs-content h3,
+.sbdocs .sbdocs-content h4 {
+  color: var(--color-text);
+  font-family: var(--font-family-heading);
+  line-height: var(--line-heading);
+}
+.sbdocs .sbdocs-content h1 {
+  font-size: var(--font-title);
+  font-weight: var(--weight-heavy);
+  letter-spacing: -.02em;
+}
+.sbdocs .sbdocs-content h2 {
+  font-size: var(--font-heading);
+  font-weight: var(--weight-bold);
+  border-color: var(--color-border-hard);
+}
+.sbdocs .sbdocs-content h3,
+.sbdocs .sbdocs-content h4 {
+  font-size: var(--font-body);
+  font-weight: var(--weight-bold);
+}
+.sbdocs .sbdocs-content p,
+.sbdocs .sbdocs-content li,
+.sbdocs .sbdocs-content table {
+  color: var(--color-text);
+  font: var(--font-body) / var(--line-body) var(--font-family-body);
+}
+.sbdocs .sbdocs-content a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.sbdocs .sbdocs-content code {
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  border-color: var(--color-border-soft);
+  border-radius: var(--radius-chip);
+  font-family: var(--font-mono);
+  font-size: var(--font-small);
+  overflow-wrap: anywhere;
+}
+/* Storybook's source renderer supplies a separate Prism palette and surface. */
+.sbdocs .docblock-source {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  border-color: var(--color-border-soft);
+}
+.sbdocs .docblock-source pre,
+.sbdocs .sbdocs-content .docblock-source pre.prismjs .token {
+  color: var(--color-text);
+}
+.sbdocs .sbdocs-content .docblock-source pre.prismjs .token.keyword,
+.sbdocs .sbdocs-content .docblock-source pre.prismjs .token.string,
+.sbdocs .sbdocs-content .docblock-source pre.prismjs .token.selector,
+.sbdocs .sbdocs-content .docblock-source pre.prismjs .token.attr-value:not(.punctuation) {
+  color: var(--color-accent);
+}
+.sbdocs .docblock-source button {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-color: var(--color-border-soft);
+}
+.sbdocs .sbdocs-content table th,
+.sbdocs .sbdocs-content table td {
+  border-color: var(--color-border-soft);
+  color: var(--color-text);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.sbdocs .sbdocs-content table th {
+  color: var(--color-text);
+  font-weight: var(--weight-bold);
+}
+.sbdocs .sbdocs-content table tr {
+  border-color: var(--color-border-soft);
+}
+.sbdocs .sbdocs-content table thead th {
+  border-bottom-color: var(--color-border-hard);
+}
+.sbdocs .sbdocs-content table tr:nth-of-type(2n) {
+  background: var(--color-surface-raised);
+}
+/* Color-reference swatches are the only colored cells in their tables. */
+.sbdocs .sbdocs-content .color-reference tbody tr:nth-of-type(2n) {
+  background: transparent;
+}
+.sbdocs .sbdocs-content :focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+}
+
+@media (max-width: 760px) {
+  .sbdocs.sbdocs-wrapper {
+    padding: var(--page-top-compact) var(--gutter-compact) var(--page-bottom-compact);
+  }
+}
+@media (forced-colors: active) {
+  .sbdocs.sbdocs-wrapper { background-image: none; }
+}

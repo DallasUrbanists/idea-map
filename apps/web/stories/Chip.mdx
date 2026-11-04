@@ -1,0 +1,62 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './Chip.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Chip usage
+
+You can use chips for compact, static metadata. Chips use the Foundation chip shape and text ramp. Interactive choices belong in SegmentedControl.
+
+## Neutral and emphasis
+
+You can choose default or muted for ordinary metadata, accent for a tint, solid for an accent fill, inverse for a reversed neutral fill, or outline for a boundary.
+
+```html
+<Chip>Workshop</Chip>
+<Chip variant="muted">Community idea</Chip>
+<Chip variant="accent">Update</Chip>
+<Chip variant="solid">Release</Chip>
+<Chip variant="inverse">API</Chip>
+<Chip variant="outline">Web</Chip>
+```
+
+<Canvas of={Stories.UsageDefault} sourceState="none" />
+
+## Meaning in words
+
+You should include a status word with good, warn, alert, or critical. These map to the project success, warning, and error pairs. The highlight variant calls out brief editorial information; it does not indicate selection.
+
+```html
+<Chip variant="good">Saved</Chip>
+<Chip variant="warn">Needs review</Chip>
+<Chip variant="alert">Update failed</Chip>
+<Chip variant="critical">Service unavailable</Chip>
+<Chip variant="highlight">New</Chip>
+```
+
+<Canvas of={Stories.UsageMeaning} sourceState="none" />
+
+## Dense metadata and codes
+
+You can use small for the caption size and mono for literal codes. Essential instructions should remain body text outside the chip.
+
+```html
+<Chip small variant="solid">v1.4</Chip>
+<Chip small mono variant="muted">a1b2c3</Chip>
+```
+
+<Canvas of={Stories.UsageCompact} sourceState="none" />
+
+## Component contract
+
+The `variant` prop defaults to `default`; the examples show all supported values. Boolean `small` and `mono` default to false. The default slot supplies the text. Chip has no events or selection state.
+
+## Foundations and reference
+
+The examples follow Idea Map's [color](/docs/foundations-color--docs),
+[typography](/docs/foundations-typography--docs),
+[size and space](/docs/foundations-size-and-space--docs), and
+[container](/docs/foundations-containers--docs) requirements.
+The component pattern is informed by [Signal's chip reference](https://signal.chitransit.app/components/chip);
+Idea Map's Foundation tokens and interaction requirements determine this implementation.
+

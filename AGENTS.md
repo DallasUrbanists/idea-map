@@ -39,6 +39,8 @@ Agents must follow these rules while making changes:
 - Respect the [workspace boundaries](docs/architecture/architecture-overview.md#workspace-boundaries)
     and read the relevant architecture guide before changing infrastructure or
     development helpers.
+- Inspect existing components and the [Storybook design system](docs/architecture/storybook.md)
+    before adding interface code. Storybook is the source of truth for design decisions.
 - Before adding or changing a service, integration, resource, or operational
     procedure, trace its existing implementation, configuration, and documented
     architecture decisions. Check related work in progress as well as merged work.

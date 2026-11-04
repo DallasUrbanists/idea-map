@@ -1,0 +1,53 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './SegmentedControl.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Segmented control usage
+
+You can choose one value from a short set with SegmentedControl. Native radios provide keyboard and form semantics. A visible check and lilac fill show selection independently of focus.
+
+## Exclusive choice
+
+You should use two to four concise options and initialize modelValue to an enabled option. Each instance has its own stable radio name.
+
+```html
+<SegmentedControl
+	v-model="view"
+	:options="[
+		{ value: 'nearby', label: 'Nearby' },
+		{ value: 'saved', label: 'Saved' },
+		{ value: 'recent', label: 'Recent' },
+	]"
+/>
+```
+
+<Canvas of={Stories.UsageDefault} sourceState="none" />
+
+## Fill the available space
+
+You can use fill for equally sized segments. Labels wrap and controls grow with text; interaction targets remain at least 44 px.
+
+```html
+<SegmentedControl
+    v-model="view"
+    :options="options"
+    layout="fill"
+/>
+```
+
+<Canvas of={Stories.UsageFill} sourceState="none" />
+
+## Component contract
+
+Required props are `label`, string `modelValue`, and `options` (unique `value`, `label`, optional `disabled`). Optional `layout` is `content` (default), `fill`, or `scroll`; Boolean `disabled` disables the group. The component emits `update:modelValue(string)` and has no slots. Tab enters the native radio group; arrow keys move and select enabled options. Space selects the focused radio. The group label remains visible.
+
+## Foundations and reference
+
+The examples follow Idea Map's [color](/docs/foundations-color--docs),
+[typography](/docs/foundations-typography--docs),
+[size and space](/docs/foundations-size-and-space--docs), and
+[container](/docs/foundations-containers--docs) requirements.
+The component pattern is informed by [Signal's segmented control reference](https://signal.chitransit.app/components/segmented);
+Idea Map's Foundation tokens and interaction requirements determine this implementation.
+
