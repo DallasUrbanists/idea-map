@@ -7,7 +7,7 @@ import { encodeRecoveryConfirmation, encodeRecoveryIntent, recoveryConfirmationR
 
 const target = { environment: 'dev', bucket: 'synthetic-private-backups' }
 const id = '11111111-1111-4111-8111-111111111111'
-const payload = Buffer.from('{"synthetic":"private record"}')
+const payload = encodeRecoveryConfirmation(id, 'dev', '2026-11-03T12:00:00.000Z')
 const originalEmulator = process.env.STORAGE_EMULATOR_HOST
 delete process.env.STORAGE_EMULATOR_HOST
 after(() => {
@@ -37,7 +37,7 @@ test('journal storage creates a bounded private record without exposing its cont
   assert.equal(seen.length, 1)
   assert.equal(seen[0].bucket, target.bucket)
   assert.equal(seen[0].path, `idea-map-v2/dev/recovery-journal/${id}.json`)
-  assert.doesNotMatch(seen[0].path, /private record/)
+  assert.doesNotMatch(seen[0].path, /commit_confirmation/)
   assert.equal(Buffer.concat(seen[0].bytes).toString(), payload.toString())
   assert.equal(seen[0].options.preconditionOpts.ifGenerationMatch, 0)
   assert.equal(seen[0].options.validation, 'crc32c')
@@ -76,6 +76,9 @@ test('journal storage rejects invalid destinations, IDs, bodies, and timeouts be
     [{ ...target, bucket: { toString: () => target.bucket } }, id, payload, 50],
     [target, '../unsafe', payload, 50], [target, id, Buffer.from('not-json'), 50],
     [target, id, Buffer.from('[]'), 50], [target, id, Buffer.from([0xff]), 50],
+    [target, id, Buffer.from('{"synthetic":"unsupported"}'), 50],
+    [target, id, encodeRecoveryConfirmation(id, 'prod', '2026-11-03T12:00:00.000Z'), 50],
+    [target, id, Buffer.concat([Buffer.from(' '), payload]), 50],
     [target, id, Buffer.alloc(16_385), 50], [target, id, payload, 5001],
   ]) await assert.rejects(writeRecoveryJournalRecord(storage, destination, recordId, body, timeout), /Invalid journal record/)
   assert.equal(seen.length, 0)

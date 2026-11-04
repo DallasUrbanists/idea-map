@@ -161,7 +161,7 @@ test('storage client sends create-only archives, completion metadata, and journa
     omitStoredEncoding = true
     await assert.rejects(readRecoveryJournalRecord(storage, target, recordId, objects.get(recordName).generation), /could not be verified/)
     omitStoredEncoding = false
-    await assert.rejects(writeRecoveryJournalRecord(storage, target, recordId, Buffer.from('{"synthetic":"different"}')),
+    await assert.rejects(writeRecoveryJournalRecord(storage, target, recordId, encodeRecoveryConfirmation(recordId, 'dev', '2026-11-02T10:01:01.000Z')),
       /Journal write outcome is uncertain/)
     assert.deepEqual(payloads.get(recordName), record)
     assert.equal(errors.length, 0)

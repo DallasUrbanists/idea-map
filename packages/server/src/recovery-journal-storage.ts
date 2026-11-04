@@ -31,9 +31,7 @@ export async function writeRecoveryJournalRecord(storage: Storage,
       !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 5000) throw new Error('Invalid journal record')
   const bytes = Buffer.from(payload)
   try {
-    const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid record body')
-    if (recordId[14] === '8') validateRecordName(recordId, bytes, target.environment)
+    validateRecordName(recordId, bytes, target.environment)
   } catch {
     throw new Error('Invalid journal record')
   }

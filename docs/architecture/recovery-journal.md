@@ -44,9 +44,10 @@ meaning, or whether a reason or reference is non-sensitive; its caller must
 establish those facts. The decoder rejects unknown versions, extra fields,
 duplicate keys, noncanonical bytes, and a different environment. Preserve the
 version-one encoding when extending the format; a failed decode keeps recovery
-isolated. The transport bounds record size and write time, uses an opaque
-caller-supplied record ID and a create-only precondition, and treats provider
-errors and timeouts as uncertain. The summary conservatively identifies ideas
+isolated. The transport validates the canonical record before writing, bounds
+record size and write time, uses an opaque caller-supplied record ID and a
+create-only precondition, and treats provider errors and timeouts as uncertain.
+The summary conservatively identifies ideas
 in removal and hold-placement intents, flags unconfirmed operations, placements
 without a confirmed hold ID, and all hold releases for authorized review, and
 reports confirmations without intents. It exposes associated hold IDs only as
