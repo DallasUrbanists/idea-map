@@ -69,6 +69,20 @@ test('conflicting idea associations for a hold ID fail closed in either record o
   assert.doesNotThrow(() => summarizeUnverifiedRecovery([...placement, intent(2, release)], 'dev'))
 })
 
+test('a hold ID cannot identify conflicting case references in either record order', () => {
+  const holdId = '44444444-4444-4444-8444-444444444444'
+  const authority = '66666666-6666-4666-8666-666666666666'
+  const placement = [intent(1, { ...hold, caseReference: ' synthetic case ' }),
+    encodeRecoveryHoldConfirmation(operation(1), 'dev', '2026-11-03T12:01:00.000Z', holdId, authority,
+      '2026-11-03T12:00:00.000000Z', assignment)]
+  const release = { ...hold, kind: 'hold_release', holdId, legalReviewReference: null }
+  assert.doesNotThrow(() => summarizeUnverifiedRecovery([...placement, intent(2, release)], 'dev'))
+  const conflicting = intent(2, { ...release, caseReference: 'different synthetic case' })
+  assert.throws(() => summarizeUnverifiedRecovery([...placement, conflicting], 'dev'), /ambiguous/)
+  assert.throws(() => summarizeUnverifiedRecovery([conflicting, ...placement], 'dev'), /ambiguous/)
+  assert.throws(() => summarizeUnverifiedRecovery([intent(1, release), conflicting], 'dev'), /ambiguous/)
+})
+
 test('unmatched confirmations identify operations needing review without inventing affected ideas', () => {
   const holdId = '44444444-4444-4444-8444-444444444444'
   const result = summarizeUnverifiedRecovery([

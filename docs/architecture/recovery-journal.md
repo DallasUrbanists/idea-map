@@ -66,9 +66,11 @@ for review. An unmatched confirmation does not identify its affected idea. The
 summary also identifies ideas requiring hold review when only a release intent
 is present; that is not proof that a hold remains active. A confirmed hold ID alone does not preserve its
 authority or held material; the summary exposes associated hold IDs only as
-unverified evidence. It rejects conflicting idea IDs for a known hold ID across
-placement confirmations and release intents, regardless of record order. Matching
-IDs do not verify the hold's authority or the release. It never establishes inventory
+unverified evidence. It rejects conflicting idea IDs or case references for a
+known hold ID across placement confirmations and release intents, regardless of
+record order. Case comparison follows the placement function's removal of leading
+and trailing ASCII spaces. Matching IDs and references do not verify the hold's
+authority or the release. It never establishes inventory
 coverage, removes a hold, changes a database, or
 authorizes public access. Its output contains private identifiers and must not
 be written to public logs. These components do not guard mutation paths, capture

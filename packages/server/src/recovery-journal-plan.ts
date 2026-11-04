@@ -25,11 +25,18 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
   const reviewOperations = new Set<string>()
   const placedHoldIds = new Set<string>()
   const holdIdeas = new Map<string, string>()
+  const holdCases = new Map<string, string>()
   const assignments = new Map<string, HoldAuthorityEvidence>()
-  function checkHoldIdea(holdId: string, ideaId: string) {
+  function checkHoldIdentity(holdId: string, ideaId: string, caseReference: string) {
     const existing = holdIdeas.get(holdId)
     if (existing !== undefined && existing !== ideaId) throw new Error('Recovery inventory is ambiguous')
     holdIdeas.set(holdId, ideaId)
+    // The existing placement function stores PostgreSQL trim(text), which
+    // removes ASCII spaces. A hold's stored case reference is immutable.
+    const normalizedCase = caseReference.replace(/^ +| +$/g, '')
+    const existingCase = holdCases.get(holdId)
+    if (existingCase !== undefined && existingCase !== normalizedCase) throw new Error('Recovery inventory is ambiguous')
+    holdCases.set(holdId, normalizedCase)
   }
   const holdIdentities: { operationId: string, ideaId: string, holdId: string,
     placementAuthorityId: string, placedAt: string, authorityEvidence: HoldAuthorityEvidence }[] = []
@@ -39,7 +46,7 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
     if (confirmation?.recordType === 'hold_commit_confirmation') {
       if (intent.decision.kind !== 'hold_placement' || placedHoldIds.has(confirmation.holdId)) throw new Error('Recovery inventory is ambiguous')
       placedHoldIds.add(confirmation.holdId)
-      checkHoldIdea(confirmation.holdId, intent.ideaId)
+      checkHoldIdentity(confirmation.holdId, intent.ideaId, intent.decision.caseReference)
       const evidence = confirmation.authorityEvidence
       const previous = assignments.get(confirmation.placementAuthorityId)
       if (Date.parse(confirmation.placedAt) < Date.parse(intent.authorizedAt) ||
@@ -55,7 +62,7 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
     }
     if (intent.decision.kind === 'removal') removals.add(intent.ideaId)
     if (intent.decision.kind === 'hold_placement') holdPlacements.add(intent.ideaId)
-    if (intent.decision.kind === 'hold_release') checkHoldIdea(intent.decision.holdId, intent.ideaId)
+    if (intent.decision.kind === 'hold_release') checkHoldIdentity(intent.decision.holdId, intent.ideaId, intent.decision.caseReference)
     if (intent.decision.kind !== 'removal') holdReviewIdeas.add(intent.ideaId)
     // Even a confirmed placement lacks the authority and held-material evidence
     // needed to recreate it. Releases and uncertain decisions also need review.
