@@ -181,8 +181,13 @@ A disabled, destroyed, missing, or unreadable required version must keep recover
 isolated. An ambiguous sentinel write needs reconciliation, not an assumed upper
 bound. The sequence would also need a reviewed rollover and expiration process for
 decision metadata and held evidence, and measured quota, costs, and scan time.
-The existing bucket journal does not implement this option; do not use it as proof
-of complete coverage.
+A complete decision record fits within a Secret Manager version's documented
+[payload limit](https://cloud.google.com/secret-manager/quotas), so a reviewed
+design could use the numbered versions as the journal instead of maintaining
+two copies of every decision. Such a change would need compatible retry,
+readback, permissions, retention, and restore procedures; it has not been
+implemented. The existing bucket journal does not implement the sequence fence;
+do not use it as proof of complete coverage.
 
 The checkpoint needs a coordinated boundary, not merely a timestamp. Suspend
 all covered mutations, drain in-flight transactions and journal writes, verify
