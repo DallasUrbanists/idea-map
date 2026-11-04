@@ -270,6 +270,30 @@ role must not be able to apply removals directly. This step does not write a
 confirmation, establish journal coverage, resolve other pending decisions, or
 open the gate. It is not wired to a live endpoint or granted to a runtime role.
 
+An unwired confirmation step runs in a separate transaction after a known
+application commit. It stores a stable confirmation timestamp and a deterministic
+UUIDv8 record ID derived from the operation ID with a fixed SHA-256 namespace.
+Intent IDs remain UUIDv4, so the two kinds cannot share an object name. Preserve
+the namespace and derivation for retries and older records; an incompatible
+change requires a reviewed format migration. The database independently checks
+the derived ID and a unique index rejects collisions among pending confirmations.
+Journal readers reject a UUIDv8 name that does not match its confirmation's
+operation ID; older UUIDv4 confirmation names remain readable for review.
+It records the application's top-level transaction ID and rejects confirmation
+in that same transaction, including after a savepoint. An older applied row
+without that transaction evidence requires authorized review. Transaction IDs
+are scoped to a database cluster, so an ID reused on a replacement cluster can
+also conservatively block preparation and require review. This check does not
+establish journal coverage or make a restored database safe to expose.
+
+After the confirmation transaction is known to have committed, the create-only
+writer can write the same canonical confirmation bytes on each retry. A lost
+response or a create-only conflict remains uncertain until a separately
+authorized reader compares the current generation and exact bytes. Neither a
+successful write nor a matching read reopens the gate or proves completeness.
+The coordinator must still resolve every pending decision and any independent
+access fence before an authorized process can restore public access.
+
 Granting a web identity general gate updates would also let it reopen the gate;
 verify narrowly scoped grants and inherited permissions before integrating the
 transaction. Direct or older removal entry points must not be able to bypass the

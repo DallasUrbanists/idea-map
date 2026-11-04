@@ -82,12 +82,18 @@ export const publicAccessPendingDecisions = pgTable('public_access_pending_decis
   intent: text('intent').notNull(),
   journalGeneration: text('journal_generation'),
   appliedAt: timestamp('applied_at', { withTimezone: true }),
+  appliedTransactionId: text('applied_transaction_id'),
+  confirmationRecordId: uuid('confirmation_record_id'),
+  confirmationPreparedAt: timestamp('confirmation_prepared_at', { withTimezone: true }),
   createdAt: createdAt(),
 }, table => [
   uniqueIndex('public_access_pending_record_key').on(table.recordId),
+  uniqueIndex('public_access_pending_confirmation_key').on(table.confirmationRecordId),
   foreignKey({ columns: [table.ideaId, table.approvedRevisionId], foreignColumns: [ideaRevisions.ideaId, ideaRevisions.id] }),
   check('public_access_pending_intent_size', sql`octet_length(${table.intent}) between 1 and 16384`),
   check('public_access_pending_applied_fields', sql`(${table.journalGeneration} IS NULL AND ${table.appliedAt} IS NULL) OR (${table.journalGeneration} IS NOT NULL AND ${table.journalGeneration} ~ '^[1-9][0-9]*$' AND ${table.appliedAt} IS NOT NULL)`),
+  check('public_access_pending_application_xid', sql`${table.appliedTransactionId} IS NULL OR (${table.appliedAt} IS NOT NULL AND ${table.appliedTransactionId} ~ '^[1-9][0-9]*$')`),
+  check('public_access_pending_confirmation_fields', sql`(${table.confirmationRecordId} IS NULL AND ${table.confirmationPreparedAt} IS NULL) OR (${table.confirmationRecordId} IS NOT NULL AND ${table.confirmationRecordId}::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' AND ${table.confirmationPreparedAt} IS NOT NULL AND ${table.appliedAt} IS NOT NULL AND ${table.confirmationPreparedAt} >= ${table.appliedAt})`),
   check('public_access_pending_removal_fields', sql`(${table.approvedRevisionId} IS NULL AND ${table.removalReason} IS NULL) OR (${table.approvedRevisionId} IS NOT NULL AND ${table.removalReason} IS NOT NULL AND length(trim(${table.removalReason})) > 0 AND octet_length(${table.removalReason}) <= 1000)`),
 ])
 // One record covers one idea and one documented case; different cases may overlap.

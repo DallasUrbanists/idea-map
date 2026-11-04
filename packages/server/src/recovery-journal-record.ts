@@ -1,5 +1,8 @@
+import { createHash } from 'node:crypto'
+
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const operationIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+const confirmationNamespace = Buffer.from('3fcbdfb61cb24530807a86a05f5deeb8', 'hex')
 
 type Removal = { kind: 'removal', classification: 'violation' | 'other', reason: string }
 type HoldPlacement = { kind: 'hold_placement', caseReference: string, reason: string, authorizationReference: string, scope: string }
@@ -62,6 +65,17 @@ export function encodeRecoveryIntent(input: RecoveryIntent): Uint8Array {
   else details = { kind: decision.kind, holdId: decision.holdId, caseReference: decision.caseReference, reason: decision.reason,
     authorizationReference: decision.authorizationReference, scope: decision.scope, legalReviewReference: decision.legalReviewReference }
   return Buffer.from(JSON.stringify({ ...base, decision: details }))
+}
+
+/** Derive a retry-stable confirmation object ID from an opaque operation ID. */
+export function recoveryConfirmationRecordId(operationId: string): string {
+  if (typeof operationId !== 'string' || !operationIdPattern.test(operationId)) throw new Error('Invalid recovery confirmation')
+  // A SHA-256-based UUIDv8 separates deterministic confirmations from v4 intents.
+  const bytes = createHash('sha256').update(confirmationNamespace).update(operationId, 'utf8').digest().subarray(0, 16)
+  bytes[6] = (bytes[6]! & 0x0f) | 0x80
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80
+  const hex = bytes.toString('hex')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
 /** A caller may encode confirmation only after it knows the database committed. */

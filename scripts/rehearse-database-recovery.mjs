@@ -9,7 +9,7 @@ import { createRequire } from 'node:module'
 import { pipeline } from 'node:stream/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { dumpArguments, exportEncryptedBackup } from '../apps/worker/ops/export-encrypted-backup.mjs'
-import { encodeRecoveryConfirmation, encodeRecoveryHoldConfirmation, encodeRecoveryIntent } from '../packages/server/dist/recovery-journal-record.js'
+import { encodeRecoveryConfirmation, encodeRecoveryHoldConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../packages/server/dist/recovery-journal-record.js'
 import { summarizeUnverifiedRecovery } from '../packages/server/dist/recovery-journal-plan.js'
 import { listUnverifiedRecoveryJournal, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../packages/server/dist/recovery-journal-storage.js'
 
@@ -171,8 +171,8 @@ try {
     committedHoldId = await sql(source, `SELECT id FROM legal_holds WHERE idea_id='${ideaId}' AND case_reference='synthetic case' AND released_at IS NULL`)
     if (!/^[0-9a-f-]{36}$/.test(committedHoldId)) throw new Error('Synthetic hold identity is ambiguous')
     const confirmedAt = new Date().toISOString()
-    await writeRecoveryJournalRecord(journal, journalTarget, randomUUID(), encodeRecoveryConfirmation(removalOperation, 'dev', confirmedAt))
-    await writeRecoveryJournalRecord(journal, journalTarget, randomUUID(), encodeRecoveryHoldConfirmation(holdOperation, 'dev', confirmedAt, committedHoldId))
+    await writeRecoveryJournalRecord(journal, journalTarget, recoveryConfirmationRecordId(removalOperation), encodeRecoveryConfirmation(removalOperation, 'dev', confirmedAt))
+    await writeRecoveryJournalRecord(journal, journalTarget, recoveryConfirmationRecordId(holdOperation), encodeRecoveryHoldConfirmation(holdOperation, 'dev', confirmedAt, committedHoldId))
   } finally {
     if (previousEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
     else process.env.STORAGE_EMULATOR_HOST = previousEmulator
@@ -249,10 +249,15 @@ try {
   const restoredPendingPublicExecute = await sql(target, pendingPrivilege)
   const applyPrivilege = "SELECT has_function_privilege('public','public.apply_pending_removal(text,text,uuid,uuid,text,text)','EXECUTE')"
   const restoredApplyPublicExecute = await sql(target, applyPrivilege)
+  const confirmationPrivilege = "SELECT has_function_privilege('public','public.prepare_pending_removal_confirmation(text,text,uuid,uuid,text,text,timestamptz,uuid)','EXECUTE')"
+  const restoredConfirmationPublicExecute = await sql(target, confirmationPrivilege)
+  const applicationTriggerPrivilege = "SELECT has_function_privilege('public','public.protect_pending_removal_application()','EXECUTE')"
+  const restoredTriggerPublicExecute = await sql(target, applicationTriggerPrivilege)
+  const restoredApplicationTrigger = await sql(target, "SELECT count(*) FROM pg_catalog.pg_trigger WHERE tgrelid='public.public_access_pending_decisions'::regclass AND tgname='protect_pending_removal_application' AND NOT tgisinternal AND tgenabled='O'")
   const restoredGateOpen = await sql(target, 'SELECT is_open FROM public.public_access_gate WHERE singleton=true')
   const publicConnect = await sql(source, `SELECT has_database_privilege('public','${target}','CONNECT')`)
   const namedConnect = await sql(source, `SELECT has_database_privilege('${reader}','${target}','CONNECT')`)
-  if (restored !== '1' || excluded !== '0' || postgis !== '1' || ideas !== '1' || Number(migrations) < 1 || sourceVisible !== '0' || restoredVisible !== '1' || reconciledVisible !== '0' || sourceHolds !== '1' || restoredHolds !== '0' || sourceAuthority !== '1' || restoredAuthority !== '0' || sourceActor !== '1' || restoredActor !== '0' || sourceLaterRevision !== '1' || restoredLaterRevision !== '0' || sourcePublicExecute !== 'f' || restoredPublicExecute !== 'f' || restoredPendingPublicExecute !== 'f' || restoredApplyPublicExecute !== 'f' || restoredGateOpen !== 'f' || sourceNamedExecute !== 't' || restoredNamedExecute !== 't' || publicConnect !== 'f' || namedConnect !== 'f') throw new Error('Restored synthetic database failed verification')
+  if (restored !== '1' || excluded !== '0' || postgis !== '1' || ideas !== '1' || Number(migrations) < 1 || sourceVisible !== '0' || restoredVisible !== '1' || reconciledVisible !== '0' || sourceHolds !== '1' || restoredHolds !== '0' || sourceAuthority !== '1' || restoredAuthority !== '0' || sourceActor !== '1' || restoredActor !== '0' || sourceLaterRevision !== '1' || restoredLaterRevision !== '0' || sourcePublicExecute !== 'f' || restoredPublicExecute !== 'f' || restoredPendingPublicExecute !== 'f' || restoredApplyPublicExecute !== 'f' || restoredConfirmationPublicExecute !== 'f' || restoredTriggerPublicExecute !== 'f' || restoredApplicationTrigger !== '1' || restoredGateOpen !== 'f' || sourceNamedExecute !== 't' || restoredNamedExecute !== 't' || publicConnect !== 'f' || namedConnect !== 'f') throw new Error('Restored synthetic database failed verification')
   const lossMs = Number(latest) - Number(captured)
   if (!Number.isFinite(lossMs) || lossMs < 0) throw new Error('Synthetic data-loss interval could not be measured')
   console.log(JSON.stringify({ backupSeconds: (backupFinished - dumpStarted) / 1000,

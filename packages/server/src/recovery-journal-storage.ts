@@ -1,14 +1,21 @@
 import { CRC32C, type Storage } from '@google-cloud/storage'
 import { finished } from 'node:stream/promises'
-import { decodeRecoveryRecord } from './recovery-journal-record.js'
+import { decodeRecoveryRecord, recoveryConfirmationRecordId } from './recovery-journal-record.js'
 import { exactGenerationFile } from './storage-generation.js'
 
-const recordIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+const recordIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[48][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
 type Target = { environment: 'dev' | 'prod', bucket: string }
 function validTarget(target: Target): boolean {
   return typeof process.env.STORAGE_EMULATOR_HOST !== 'string' && ['dev', 'prod'].includes(target?.environment) &&
     typeof target?.bucket === 'string' && /^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$/.test(target.bucket)
+}
+
+function validateRecordName(recordId: string, payload: Uint8Array, environment: Target['environment']): void {
+  const record = decodeRecoveryRecord(payload, environment)
+  if (recordId[14] === '8' && (record.recordType === 'intent' || recoveryConfirmationRecordId(record.operationId) !== recordId)) {
+    throw new Error('Journal record name is incompatible')
+  }
 }
 
 /**
@@ -26,6 +33,7 @@ export async function writeRecoveryJournalRecord(storage: Storage,
   try {
     const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid record body')
+    if (recordId[14] === '8') validateRecordName(recordId, bytes, target.environment)
   } catch {
     throw new Error('Invalid journal record')
   }
@@ -81,7 +89,7 @@ export async function readRecoveryJournalRecord(storage: Storage, target: Target
     }
     const payload = Buffer.concat(chunks)
     if (!checksumAvailable) throw new Error('Journal checksum unavailable')
-    decodeRecoveryRecord(payload, target.environment)
+    validateRecordName(recordId, payload, target.environment)
     return payload
   } catch {
     // Object names, provider errors, and record contents are private.

@@ -3,7 +3,7 @@ import { Readable, Writable } from 'node:stream'
 import { after, test } from 'node:test'
 import { CRC32C } from '@google-cloud/storage'
 import { compareCurrentRecoveryJournalRecord, listUnverifiedRecoveryJournal, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
-import { encodeRecoveryConfirmation } from '../dist/recovery-journal-record.js'
+import { encodeRecoveryConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
 
 const target = { environment: 'dev', bucket: 'synthetic-private-backups' }
 const id = '11111111-1111-4111-8111-111111111111'
@@ -43,6 +43,21 @@ test('journal storage creates a bounded private record without exposing its cont
   assert.equal(seen[0].options.validation, 'crc32c')
   assert.equal(seen[0].options.resumable, false)
   assert.equal(seen[0].options.metadata.cacheControl, 'private, no-store')
+})
+
+test('journal storage accepts the deterministic confirmation record ID', async () => {
+  const { storage, seen } = fake()
+  const confirmationId = recoveryConfirmationRecordId(id)
+  await writeRecoveryJournalRecord(storage, target, confirmationId, encodeRecoveryConfirmation(id, 'dev', '2026-11-03T12:00:00.000Z'))
+  assert.equal(seen[0].path, `idea-map-v2/dev/recovery-journal/${confirmationId}.json`)
+  assert.equal(seen[0].options.preconditionOpts.ifGenerationMatch, 0)
+  const differentId = recoveryConfirmationRecordId('22222222-2222-4222-8222-222222222222')
+  await assert.rejects(writeRecoveryJournalRecord(storage, target, differentId,
+    encodeRecoveryConfirmation(id, 'dev', '2026-11-03T12:00:00.000Z')), /Invalid journal record/)
+  const intent = encodeRecoveryIntent({ operationId: id, environment: 'dev', ideaId: id, actorId: id,
+    authorizedAt: '2026-11-03T12:00:00.000Z', decision: { kind: 'removal', classification: 'other', reason: 'synthetic' } })
+  await assert.rejects(writeRecoveryJournalRecord(storage, target, confirmationId, intent), /Invalid journal record/)
+  assert.equal(seen.length, 1)
 })
 
 test('journal storage treats provider errors and timeouts as uncertain without leaking details', async () => {
@@ -115,6 +130,9 @@ test('journal reader fails closed on invalid references, records, provider error
     await assert.rejects(readRecoveryJournalRecord(storage(chunks), target, id, '1'), /could not be verified/)
   }
   await assert.rejects(readRecoveryJournalRecord(storage([encodeRecoveryConfirmation(id, 'dev', '2026-11-03T12:00:00.000Z')], false), target, id, '1'), /could not be verified/)
+  const wrongConfirmationId = recoveryConfirmationRecordId('22222222-2222-4222-8222-222222222222')
+  await assert.rejects(readRecoveryJournalRecord(storage([encodeRecoveryConfirmation(id, 'dev', '2026-11-03T12:00:00.000Z')]),
+    target, wrongConfirmationId, '1'), /could not be verified/)
   const failing = { bucket: () => ({ file: () => ({ interceptors: [], createReadStream: () =>
     new Readable({ read() { this.destroy(new Error('synthetic sensitive provider error')) } }) }) }) }
   await assert.rejects(readRecoveryJournalRecord(failing, target, id, '1'), error =>
@@ -161,7 +179,7 @@ test('ambiguous write readback requires the same current generation and exact sa
 })
 
 test('journal inventory discovers bounded exact generations without asserting coverage', async () => {
-  const secondId = '22222222-2222-4222-8222-222222222222'
+  const secondId = recoveryConfirmationRecordId(id)
   const prefix = 'idea-map-v2/dev/recovery-journal/'
   const metadata = recordId => ({ name: `${prefix}${recordId}.json`, bucket: target.bucket,
     generation: '90071992547409931234', metageneration: '1', size: '123', contentType: 'application/json', crc32c: 'AAAAAA==' })

@@ -1,4 +1,4 @@
-import { decodeRecoveryRecord, encodeRecoveryIntent } from './recovery-journal-record.js'
+import { decodeRecoveryRecord, encodeRecoveryConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from './recovery-journal-record.js'
 import { withVerifiedModerator, type ModeratorAccess, type RegisteredSessionVerifier } from './moderator-authorization.js'
 import { pendingRemovalDatabasePool } from './runtime-database.js'
 import { compareCurrentRecoveryJournalRecord, writeRecoveryJournalRecord } from './recovery-journal-storage.js'
@@ -123,5 +123,61 @@ export async function applyJournaledRemoval(coordinatorDatabaseUrl: string, proj
     }, pendingRemovalDatabasePool(coordinatorDatabaseUrl))
   } catch {
     throw new Error('Pending removal unavailable')
+  }
+}
+
+type AppliedRemoval = { operationId: string, recordId: string, payload: Uint8Array, generation: string, appliedAt: string }
+type PreparedConfirmation = { recordId: string, payload: Uint8Array, preparedAt: string }
+
+/** Persist retry-stable confirmation facts only in a later committed transaction. */
+export async function prepareRemovalConfirmation(coordinatorDatabaseUrl: string, projectId: string, cookie: string,
+  verifier: RegisteredSessionVerifier, environment: 'dev' | 'prod', input: AppliedRemoval): Promise<ModeratorAccess<PreparedConfirmation>> {
+  if (typeof coordinatorDatabaseUrl !== 'string' || !coordinatorDatabaseUrl || !input ||
+      typeof input.operationId !== 'string' || !uuid4.test(input.operationId) ||
+      typeof input.recordId !== 'string' || !uuid4.test(input.recordId) || !(input.payload instanceof Uint8Array) ||
+      input.payload.byteLength < 1 || input.payload.byteLength > 16_384 || typeof input.generation !== 'string' ||
+      !/^[1-9][0-9]{0,19}$/.test(input.generation) || typeof input.appliedAt !== 'string') throw new Error('Invalid pending removal')
+  const appliedTime = Date.parse(input.appliedAt)
+  if (!Number.isFinite(appliedTime) || new Date(appliedTime).toISOString() !== input.appliedAt) throw new Error('Invalid pending removal')
+  const payload = Buffer.from(input.payload)
+  let record
+  try { record = decodeRecoveryRecord(payload, environment) } catch { throw new Error('Invalid pending removal') }
+  if (record.recordType !== 'intent' || record.operationId !== input.operationId || record.decision.kind !== 'removal' ||
+      Date.parse(record.authorizedAt) > appliedTime) throw new Error('Invalid pending removal')
+  const confirmationId = recoveryConfirmationRecordId(input.operationId)
+  try {
+    const result = await withVerifiedModerator(coordinatorDatabaseUrl, projectId, cookie, verifier, async (client, actor, subject) => {
+      if (record.actorId !== actor) throw new Error('Pending removal is ambiguous')
+      await client.query("SET LOCAL lock_timeout = '5s'")
+      await client.query("SET LOCAL statement_timeout = '10s'")
+      const selected = await client.query<{ confirmation_record_id: string, confirmation_prepared_at: Date }>(
+        'SELECT * FROM public.prepare_pending_removal_confirmation($1,$2,$3,$4,$5,$6,$7,$8)',
+        [`firebase:${projectId}`, subject, input.operationId, input.recordId, input.generation, payload.toString('utf8'), input.appliedAt, confirmationId])
+      const row = selected.rows[0]
+      if (row?.confirmation_record_id !== confirmationId || !(row.confirmation_prepared_at instanceof Date) ||
+          !Number.isFinite(row.confirmation_prepared_at.getTime()) || row.confirmation_prepared_at.getTime() < appliedTime) {
+        throw new Error('Pending removal is ambiguous')
+      }
+      return row.confirmation_prepared_at.toISOString()
+    }, pendingRemovalDatabasePool(coordinatorDatabaseUrl))
+    if (result.state !== 'authorized') return result
+    return { state: 'authorized', value: { recordId: confirmationId,
+      payload: encodeRecoveryConfirmation(input.operationId, environment, result.value), preparedAt: result.value } }
+  } catch {
+    throw new Error('Pending removal unavailable')
+  }
+}
+
+/** Create a prepared confirmation once; an uncertain write never opens the gate. */
+export async function writeRemovalConfirmation(coordinatorDatabaseUrl: string, projectId: string, cookie: string,
+  verifier: RegisteredSessionVerifier, target: { environment: 'dev' | 'prod', bucket: string },
+  writer: Storage, input: AppliedRemoval): Promise<ModeratorAccess<'confirmation_uncertain' | { state: 'confirmation_written', recordId: string }>> {
+  const prepared = await prepareRemovalConfirmation(coordinatorDatabaseUrl, projectId, cookie, verifier, target?.environment, input)
+  if (prepared.state !== 'authorized') return prepared
+  try {
+    await writeRecoveryJournalRecord(writer, target, prepared.value.recordId, prepared.value.payload)
+    return { state: 'authorized', value: { state: 'confirmation_written', recordId: prepared.value.recordId } }
+  } catch {
+    return { state: 'authorized', value: 'confirmation_uncertain' }
   }
 }

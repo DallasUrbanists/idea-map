@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import { exportEncryptedBackup } from '../ops/export-encrypted-backup.mjs'
 import { inspectBackupRetention } from '../ops/inspect-backup-retention.mjs'
 import { compareCurrentRecoveryJournalRecord, listUnverifiedRecoveryJournal, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../../../packages/server/dist/recovery-journal-storage.js'
-import { encodeRecoveryConfirmation } from '../../../packages/server/dist/recovery-journal-record.js'
+import { encodeRecoveryConfirmation, recoveryConfirmationRecordId } from '../../../packages/server/dist/recovery-journal-record.js'
 
 const require = createRequire(import.meta.url)
 const { Storage } = require('@google-cloud/storage')
@@ -138,8 +138,13 @@ test('storage client sends create-only archives, completion metadata, and journa
     assert.deepEqual(payloads.get(recordName), record)
     assert.equal(objects.get(recordName).metadata, undefined)
     objects.get(recordName).generation = '90071992547409931234'
-    assert.deepEqual(await listUnverifiedRecoveryJournal(storage, target), { references: [{ recordId,
-      generation: '90071992547409931234' }], coverageVerified: false, softDeletedChecked: false })
+    const confirmationId = recoveryConfirmationRecordId(recordId)
+    await writeRecoveryJournalRecord(storage, target, confirmationId, record)
+    const confirmationName = `idea-map-v2/dev/recovery-journal/${confirmationId}.json`
+    assert.deepEqual(await listUnverifiedRecoveryJournal(storage, target), { references: [
+      { recordId, generation: '90071992547409931234' },
+      { recordId: confirmationId, generation: objects.get(confirmationName).generation },
+    ], coverageVerified: false, softDeletedChecked: false })
     assert.deepEqual(Buffer.from(await readRecoveryJournalRecord(storage, target, recordId, objects.get(recordName).generation)), record)
     assert.deepEqual(await compareCurrentRecoveryJournalRecord(storage, target, recordId, record),
       { generation: '90071992547409931234', coverageVerified: false })
@@ -160,7 +165,7 @@ test('storage client sends create-only archives, completion metadata, and journa
       /Journal write outcome is uncertain/)
     assert.deepEqual(payloads.get(recordName), record)
     assert.equal(errors.length, 0)
-    assert.equal(requests.filter(item => item.method === 'POST').length, 5)
+    assert.equal(requests.filter(item => item.method === 'POST').length, 6)
     assert.deepEqual(new Set(requests.filter(item => item.path.endsWith('/o') && item.method === 'GET').map(item => item.query.prefix)),
       new Set(['daily', 'weekly', 'completion', 'recovery-journal'].map(kind => `idea-map-v2/dev/${kind}/`)))
     assert.ok(requests.every(item => ['GET', 'POST'].includes(item.method)))

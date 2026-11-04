@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { decodeRecoveryRecord, encodeRecoveryConfirmation, encodeRecoveryHoldConfirmation, encodeRecoveryIntent } from '../dist/recovery-journal-record.js'
+import { decodeRecoveryRecord, encodeRecoveryConfirmation, encodeRecoveryHoldConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
 
 const base = { operationId: '11111111-1111-4111-8111-111111111111', environment: 'dev',
   ideaId: '22222222-2222-4222-8222-222222222222', actorId: '33333333-3333-4333-8333-333333333333',
@@ -8,6 +8,12 @@ const base = { operationId: '11111111-1111-4111-8111-111111111111', environment:
 const placement = { kind: 'hold_placement', caseReference: 'synthetic case', reason: 'synthetic reason',
   authorizationReference: 'synthetic authority', scope: 'synthetic scoped material' }
 const decode = value => JSON.parse(Buffer.from(value).toString('utf8'))
+
+test('confirmation record IDs are stable UUIDv8 values distinct from intent UUIDv4 IDs', () => {
+  assert.equal(recoveryConfirmationRecordId(base.operationId), '5d8900a6-1e2f-8723-b310-940ebe35dd66')
+  assert.notEqual(recoveryConfirmationRecordId('11111111-1111-4111-8111-111111111112'), recoveryConfirmationRecordId(base.operationId))
+  assert.throws(() => recoveryConfirmationRecordId('../bad'), /Invalid recovery confirmation/)
+})
 
 test('decision records preserve authorized removal and hold facts without extra fields', () => {
   for (const decision of [

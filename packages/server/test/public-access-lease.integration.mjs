@@ -6,10 +6,10 @@ import { test } from 'node:test'
 import pg from 'pg'
 import { CRC32C } from '@google-cloud/storage'
 import { acquirePublicAccessLease, publicAccessLeaseClient } from '../dist/public-access-lease.js'
-import { applyJournaledRemoval, prepareAndJournalRemoval, preparePendingRemoval } from '../dist/pending-removal.js'
-import { decodeRecoveryRecord, encodeRecoveryIntent } from '../dist/recovery-journal-record.js'
+import { applyJournaledRemoval, prepareAndJournalRemoval, preparePendingRemoval, prepareRemovalConfirmation, writeRemovalConfirmation } from '../dist/pending-removal.js'
+import { decodeRecoveryRecord, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
 import { pendingRemovalDatabasePool, runtimeDatabasePool } from '../dist/runtime-database.js'
-import { readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
+import { compareCurrentRecoveryJournalRecord, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../dist/recovery-journal-storage.js'
 
 const url = new URL(process.env.TEST_DATABASE_URL ?? 'postgres://invalid.invalid/invalid')
 if (!['127.0.0.1', 'localhost'].includes(url.hostname) || url.pathname !== '/idea_map_test_public_gate') {
@@ -327,6 +327,7 @@ test('a trusted coordinator applies only the verified pending removal after read
   const subject = `apply-${suffix}`
   const prepareFunction = 'public.prepare_pending_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text)'
   const applyFunction = 'public.apply_pending_removal(text,text,uuid,uuid,text,text)'
+  const confirmationFunction = 'public.prepare_pending_removal_confirmation(text,text,uuid,uuid,text,text,timestamptz,uuid)'
   const prepareUrl = new URL(url)
   const coordinatorUrl = new URL(url)
   let reader, actor, contact, idea, revision, operationId, preview, staleIdea, staleRevision, staleOperation, applying
@@ -349,7 +350,7 @@ test('a trusted coordinator applies only the verified pending removal after read
     createdRoles.push(coordinatorRole)
     await admin.query(`GRANT USAGE ON SCHEMA public TO "${prepareRole}", "${coordinatorRole}"`)
     await admin.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text), ${prepareFunction} TO "${prepareRole}"`)
-    await admin.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text), ${applyFunction} TO "${coordinatorRole}"`)
+    await admin.query(`GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text), ${applyFunction}, ${confirmationFunction} TO "${coordinatorRole}"`)
     prepareUrl.username = prepareRole; prepareUrl.password = 'synthetic-only'
     coordinatorUrl.username = coordinatorRole; coordinatorUrl.password = 'synthetic-only'
     preparePool = new pg.Pool({ connectionString: prepareUrl.toString() })
@@ -360,6 +361,7 @@ test('a trusted coordinator applies only the verified pending removal after read
       ['firebase:demo-idea-map', subject, idea, revision, 'other', 'synthetic']), { code: '42501' })
     await assert.rejects(coordinatorPool.query('SELECT * FROM public.public_access_pending_decisions'), { code: '42501' })
     assert.equal((await admin.query('SELECT has_function_privilege($1,$2,$3) AS allowed', ['public', applyFunction, 'EXECUTE'])).rows[0].allowed, false)
+    assert.equal((await admin.query('SELECT has_function_privilege($1,$2,$3) AS allowed', ['public', confirmationFunction, 'EXECUTE'])).rows[0].allowed, false)
     const session = { uid: subject, email: `${suffix}@example.invalid`, email_verified: true, firebase: { sign_in_provider: 'password' } }
     const verifier = { async verifySessionCookie() { return session }, async getUser() { return { uid: subject, email: session.email, emailVerified: true, disabled: false } } }
     const input = { operationId: randomUUID(), recordId: randomUUID(), ideaId: idea, approvedRevisionId: revision,
@@ -372,7 +374,8 @@ test('a trusted coordinator applies only the verified pending removal after read
     assert.equal(prepared.state, 'authorized')
     assert.equal(prepared.value.state, 'pending')
     await assert.rejects(admin.query('UPDATE public.public_access_pending_decisions SET applied_at=clock_timestamp() WHERE operation_id=$1', [operationId]), { code: '23514' })
-    await assert.rejects(admin.query("UPDATE public.public_access_pending_decisions SET journal_generation='1' WHERE operation_id=$1", [operationId]), { code: '23514' })
+    await assert.rejects(admin.query("UPDATE public.public_access_pending_decisions SET journal_generation='1' WHERE operation_id=$1", [operationId]), /application is immutable/)
+    await assert.rejects(admin.query("UPDATE public.public_access_pending_decisions SET journal_generation='1',applied_at=clock_timestamp(),applied_transaction_id='1' WHERE operation_id=$1", [operationId]), /Pending removal is ambiguous/)
     await waitForAborts(reader.signal)
     const body = Buffer.from(prepared.value.payload)
     const checksum = new CRC32C(); checksum.update(body)
@@ -418,8 +421,37 @@ test('a trusted coordinator applies only the verified pending removal after read
     assert.deepEqual(await applying, { state: 'unauthenticated' })
     applying = undefined
     assert.equal((await admin.query('SELECT publication_state FROM public.ideas WHERE id=$1', [idea])).rows[0].publication_state, 'approved')
-    assert.deepEqual((await admin.query('SELECT journal_generation,applied_at FROM public.public_access_pending_decisions WHERE operation_id=$1', [operationId])).rows[0],
-      { journal_generation: null, applied_at: null })
+    assert.deepEqual((await admin.query('SELECT journal_generation,applied_at,applied_transaction_id FROM public.public_access_pending_decisions WHERE operation_id=$1', [operationId])).rows[0],
+      { journal_generation: null, applied_at: null, applied_transaction_id: null })
+    const confirmationId = recoveryConfirmationRecordId(operationId)
+    await assert.rejects(admin.query('UPDATE public.public_access_pending_decisions SET confirmation_record_id=$1 WHERE operation_id=$2', [confirmationId, operationId]), /must commit before confirmation/)
+    const differentConfirmationId = `${confirmationId.slice(0, -1)}${confirmationId.endsWith('0') ? '1' : '0'}`
+    await assert.rejects(coordinatorPool.query('SELECT * FROM public.prepare_pending_removal_confirmation($1,$2,$3,$4,$5,$6,$7,$8)',
+      ['firebase:demo-idea-map', subject, operationId, input.recordId, '90071992547409931234', body.toString('utf8'), new Date(), differentConfirmationId]),
+    /Pending removal is ambiguous/)
+    const transaction = await coordinatorPool.connect()
+    try {
+      await transaction.query('BEGIN ISOLATION LEVEL READ COMMITTED')
+      await transaction.query('SAVEPOINT synthetic_application')
+      const interim = (await transaction.query('SELECT * FROM public.apply_pending_removal($1,$2,$3,$4,$5,$6)',
+        ['firebase:demo-idea-map', subject, operationId, input.recordId, '90071992547409931234', body.toString('utf8')])).rows[0]
+      assert.equal(interim.outcome, 'applied')
+      await transaction.query('RELEASE SAVEPOINT synthetic_application')
+      await assert.rejects(transaction.query('SELECT * FROM public.prepare_pending_removal_confirmation($1,$2,$3,$4,$5,$6,$7,$8)',
+        ['firebase:demo-idea-map', subject, operationId, input.recordId, '90071992547409931234', body.toString('utf8'), interim.applied_at, confirmationId]),
+      /must commit before confirmation/)
+    } finally { await transaction.query('ROLLBACK'); transaction.release() }
+    assert.equal((await admin.query('SELECT publication_state FROM public.ideas WHERE id=$1', [idea])).rows[0].publication_state, 'approved')
+    const directTransaction = await admin.connect()
+    try {
+      await directTransaction.query('BEGIN ISOLATION LEVEL READ COMMITTED')
+      await directTransaction.query('SAVEPOINT synthetic_application')
+      await directTransaction.query('SELECT * FROM public.apply_pending_removal($1,$2,$3,$4,$5,$6)',
+        ['firebase:demo-idea-map', subject, operationId, input.recordId, '90071992547409931234', body.toString('utf8')])
+      await directTransaction.query('RELEASE SAVEPOINT synthetic_application')
+      await assert.rejects(directTransaction.query('UPDATE public.public_access_pending_decisions SET confirmation_record_id=$1,confirmation_prepared_at=clock_timestamp() WHERE operation_id=$2',
+        [confirmationId, operationId]), /must commit before confirmation/)
+    } finally { await directTransaction.query('ROLLBACK'); directTransaction.release() }
     const decoded = decodeRecoveryRecord(body, 'dev')
     const forged = Buffer.from(encodeRecoveryIntent({ operationId: decoded.operationId, environment: decoded.environment,
       ideaId: decoded.ideaId, actorId: decoded.actorId, authorizedAt: decoded.authorizedAt,
@@ -438,6 +470,59 @@ test('a trusted coordinator applies only the verified pending removal after read
     assert.equal((await admin.query('SELECT publication_state FROM public.ideas WHERE id=$1', [idea])).rows[0].publication_state, 'withdrawn')
     assert.equal((await admin.query('SELECT published FROM public.media_previews WHERE id=$1', [preview])).rows[0].published, false)
     assert.equal((await admin.query('SELECT count(*)::int AS count FROM public.moderator_removals WHERE idea_id=$1', [idea])).rows[0].count, 1)
+    assert.equal((await admin.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
+    assert.match((await admin.query('SELECT applied_transaction_id FROM public.public_access_pending_decisions WHERE operation_id=$1', [operationId])).rows[0].applied_transaction_id, /^[1-9][0-9]*$/)
+    await assert.rejects(admin.query("UPDATE public.public_access_pending_decisions SET applied_transaction_id='1' WHERE operation_id=$1", [operationId]), /application is immutable/)
+    const confirmationInput = { ...argumentsFor, generation: applied.value.generation, appliedAt: applied.value.appliedAt }
+    const prepareConfirmation = () => prepareRemovalConfirmation(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier, 'dev', confirmationInput)
+    // Model a pre-migration applied row with no top-level transaction evidence.
+    // The trigger override is local to this rolled-back synthetic transaction.
+    const legacy = await admin.connect()
+    try {
+      await legacy.query('BEGIN')
+      await legacy.query("SET LOCAL session_replication_role = 'replica'")
+      await legacy.query('UPDATE public.public_access_pending_decisions SET applied_transaction_id=NULL WHERE operation_id=$1', [operationId])
+      await assert.rejects(legacy.query('SELECT * FROM public.prepare_pending_removal_confirmation($1,$2,$3,$4,$5,$6,$7,$8)',
+        ['firebase:demo-idea-map', subject, operationId, input.recordId, applied.value.generation, body.toString('utf8'), applied.value.appliedAt, confirmationId]),
+      /must commit before confirmation/)
+    } finally { await legacy.query('ROLLBACK'); legacy.release() }
+    let confirmationChecks = 0
+    const revokedConfirmation = { ...verifier, async getUser() { return { uid: subject, email: session.email,
+      emailVerified: true, disabled: ++confirmationChecks > 1 } } }
+    assert.deepEqual(await prepareRemovalConfirmation(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie',
+      revokedConfirmation, 'dev', confirmationInput), { state: 'unauthenticated' })
+    assert.deepEqual((await admin.query('SELECT confirmation_record_id,confirmation_prepared_at FROM public.public_access_pending_decisions WHERE operation_id=$1', [operationId])).rows[0],
+      { confirmation_record_id: null, confirmation_prepared_at: null })
+    const confirmation = await prepareConfirmation()
+    assert.equal(confirmation.state, 'authorized')
+    assert.equal(confirmation.value.recordId, confirmationId)
+    assert.deepEqual(await prepareConfirmation(), confirmation)
+    await assert.rejects(admin.query("UPDATE public.public_access_pending_decisions SET confirmation_prepared_at=confirmation_prepared_at + interval '1 second' WHERE operation_id=$1", [operationId]), /confirmation is immutable/)
+    assert.deepEqual(decodeRecoveryRecord(confirmation.value.payload, 'dev'), { version: 1, recordType: 'commit_confirmation',
+      operationId, environment: 'dev', confirmedAt: confirmation.value.preparedAt })
+    assert.ok(Date.parse(confirmation.value.preparedAt) >= Date.parse(applied.value.appliedAt))
+    const writer = (objects, lost) => ({ bucket: () => ({ file: name => ({ createWriteStream: options => {
+      assert.equal(options.preconditionOpts.ifGenerationMatch, 0)
+      const chunks = []
+      return new Writable({ write(chunk, _encoding, callback) { chunks.push(Buffer.from(chunk)); callback() }, final(callback) {
+        if (objects.has(name)) return callback(new Error('synthetic precondition failure'))
+        objects.set(name, Buffer.concat(chunks))
+        callback(lost ? new Error('synthetic lost response') : undefined)
+      } })
+    } }) }) })
+    const writeConfirmation = (objects, lost) => writeRemovalConfirmation(coordinatorUrl.toString(), 'demo-idea-map', 'synthetic-cookie', verifier,
+      target, writer(objects, lost), confirmationInput)
+    const successfulObjects = new Map()
+    assert.deepEqual(await writeConfirmation(successfulObjects, false), { state: 'authorized', value: { state: 'confirmation_written', recordId: confirmationId } })
+    assert.deepEqual([...successfulObjects.values()], [Buffer.from(confirmation.value.payload)])
+    // A second isolated fake models a write whose success response was lost.
+    const confirmationObjects = new Map()
+    assert.deepEqual(await writeConfirmation(confirmationObjects, true), { state: 'authorized', value: 'confirmation_uncertain' })
+    assert.deepEqual(await writeConfirmation(confirmationObjects, false), { state: 'authorized', value: 'confirmation_uncertain' })
+    assert.deepEqual([...confirmationObjects.values()], [Buffer.from(confirmation.value.payload)])
+    const confirmationChecksum = new CRC32C(); confirmationChecksum.update(Buffer.from(confirmation.value.payload))
+    assert.deepEqual(await compareCurrentRecoveryJournalRecord(fakeReader(Buffer.from(confirmation.value.payload), confirmationChecksum.toString()),
+      target, confirmationId, confirmation.value.payload), { generation: '90071992547409931234', coverageVerified: false })
     assert.equal((await admin.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
     staleIdea = (await admin.query("INSERT INTO public.ideas(author_contact_id,publication_state) VALUES ($1,'approved') RETURNING id", [contact])).rows[0].id
     staleRevision = (await admin.query("INSERT INTO public.idea_revisions(idea_id,version,content,review_state) VALUES ($1,1,'{}'::jsonb,'approved') RETURNING id", [staleIdea])).rows[0].id
