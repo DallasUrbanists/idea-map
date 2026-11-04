@@ -43,3 +43,20 @@ test('a task created during listing does not invalidate the completed observatio
   assert.equal(result.due, 1)
   assert.ok(result.oldest_seconds >= 0)
 })
+
+test('queue snapshot rejects malformed provider timestamps and accepts supported fractional precision', async () => {
+  const one = (createTime, scheduleTime) => ({ async request() {
+    return { status: 200, data: { tasks: [{ createTime, scheduleTime }] } }
+  } })
+  for (const invalid of ['2026-02-30T10:00:00Z', '2026-11-03 10:00:00Z',
+    '2026-11-03T10:00:00.1Z', '2026-11-03T10:00:00+00:00']) {
+    await assert.rejects(readQueueSnapshot(one(invalid, '2026-11-03T11:00:00Z'), queue, now))
+    await assert.rejects(readQueueSnapshot(one('2026-11-03T10:00:00Z', invalid), queue, now))
+  }
+  for (const fraction of ['.000', '.000000', '.000000000']) {
+    const result = await readQueueSnapshot(one(`2026-11-03T10:00:00${fraction}Z`,
+      `2026-11-03T11:00:00${fraction}Z`), queue, now)
+    assert.equal(result.oldest_seconds, 7200)
+    assert.equal(result.oldest_due_seconds, 3600)
+  }
+})

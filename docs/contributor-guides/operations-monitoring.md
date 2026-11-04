@@ -100,8 +100,9 @@ sensitive. Hosted access requires separate authorization.
 tasks scheduled for the future. `due` and `oldest_due_seconds` refer to the
 current scheduled attempt; a retry can change its schedule. The listing is not
 a transactional snapshot and can change while pages are read, so these values
-are estimates. A healthy result does not prove task delivery or configure an
-alert. Review collection limits and provider metrics before scheduling it.
+are estimates. The reader rejects malformed or non-normalized provider timestamps
+rather than interpreting an ambiguous page as healthy. A healthy result does not
+prove task delivery or configure an alert. Review collection limits and provider metrics before scheduling it.
 
 ## Prepare scheduled collection
 

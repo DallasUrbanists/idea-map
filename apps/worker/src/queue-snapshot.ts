@@ -1,5 +1,19 @@
 import type { TaskTransport } from '@idea-map/server'
 
+// Cloud Tasks returns Z-normalized RFC 3339 timestamps with 0, 3, 6, or 9
+// fractional digits. Date.parse alone accepts non-provider formats and silently
+// normalizes invalid calendar dates, which could make an invalid page look healthy.
+function providerTimestamp(value: unknown): number {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.(?:\d{3}|\d{6}|\d{9}))?Z$/.test(value)) {
+    throw new Error('Queue timestamps are invalid')
+  }
+  const parsed = Date.parse(value)
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString().slice(0, 19) !== value.slice(0, 19)) {
+    throw new Error('Queue timestamps are invalid')
+  }
+  return parsed
+}
+
 /** Estimate queue age without requesting or returning task bodies or identifiers. */
 export async function readQueueSnapshot(transport: TaskTransport, queue: string, now?: Date) {
   if (!/^projects\/[a-z0-9-]+\/locations\/[a-z0-9-]+\/queues\/[a-zA-Z0-9_-]+$/.test(queue) || (now && !Number.isFinite(now.getTime()))) {
@@ -22,10 +36,8 @@ export async function readQueueSnapshot(transport: TaskTransport, queue: string,
     for (const task of page.tasks ?? []) {
       if (!task || typeof task !== 'object') throw new Error('Queue listing is ambiguous')
       const item = task as { createTime?: unknown, scheduleTime?: unknown }
-      if (typeof item.createTime !== 'string' || typeof item.scheduleTime !== 'string') throw new Error('Queue timestamps are missing')
-      const created = Date.parse(item.createTime)
-      const scheduled = Date.parse(item.scheduleTime)
-      if (!Number.isFinite(created) || !Number.isFinite(scheduled)) throw new Error('Queue timestamps are invalid')
+      const created = providerTimestamp(item.createTime)
+      const scheduled = providerTimestamp(item.scheduleTime)
       count++
       if (count > 100_000) throw new Error('Queue listing is too large')
       oldestCreated = oldestCreated === null ? created : Math.min(oldestCreated, created)
