@@ -174,8 +174,19 @@ coverage also requires a way to detect a missing or deleted record; successful
 listing alone does not prove that no record was lost or bypassed.
 
 During a recovery, fence the original writers and wait for in-flight operations
-to finish before taking the journal inventory. Verify its checkpoint, integrity,
-and complete coverage through the fence. An object timestamp or a backup start
+to finish before taking the journal inventory. Include old service revisions,
+scheduled jobs, queued work, operator tools, and direct database writers in the
+fence. Stop or isolate the relevant execution paths and verify the effective
+access boundary with separately authorized checks. A successful IAM revocation
+alone is not an immediate fence: [Cloud Storage access changes are eventually
+consistent](https://cloud.google.com/storage/docs/consistency#eventually_consistent_operations),
+and requests already in flight may still complete. Account for propagation and
+credential lifetimes, drain or resolve outstanding operations, and repeat the
+inventory after the fence is established. If those steps cannot be verified,
+keep the replacement isolated.
+
+Verify the checkpoint, integrity, and complete coverage through the fence. An
+object timestamp or a backup start
 time alone cannot identify every concurrent committed transaction: replay the
 verified relevant overlap conservatively, and require authorized reconciliation
 where order or outcome is unclear. If writers cannot be fenced or completeness

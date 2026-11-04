@@ -351,7 +351,10 @@ PostGIS. Hosted development uses synthetic data only; keep production backups
 and restored production records within separately controlled production recovery
 resources, not the development project or a local machine.
 Fence network and application access independently before creating the target,
-restrict database connections, and verify effective inherited access. An older
+restrict database connections, and verify effective inherited access. Fence the
+original writers and drain in-flight work before inventorying decision records;
+follow the [journal fence procedure](../architecture/recovery-journal.md#write-and-reconcile)
+and account for delayed permission propagation. An older
 archive cannot be trusted to contain a later publication gate or removal.
 Verify archive integrity before using it, and use `pg_restore`
 with error checking. Prepare restricted database roles before restoring ACLs,
