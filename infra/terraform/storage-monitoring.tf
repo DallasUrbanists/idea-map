@@ -44,3 +44,48 @@ resource "google_monitoring_alert_policy" "bucket_capacity" {
     }
   }
 }
+
+variable "enable_storage_growth_alerts" {
+  description = "Opt in to per-series growth alerts for the existing environment buckets."
+  type        = bool
+  default     = false
+  validation {
+    condition = !var.enable_storage_growth_alerts || (
+      var.manage_media_buckets && length(var.monitoring_notification_channels) > 0 &&
+      toset(keys(var.storage_growth_threshold_percent)) == toset(keys(var.bucket_names)) &&
+      alltrue([for name in values(var.bucket_names) : can(regex("^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$", name))])
+    )
+    error_message = "Storage growth alerts require foundation-owned buckets, existing channels, valid names, and a threshold for each bucket."
+  }
+}
+
+variable "storage_growth_threshold_percent" {
+  description = "Reviewed positive percentage-change thresholds keyed by uploads, public, and backups."
+  type        = map(number)
+  default     = {}
+  validation {
+    condition     = alltrue([for percent in values(var.storage_growth_threshold_percent) : percent > 0])
+    error_message = "Storage growth thresholds must be positive percentages."
+  }
+}
+
+resource "google_monitoring_alert_policy" "bucket_growth" {
+  for_each              = var.enable_storage_growth_alerts ? var.bucket_names : {}
+  project               = var.project_id
+  display_name          = "idea-map-${var.environment}-${each.key}-storage-growth"
+  combiner              = "OR"
+  notification_channels = var.monitoring_notification_channels
+  conditions {
+    display_name = "A bucket storage series grows beyond its reviewed percentage"
+    condition_threshold {
+      filter          = "metric.type=\"storage.googleapis.com/storage/v2/total_bytes\" AND resource.type=\"gcs_bucket\" AND resource.label.bucket_name=\"${each.value}\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = lookup(var.storage_growth_threshold_percent, each.key, 0)
+      duration        = "0s"
+      aggregations {
+        alignment_period   = "86400s"
+        per_series_aligner = "ALIGN_PERCENT_CHANGE"
+      }
+    }
+  }
+}

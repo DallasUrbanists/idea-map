@@ -171,6 +171,57 @@ run "storage_alerts_reject_unmanaged_buckets" {
   expect_failures = [var.enable_storage_capacity_alerts]
 }
 
+run "storage_growth_alerts_are_opt_in" {
+  command = plan
+  assert {
+    condition     = length(google_monitoring_alert_policy.bucket_growth) == 0
+    error_message = "Storage growth alerts must not be created by default."
+  }
+}
+
+run "storage_growth_alerts_are_scoped" {
+  command = plan
+  variables {
+    enable_storage_growth_alerts     = true
+    monitoring_notification_channels = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
+    storage_growth_threshold_percent = { uploads = 25, public = 30, backups = 40 }
+  }
+  assert {
+    condition = length(google_monitoring_alert_policy.bucket_growth) == 3 && alltrue([
+      for key, policy in google_monitoring_alert_policy.bucket_growth :
+      one(policy.conditions).condition_threshold[0].filter == "metric.type=\"storage.googleapis.com/storage/v2/total_bytes\" AND resource.type=\"gcs_bucket\" AND resource.label.bucket_name=\"${var.bucket_names[key]}\"" &&
+      one(policy.conditions).condition_threshold[0].threshold_value == var.storage_growth_threshold_percent[key] &&
+      one(policy.conditions).condition_threshold[0].aggregations[0].alignment_period == "86400s" &&
+      one(policy.conditions).condition_threshold[0].aggregations[0].per_series_aligner == "ALIGN_PERCENT_CHANGE" &&
+      toset(policy.notification_channels) == toset(var.monitoring_notification_channels)
+    ])
+    error_message = "Each growth alert must use its exact bucket, reviewed percentage, and existing notification channel."
+  }
+}
+
+run "storage_growth_alerts_require_reviewed_inputs" {
+  command = plan
+  variables { enable_storage_growth_alerts = true }
+  expect_failures = [var.enable_storage_growth_alerts]
+}
+
+run "storage_growth_alerts_reject_invalid_threshold" {
+  command = plan
+  variables { storage_growth_threshold_percent = { backups = 0 } }
+  expect_failures = [var.storage_growth_threshold_percent]
+}
+
+run "storage_growth_alerts_reject_unmanaged_buckets" {
+  command = plan
+  variables {
+    manage_media_buckets             = false
+    enable_storage_growth_alerts     = true
+    monitoring_notification_channels = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
+    storage_growth_threshold_percent = { uploads = 25, public = 30, backups = 40 }
+  }
+  expect_failures = [var.enable_storage_growth_alerts]
+}
+
 run "queue_delay_alert_is_opt_in" {
   command = plan
   assert {

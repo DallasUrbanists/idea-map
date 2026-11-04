@@ -242,6 +242,19 @@ arrives and independently inspect growth and Neon storage. Test each threshold
 and notification in an authorized isolated environment before relying on the
 policies.
 
+The foundation can also alert on percentage growth in each bucket's reported
+storage series. Set `enable_storage_growth_alerts` and supply a positive
+`storage_growth_threshold_percent` for each of the same three bucket keys.
+The option starts disabled and uses the reviewed notification channels. Each
+series represents a storage class and object type; the alert compares that
+series with its value over the preceding 24-hour alignment period. It does not
+calculate the percentage change of the whole bucket. The provider smooths the
+data and can report infinite growth from a zero baseline. New or missing series,
+small baselines, daily measurement, and delayed values can produce gaps or
+noisy alerts. Review capacity and actual growth separately, and test the
+thresholds, missing data, and notification delivery in an authorized isolated
+environment before relying on this signal.
+
 For an authorized Neon environment, use the provider's existing
 [monitoring dashboard](https://neon.com/blog/announcing-monitoring-and-organizations)
 to inspect database-size samples over time. Record the environment, time window,
