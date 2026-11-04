@@ -24,6 +24,12 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
   const holdReviewIdeas = new Set<string>()
   const reviewOperations = new Set<string>()
   const placedHoldIds = new Set<string>()
+  const holdIdeas = new Map<string, string>()
+  function checkHoldIdea(holdId: string, ideaId: string) {
+    const existing = holdIdeas.get(holdId)
+    if (existing !== undefined && existing !== ideaId) throw new Error('Recovery inventory is ambiguous')
+    holdIdeas.set(holdId, ideaId)
+  }
   const holdIdentities: { operationId: string, ideaId: string, holdId: string }[] = []
   for (const [operationId, intent] of intents) {
     const confirmation = confirmations.get(operationId)
@@ -31,10 +37,12 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
     if (confirmation?.recordType === 'hold_commit_confirmation') {
       if (intent.decision.kind !== 'hold_placement' || placedHoldIds.has(confirmation.holdId)) throw new Error('Recovery inventory is ambiguous')
       placedHoldIds.add(confirmation.holdId)
+      checkHoldIdea(confirmation.holdId, intent.ideaId)
       holdIdentities.push({ operationId, ideaId: intent.ideaId, holdId: confirmation.holdId })
     }
     if (intent.decision.kind === 'removal') removals.add(intent.ideaId)
     if (intent.decision.kind === 'hold_placement') holdPlacements.add(intent.ideaId)
+    if (intent.decision.kind === 'hold_release') checkHoldIdea(intent.decision.holdId, intent.ideaId)
     if (intent.decision.kind !== 'removal') holdReviewIdeas.add(intent.ideaId)
     // Even a confirmed placement lacks the authority and held-material evidence
     // needed to recreate it. Releases and uncertain decisions also need review.

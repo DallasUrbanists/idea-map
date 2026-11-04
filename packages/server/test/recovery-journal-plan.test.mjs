@@ -52,3 +52,15 @@ test('hold placement confirmations preserve the committed hold ID and reject amb
   assert.throws(() => summarizeUnverifiedRecovery([intent(1, hold), held(1), intent(2, hold), held(2)], 'dev'), /ambiguous/)
   assert.throws(() => summarizeUnverifiedRecovery([intent(1, { kind: 'removal', classification: 'other', reason: 'synthetic' }), held(1)], 'dev'), /ambiguous/)
 })
+
+test('conflicting idea associations for a hold ID fail closed in either record order', () => {
+  const holdId = '44444444-4444-4444-8444-444444444444'
+  const otherIdea = '55555555-5555-4555-8555-555555555555'
+  const release = { ...hold, kind: 'hold_release', holdId, legalReviewReference: null }
+  const otherRelease = encodeRecoveryIntent({ ...base, ideaId: otherIdea, operationId: operation(2), decision: release })
+  const placement = [intent(1, hold), encodeRecoveryHoldConfirmation(operation(1), 'dev', '2026-11-03T12:01:00.000Z', holdId)]
+  assert.throws(() => summarizeUnverifiedRecovery([...placement, otherRelease], 'dev'), /ambiguous/)
+  assert.throws(() => summarizeUnverifiedRecovery([otherRelease, ...placement], 'dev'), /ambiguous/)
+  assert.throws(() => summarizeUnverifiedRecovery([intent(1, release), otherRelease], 'dev'), /ambiguous/)
+  assert.doesNotThrow(() => summarizeUnverifiedRecovery([...placement, intent(2, release)], 'dev'))
+})
