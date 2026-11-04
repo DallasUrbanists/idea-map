@@ -153,6 +153,8 @@ export async function inspectBackupRetention(storage, target, now) {
   const evaluatedAt = fixedTime ? now : new Date()
   const latestDailyAgeSeconds = Number.isFinite(latestDaily) ? (evaluatedAt.getTime() - latestDaily) / 1000 : null
   const dailyFreshEnough = latestDailyAgeSeconds !== null && latestDailyAgeSeconds <= 86_400
+  const latestWeeklyAgeSeconds = Number.isFinite(latestWeekly) ? (evaluatedAt.getTime() - latestWeekly) / 1000 : null
+  const weeklyFreshEnough = latestWeeklyAgeSeconds !== null && latestWeeklyAgeSeconds <= 7 * 86_400
   const oldSoftDeleted = softDeleted.filter(object => {
     const created = Date.parse(object.timeCreated)
     if (!Number.isFinite(created) || !object.name?.startsWith(prefix)) throw new Error('Soft-deleted inventory is ambiguous')
@@ -160,8 +162,8 @@ export async function inspectBackupRetention(storage, target, now) {
   }).length
   const oldPendingArchives = pending.filter(object => now.getTime() - Date.parse(object.timeCreated) >= 76 * 86_400_000).length
   const reviewRequired = plan.oldOrHeld > 0 || oldPendingArchives > 0 || oldSoftDeleted > 0
-  return { ...plan, candidates: dailyFreshEnough ? plan.candidates : [], dailyFreshEnough, latestDailyAgeSeconds,
-    latestWeeklyAgeSeconds: Number.isFinite(latestWeekly) ? (evaluatedAt.getTime() - latestWeekly) / 1000 : null,
+  return { ...plan, candidates: dailyFreshEnough && weeklyFreshEnough ? plan.candidates : [],
+    dailyFreshEnough, latestDailyAgeSeconds, weeklyFreshEnough, latestWeeklyAgeSeconds,
     pendingLifecycle: pending.length, pendingCompletions: pendingCompletions.length, orphanCompletions,
     softDeleted: softDeleted.length, oldSoftDeleted, oldPendingArchives, reviewRequired }
 }
@@ -173,7 +175,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     const { Storage } = require('@google-cloud/storage')
     const result = await inspectBackupRetention(new Storage(), backupTarget(process.env))
     console.log(JSON.stringify(result))
-    if (!result.retentionSatisfied || !result.dailyFreshEnough || result.reviewRequired) process.exitCode = 1
+    if (!result.retentionSatisfied || !result.dailyFreshEnough || !result.weeklyFreshEnough || result.reviewRequired) process.exitCode = 1
   } catch {
     console.error('Backup inventory failed; inspect the target, access, and inventory before acting.')
     process.exitCode = 1

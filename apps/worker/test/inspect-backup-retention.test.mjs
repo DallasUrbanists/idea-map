@@ -56,6 +56,7 @@ test('inventory reads all pages and separately counts old soft-deleted objects',
   assert.equal(result.latestDailyAgeSeconds, 0)
   assert.equal(result.dailyFreshEnough, true)
   assert.equal(result.latestWeeklyAgeSeconds, 86_400)
+  assert.equal(result.weeklyFreshEnough, true)
   assert.ok(result.candidates.some(item => item.name === make('daily', 15).name))
   const boundary = await inspectBackupRetention(storageFor(bucket), target, new Date(now.getTime() + 86_400_000))
   assert.equal(boundary.dailyFreshEnough, true)
@@ -88,6 +89,7 @@ test('bootstrap inventory reports missing copies without proposing deletion', as
   assert.equal(result.latestDailyAgeSeconds, null)
   assert.equal(result.dailyFreshEnough, false)
   assert.equal(result.latestWeeklyAgeSeconds, null)
+  assert.equal(result.weeklyFreshEnough, false)
   assert.deepEqual(result.candidates, [])
 })
 
@@ -194,4 +196,27 @@ test('a missing archive uses completion time for the conservative grace period',
   const marker = { ...completion(daily, null), timeCreated: new Date(Date.parse(started) + 120_000).toISOString() }
   assert.throws(() => confirmCompletedExports([marker], 'dev', observed))
   assert.equal(confirmCompletedExports([marker], 'dev', new Date(observed.getTime() + 120_000)).orphanCompletions, 1)
+})
+
+test('stale weekly backups suppress candidates even with fresh daily backups and consecutive older periods', async () => {
+  const additional = Array.from({ length: 5 }, (_, index) => {
+    const created = new Date(Date.parse('2026-11-04T23:59:00.000Z') + index * 86_400_000).toISOString()
+    const daily = { ...make('daily', index),
+      name: `idea-map-v2/dev/daily/${created.slice(0, 10)}/11111111-1111-4111-8111-${String(index).padStart(12, '0')}.pgdump`,
+      timeCreated: created }
+    return [daily, completion(daily, null)]
+  }).flat()
+  const objects = [...records, ...additional]
+  const bucket = { async getMetadata() { return [metadata] },
+    async getFiles(query) { return [query.softDeleted ? [] : objects.map(item => ({ metadata: item })), null] } }
+  const atBoundary = await inspectBackupRetention(storageFor(bucket), target, new Date('2026-11-09T12:00:00.000Z'))
+  assert.equal(atBoundary.retentionSatisfied, true)
+  assert.equal(atBoundary.dailyFreshEnough, true)
+  assert.equal(atBoundary.weeklyFreshEnough, true)
+  assert.ok(atBoundary.candidates.length > 0)
+  const stale = await inspectBackupRetention(storageFor(bucket), target, new Date('2026-11-09T12:00:00.001Z'))
+  assert.equal(stale.retentionSatisfied, true)
+  assert.equal(stale.dailyFreshEnough, true)
+  assert.equal(stale.weeklyFreshEnough, false)
+  assert.deepEqual(stale.candidates, [])
 })

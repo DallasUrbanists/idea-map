@@ -288,11 +288,12 @@ backup accumulation. `privacyDeadlineVerified` is always false: the inventory
 does not establish that copies of removed content expired by their deadline.
 `latestDailyAgeSeconds` and `latestWeeklyAgeSeconds`
 measure the ages of the latest confirmed exports from their conservative start
-times. Consecutive counts alone do not establish freshness, and this diagnostic
-does not schedule checks or send alerts. If the latest daily export started
-more than 24 hours ago or is absent, `dailyFreshEnough` is false, the command
-exits nonzero, and it proposes no deletions. A fresh export alone does not prove
-that the deployed service meets its data-loss objective.
+times. `dailyFreshEnough` and `weeklyFreshEnough` are false when the respective
+export is absent or older than 24 hours or seven days. The command then proposes
+no candidates and exits nonzero. These conservative limits can signal a gap
+during a delayed run. This diagnostic does not schedule checks or send alerts.
+A fresh export alone does not prove that the deployed service meets its data-loss
+objective.
 
 `reviewRequired` is true when a live archive is old or held, or an old archive
 remains noncurrent or soft-deleted; the command exits nonzero in that case.
