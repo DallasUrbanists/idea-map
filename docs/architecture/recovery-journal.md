@@ -296,9 +296,15 @@ An unwired coordinator can compare the current confirmation's exact bytes and
 generation, then record that verification in a separate authorized transaction.
 A database function checks the original moderator, closed gate, saved ID and
 preparation time; only a trusted coordinator may attest to the storage read.
-Retries preserve the first verified generation and time. Verification is not
-journal coverage, and it does not resolve the other pending decisions, the
-independent access fence, or reopen the gate.
+Retries preserve the first verified generation and time. The current preparation,
+application, and confirmation steps require the original moderator to remain
+active and able to authenticate. If that person loses access or is unavailable,
+they cannot finish the pending operation through these steps. Keep the gate
+closed and escalate for authorized recovery; a separately authorized operator
+path and its audit evidence still need a design and test. Include that delay in
+the recovery objective. Verification is not journal coverage, and it does not
+resolve the other pending decisions, the independent access fence, or reopen the
+gate.
 
 Granting a web identity general gate updates would also let it reopen the gate;
 verify narrowly scoped grants and inherited permissions before integrating the
