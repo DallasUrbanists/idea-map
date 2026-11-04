@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { decodeRecoveryRecord, encodeRecoveryConfirmation, encodeRecoveryHoldConfirmation, encodeRecoveryHoldEvidence, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
+import { decodeRecoveryRecord, encodeRecoveryConfirmation, encodeRecoveryHoldConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
 
 const base = { operationId: '11111111-1111-4111-8111-111111111111', environment: 'dev',
   ideaId: '22222222-2222-4222-8222-222222222222', actorId: '33333333-3333-4333-8333-333333333333',
@@ -29,7 +29,7 @@ test('decision records preserve authorized removal and hold facts without extra 
   const confirmation = encodeRecoveryConfirmation(base.operationId, 'dev', base.authorizedAt)
   assert.deepEqual(decodeRecoveryRecord(intent, 'dev'), decode(intent))
   assert.deepEqual(decodeRecoveryRecord(confirmation, 'dev'), decode(confirmation))
-  const holdConfirmation = encodeRecoveryHoldConfirmation(base.operationId, 'dev', base.authorizedAt, '44444444-4444-4444-8444-444444444444')
+  const holdConfirmation = encodeRecoveryHoldConfirmation(base.operationId, 'dev', base.authorizedAt, '44444444-4444-4444-8444-444444444444', '55555555-5555-4555-8555-555555555555', '2026-11-03T12:00:00.000000Z')
   assert.deepEqual(decodeRecoveryRecord(holdConfirmation, 'dev'), decode(holdConfirmation))
   assert.equal(decode(holdConfirmation).version, 2)
 })
@@ -51,7 +51,7 @@ test('decision records reject missing, unsafe, or incompatible facts', () => {
     { ...base, unexpectedContent: 'must not be stored', decision: removal },
   ]) assert.throws(() => encodeRecoveryIntent(input), { message: 'Invalid recovery decision' })
   assert.throws(() => encodeRecoveryConfirmation(base.operationId, 'dev', 'bad'), { message: 'Invalid recovery confirmation' })
-  assert.throws(() => encodeRecoveryHoldConfirmation(base.operationId, 'dev', base.authorizedAt, 'bad'), { message: 'Invalid recovery confirmation' })
+  assert.throws(() => encodeRecoveryHoldConfirmation(base.operationId, 'dev', base.authorizedAt, 'bad', '55555555-5555-4555-8555-555555555555', '2026-11-03T12:00:00.000000Z'), { message: 'Invalid recovery confirmation' })
 })
 
 test('recovery rejects wrong-environment, ambiguous, noncanonical, or future record formats', () => {
@@ -69,11 +69,11 @@ test('hold evidence preserves the authority reference and exact microsecond plac
   const holdId = '44444444-4444-4444-8444-444444444444'
   const authority = '55555555-5555-4555-8555-555555555555'
   const placedAt = '2026-11-03T12:00:00.123456Z'
-  const result = encodeRecoveryHoldEvidence(base.operationId, 'dev', '2026-11-03T12:00:00.123Z', holdId, authority, placedAt)
-  assert.deepEqual(decodeRecoveryRecord(result, 'dev'), { version: 3, recordType: 'hold_commit_confirmation',
+  const result = encodeRecoveryHoldConfirmation(base.operationId, 'dev', '2026-11-03T12:00:00.123Z', holdId, authority, placedAt)
+  assert.deepEqual(decodeRecoveryRecord(result, 'dev'), { version: 2, recordType: 'hold_commit_confirmation',
     operationId: base.operationId, environment: 'dev', confirmedAt: '2026-11-03T12:00:00.123Z',
     holdId, placementAuthorityId: authority, placedAt })
-  assert.throws(() => encodeRecoveryHoldEvidence(base.operationId, 'dev', base.authorizedAt, holdId, authority, '2026-02-30T12:00:00.000000Z'))
-  assert.throws(() => encodeRecoveryHoldEvidence(base.operationId, 'dev', base.authorizedAt, holdId, authority, '2026-11-03T12:00:01.000000Z'))
-  assert.throws(() => encodeRecoveryHoldEvidence(base.operationId, 'dev', base.authorizedAt, holdId, 'invalid', '2026-11-03T12:00:00.000000Z'))
+  assert.throws(() => encodeRecoveryHoldConfirmation(base.operationId, 'dev', base.authorizedAt, holdId, authority, '2026-02-30T12:00:00.000000Z'))
+  assert.throws(() => encodeRecoveryHoldConfirmation(base.operationId, 'dev', base.authorizedAt, holdId, authority, '2026-11-03T12:00:01.000000Z'))
+  assert.throws(() => encodeRecoveryHoldConfirmation(base.operationId, 'dev', base.authorizedAt, holdId, 'invalid', '2026-11-03T12:00:00.000000Z'))
 })

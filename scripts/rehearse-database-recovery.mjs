@@ -9,7 +9,7 @@ import { createRequire } from 'node:module'
 import { pipeline } from 'node:stream/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { dumpArguments, exportEncryptedBackup } from '../apps/worker/ops/export-encrypted-backup.mjs'
-import { encodeRecoveryConfirmation, encodeRecoveryHoldEvidence, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../packages/server/dist/recovery-journal-record.js'
+import { encodeRecoveryConfirmation, encodeRecoveryHoldConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../packages/server/dist/recovery-journal-record.js'
 import { compareUnverifiedRecoveryCheckpoint, summarizeUnverifiedRecovery } from '../packages/server/dist/recovery-journal-plan.js'
 import { listUnverifiedRecoveryJournal, readRecoveryJournalRecord, writeRecoveryJournalRecord } from '../packages/server/dist/recovery-journal-storage.js'
 import { acquirePublicAccessLease } from '../packages/server/dist/public-access-lease.js'
@@ -190,7 +190,7 @@ try {
     const confirmedAt = await sql(source, `SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`)
     await writeRecoveryJournalRecord(journal, journalTarget, recoveryConfirmationRecordId(removalOperation), encodeRecoveryConfirmation(removalOperation, 'dev', confirmedAt))
     await writeRecoveryJournalRecord(journal, journalTarget, recoveryConfirmationRecordId(holdOperation),
-      encodeRecoveryHoldEvidence(holdOperation, 'dev', confirmedAt, committedHoldId, committedAuthorityId, committedPlacedAt))
+      encodeRecoveryHoldConfirmation(holdOperation, 'dev', confirmedAt, committedHoldId, committedAuthorityId, committedPlacedAt))
   } finally {
     if (previousEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
     else process.env.STORAGE_EMULATOR_HOST = previousEmulator

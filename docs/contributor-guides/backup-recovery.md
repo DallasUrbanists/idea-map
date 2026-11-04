@@ -64,7 +64,7 @@ older archive contains a later gate closure. These checks do not establish a
 hosted network or IAM fence.
 
 The rehearsal records the synthetic hold's committed assignment ID and exact
-placement time in a version-three confirmation; it cannot recreate the missing
+placement time in a version-two confirmation; it cannot recreate the missing
 assignment or held content from those references. It also compares its journal
 inventory with an earlier fixture checkpoint and detects a deliberately omitted
 reference. That fixture is

@@ -44,7 +44,7 @@ journal completeness. Review the project, bucket, and identity before integratio
 measure the per-read metadata checks against the full recovery-time objective.
 
 The server package contains an encoder and decoder for version-one intent and
-commit confirmation records and version-two and version-three hold-placement
+commit confirmation records and version-two hold-placement
 confirmations. It also contains a create-only transport for private JSON, a reader for a
 specifically identified object generation, an unwired live-reference inventory,
 and an unverified recovery summary. The
@@ -211,8 +211,7 @@ inventory after the fence is established. If those steps cannot be verified,
 keep the replacement isolated.
 
 Verify the checkpoint, integrity, and complete coverage through the fence. An
-object timestamp or a backup start
-time alone cannot identify every concurrent committed transaction: replay the
+object timestamp or a backup start time alone cannot identify every concurrent committed transaction: replay the
 verified relevant overlap conservatively, and require authorized reconciliation
 where order or outcome is unclear. If writers cannot be fenced or completeness
 cannot be verified, keep the restored service isolated.
@@ -230,13 +229,13 @@ idea and case or apply it automatically.
 The hold ID alone is not enough to recreate a database hold. The hold also refers
 to an idea, a person, and a legal-authority assignment, and records its placement
 time. An older archive may lack any of those rows or the assignment that was valid
-at placement. A version-three confirmation can preserve the committed assignment
-ID and exact microsecond placement time. Its caller must obtain both from the known committed
-hold; an ID does not preserve the assignment's authority evidence or the actor's
-identity. The older version-one and version-two records do not contain these
-fields. Preserve and verify the necessary authorization and referenced records
-through a reviewed recovery design; do not synthesize an
-assignment or substitute a new hold ID to make a restore pass. Keep the target
+at placement. A version-two confirmation preserves the committed assignment ID
+and exact microsecond placement time. Its caller must obtain both from the known
+committed hold; an ID does not preserve the assignment's authority evidence or
+the actor's identity. A version-one confirmation does not contain these fields.
+Preserve and verify the necessary authorization and referenced records through a
+reviewed recovery design; do not synthesize an assignment or substitute a new
+hold ID to make a restore pass. Keep the target
 isolated when the original evidence or its relationships cannot be established.
 
 On restore, an operator verifies coverage and reads the relevant complete
