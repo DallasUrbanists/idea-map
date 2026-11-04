@@ -4,6 +4,7 @@ import { CRC32C } from '@google-cloud/storage'
 import { encodeRecoveryIntent } from '../dist/recovery-journal-record.js'
 import { encodeRecoverySequenceEntry } from '../dist/recovery-sequence.js'
 import { appendAndVerifyRecoverySequenceVersion, appendRecoverySequenceVersion, readRecoverySequenceVersion, readUnverifiedRecoverySequence } from '../dist/recovery-sequence-storage.js'
+import { suppressKnownRemovalsFromSequence } from '../dist/recovery-suppression.js'
 
 const target = { environment: 'dev', epochId: '11111111-1111-4111-8111-111111111111',
   projectNumber: '123456789', secretId: 'synthetic-recovery-sequence' }
@@ -103,4 +104,28 @@ test('separate writer and reader must agree on the exact appended bytes', async 
   await assert.rejects(appendAndVerifyRecoverySequenceVersion(writer, denied, target, decision), /outcome is uncertain/)
   assert.equal(f.versions.length, 2)
   assert.deepEqual(f.versions[1], Buffer.from(decision))
+})
+
+test('sequence suppression requires every selected version and never asserts coverage', async () => {
+  const f = fake()
+  for (const bytes of [baseline, decision, fence]) await appendRecoverySequenceVersion(f.transport, target, bytes)
+  const calls = []
+  const client = { async query(statement, parameters) {
+    calls.push({ statement, parameters })
+    return { rows: statement.startsWith('SELECT * FROM public.suppress_restored_removals') ? [{ matched: 1, absent: 0 }] : [] }
+  }, release() {} }
+  const pool = { async connect() { return client } }
+  const mutableTarget = { ...target }
+  const reader = { async request(...args) {
+    mutableTarget.environment = 'prod'; mutableTarget.secretId = 'other-journal'
+    return f.transport.request(...args)
+  } }
+  assert.deepEqual(await suppressKnownRemovalsFromSequence(reader, mutableTarget, '3', nonce, pool),
+    { matched: 1, absent: 0, reviewOperations: 1, coverageVerified: false })
+  assert.deepEqual(calls.find(call => call.parameters)?.parameters, [['44444444-4444-4444-8444-444444444444']])
+  f.versions[1] = undefined
+  let connected = false
+  await assert.rejects(suppressKnownRemovalsFromSequence(f.transport, target, '3', nonce,
+    { async connect() { connected = true; throw new Error('unexpected database access') } }), /could not be verified/)
+  assert.equal(connected, false)
 })

@@ -10,11 +10,12 @@ import { pipeline } from 'node:stream/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { dumpArguments, exportEncryptedBackup } from '../apps/worker/ops/export-encrypted-backup.mjs'
 import { decodeRecoveryRecord, encodeRecoveryConfirmation, encodeRecoveryHoldManifestConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../packages/server/dist/recovery-journal-record.js'
+import { encodeRecoverySequenceEntry } from '../packages/server/dist/recovery-sequence.js'
 import { compareUnverifiedRecoveryCheckpoint } from '../packages/server/dist/recovery-journal-plan.js'
 import { encodeUnverifiedHeldManifest } from '../packages/server/dist/recovery-held-manifest.js'
 import { verifyUnverifiedHeldCapture } from '../packages/server/dist/recovery-held-verification.js'
 import { prepareUnverifiedRecoveryInventory } from '../packages/server/dist/recovery-inventory.js'
-import { suppressKnownRemovalsFromJournal, suppressUnverifiedRestoredRemovals } from '../packages/server/dist/recovery-suppression.js'
+import { suppressKnownRemovalsFromSequence, suppressUnverifiedRestoredRemovals } from '../packages/server/dist/recovery-suppression.js'
 import { listUnverifiedRecoveryJournal, writeRecoveryJournalRecord, writeUnverifiedHeldMaterial } from '../packages/server/dist/recovery-journal-storage.js'
 import { acquirePublicAccessLease } from '../packages/server/dist/public-access-lease.js'
 import { readPublishedIdea } from '../packages/server/dist/published-ideas.js'
@@ -300,7 +301,8 @@ try {
   const laterRevisionQuery = `SELECT count(*) FROM idea_revisions WHERE idea_id='${ideaId}' AND version=2`
   const sourceLaterRevision = await sql(source, laterRevisionQuery)
   const restoredLaterRevision = await sql(target, laterRevisionQuery)
-  let summary, recoveryRecords
+  let summary, recoveryRecords, sequenceReader, sequenceTarget, sequenceFenceVersion, sequenceFenceNonce
+  let omitSequenceVersion = false
   const inventoryEmulator = process.env.STORAGE_EMULATOR_HOST
   delete process.env.STORAGE_EMULATOR_HOST
   try {
@@ -318,6 +320,25 @@ try {
     }
     recoveryRecords = preparedInventory.records
     summary = preparedInventory.summary
+    sequenceTarget = { environment: 'dev', projectNumber: '123456789', secretId: 'synthetic-recovery-sequence', epochId: randomUUID() }
+    sequenceFenceNonce = randomUUID()
+    const sequenceBase = { environment: sequenceTarget.environment, epochId: sequenceTarget.epochId }
+    const frames = [encodeRecoverySequenceEntry({ ...sequenceBase, kind: 'baseline', checkpointDigest: 'a'.repeat(64) }),
+      ...recoveryRecords.map((record, index) => encodeRecoverySequenceEntry({ ...sequenceBase, kind: 'decision',
+        recordId: preparedInventory.references[index].recordId, data: Buffer.from(record).toString('base64') })),
+      encodeRecoverySequenceEntry({ ...sequenceBase, kind: 'fence', nonce: sequenceFenceNonce })]
+    sequenceFenceVersion = String(frames.length)
+    const sequenceParent = `projects/${sequenceTarget.projectNumber}/secrets/${sequenceTarget.secretId}`
+    sequenceReader = { async request(method, path) {
+      const match = new RegExp(`^${sequenceParent}/versions/([1-9][0-9]*):access$`).exec(path)
+      if (method !== 'GET' || !match) throw new Error('Unexpected synthetic sequence request')
+      const version = Number(match[1]), bytes = frames[version - 1]
+      if (!bytes || (omitSequenceVersion && version === 2)) return { status: 404, data: null }
+      const checksum = new CRC32C(); checksum.update(Buffer.from(bytes))
+      return { status: 200, data: { name: `${sequenceParent}/versions/${version}`, payload: {
+        data: Buffer.from(bytes).toString('base64'), dataCrc32c: String(Buffer.from(checksum.toString(), 'base64').readUInt32BE(0)),
+      } } }
+    } }
     const holdIntent = recoveryRecords.find(record => {
       const decoded = decodeRecoveryRecord(record, 'dev')
       return decoded.operationId === holdOperation && decoded.recordType === 'intent'
@@ -394,7 +415,13 @@ try {
     const coordinatorEmulator = process.env.STORAGE_EMULATOR_HOST
     delete process.env.STORAGE_EMULATOR_HOST
     try {
-      const coordinated = await suppressKnownRemovalsFromJournal(journal, journalTarget, recoveryPool)
+      omitSequenceVersion = true
+      let rejectedMissingVersion = false
+      try { await suppressKnownRemovalsFromSequence(sequenceReader, sequenceTarget, sequenceFenceVersion, sequenceFenceNonce, recoveryPool) }
+      catch (error) { rejectedMissingVersion = error.message === 'Recovery sequence could not be verified' }
+      finally { omitSequenceVersion = false }
+      if (!rejectedMissingVersion || (await sql(target, visibleQuery)) !== '1') throw new Error('Synthetic sequence accepted a missing version')
+      const coordinated = await suppressKnownRemovalsFromSequence(sequenceReader, sequenceTarget, sequenceFenceVersion, sequenceFenceNonce, recoveryPool)
       if (JSON.stringify(coordinated) !== JSON.stringify({ matched: 1, absent: 0, reviewOperations: 1, coverageVerified: false }) ||
           (await sql(target, visibleQuery)) !== '0') throw new Error('Synthetic inventory did not suppress the restored removal')
       if (await sql(target, 'SELECT is_open FROM public.public_access_gate WHERE singleton=true') !== 'f') {

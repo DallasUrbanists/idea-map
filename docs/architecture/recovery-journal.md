@@ -436,6 +436,11 @@ confirmation before appending it. It compares the exact numbered entry through
 a reader, then records verification only for the same target and a version
 later than the intent. An uncertain append or read leaves the gate closed.
 These steps do not establish that all decisions and held material are present.
+An isolated restore can also read each numbered entry through a selected fence
+and suppress the removals found there. A missing version stops suppression;
+successful reads do not authenticate the baseline, fence or writer cutoff and do
+not authorize opening public access. The local rehearsal uses a synthetic
+sequence and demonstrates only this fail-closed behavior.
 
 An unwired application step accepts the saved intent and uses a separately
 authorized journal reader and database coordinator. It verifies the current

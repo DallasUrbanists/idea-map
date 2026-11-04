@@ -2,6 +2,7 @@ import type pg from 'pg'
 import type { Storage } from '@google-cloud/storage'
 import { prepareUnverifiedRecoveryInventory } from './recovery-inventory.js'
 import { summarizeUnverifiedRecovery } from './recovery-journal-plan.js'
+import { readUnverifiedRecoverySequence, type RecoverySequenceTransport } from './recovery-sequence-storage.js'
 
 /**
  * Suppress every known removal intent on an independently isolated restore.
@@ -44,4 +45,18 @@ export async function suppressKnownRemovalsFromJournal(storage: Storage,
   target: { environment: 'dev' | 'prod', bucket: string, projectNumber: string }, pool: pg.Pool, timeoutMs = 120_000) {
   const inventory = await prepareUnverifiedRecoveryInventory(storage, target, timeoutMs)
   return suppressUnverifiedRestoredRemovals(pool, inventory.records, target.environment)
+}
+
+/**
+ * Read exact numbered entries through a selected fence before suppression.
+ * The caller must independently authenticate the baseline and fence, isolate
+ * the restore, and stop all writers; this never proves coverage or opens access.
+ */
+export async function suppressKnownRemovalsFromSequence(reader: RecoverySequenceTransport,
+  target: { environment: 'dev' | 'prod', epochId: string, projectNumber: string, secretId: string },
+  fenceVersion: string, fenceNonce: string, pool: pg.Pool, timeoutMs = 120_000) {
+  if (!target) throw new Error('Invalid recovery sequence target')
+  const destination = { ...target }
+  const inventory = await readUnverifiedRecoverySequence(reader, destination, fenceVersion, fenceNonce, timeoutMs)
+  return suppressUnverifiedRestoredRemovals(pool, inventory.records.map(record => record.payload), destination.environment)
 }
