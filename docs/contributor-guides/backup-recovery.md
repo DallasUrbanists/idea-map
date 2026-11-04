@@ -45,7 +45,8 @@ identifies the synthetic idea for hold review, and uses the suppression primitiv
 for the known removal in the isolated restore. It also stores and reads back one
 synthetic title from the later revision as a bounded held-material artifact. A
 synthetic manifest links that artifact to the hold and is itself referenced by a
-version-three confirmation. That single value is not a complete hold scope or a
+version-three confirmation; the rehearsal verifies the selected exact generation
+and digest. That single value is not a complete hold scope or a
 reconstruction of the revision.
 It verifies that an open gate
 blocks suppression and that a retry is idempotent. With

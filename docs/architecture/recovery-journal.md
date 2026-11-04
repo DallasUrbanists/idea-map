@@ -519,9 +519,12 @@ An unwired manifest format can associate selected revision or media references
 and exact artifact generations with one hold; a version-three confirmation can
 reference the stored manifest. The caller must read that exact generation before
 reconciliation checks the manifest's digest, environment, operation, idea and
-hold IDs. A revision entry can represent only
+hold IDs. An unwired verifier can also read each listed generation and check its
+size and digest. It reads at most four artifacts concurrently, limits their total
+to 128 MiB, and bounds waiting to two minutes. Missing, altered, oversized, or
+unavailable artifacts fail verification. A revision entry can represent only
 part of a revision, and the manifest does not establish what the authorized
-scope requires or that every listed artifact exists. The primitives do not
+scope requires or guarantee future availability. The primitives do not
 authenticate the scope, capture all evidence, implement retention, legal-hold
 release or disposition, or establish complete recovery. Do not use them to
 authorize deletion or enable a live hold workflow. Review permissions for the

@@ -11,11 +11,11 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { dumpArguments, exportEncryptedBackup } from '../apps/worker/ops/export-encrypted-backup.mjs'
 import { decodeRecoveryRecord, encodeRecoveryConfirmation, encodeRecoveryHoldManifestConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../packages/server/dist/recovery-journal-record.js'
 import { compareUnverifiedRecoveryCheckpoint } from '../packages/server/dist/recovery-journal-plan.js'
-import { encodeUnverifiedHeldManifest, matchUnverifiedHeldManifest } from '../packages/server/dist/recovery-held-manifest.js'
+import { encodeUnverifiedHeldManifest } from '../packages/server/dist/recovery-held-manifest.js'
+import { verifyUnverifiedHeldCapture } from '../packages/server/dist/recovery-held-verification.js'
 import { prepareUnverifiedRecoveryInventory } from '../packages/server/dist/recovery-inventory.js'
 import { suppressKnownRemovalsFromJournal, suppressUnverifiedRestoredRemovals } from '../packages/server/dist/recovery-suppression.js'
-import { listUnverifiedRecoveryJournal, readUnverifiedHeldMaterial, writeRecoveryJournalRecord,
-  writeUnverifiedHeldMaterial } from '../packages/server/dist/recovery-journal-storage.js'
+import { listUnverifiedRecoveryJournal, writeRecoveryJournalRecord, writeUnverifiedHeldMaterial } from '../packages/server/dist/recovery-journal-storage.js'
 import { acquirePublicAccessLease } from '../packages/server/dist/public-access-lease.js'
 import { readPublishedIdea } from '../packages/server/dist/published-ideas.js'
 import { readMediaPreview } from '../packages/server/dist/media-preview.js'
@@ -221,6 +221,7 @@ try {
     const confirmedAt = await sql(source, `SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`)
     await writeRecoveryJournalRecord(journal, journalTarget, recoveryConfirmationRecordId(removalOperation), encodeRecoveryConfirmation(removalOperation, 'dev', confirmedAt))
     const heldTitle = await sql(source, `SELECT content->>'title' FROM idea_revisions WHERE idea_id='${ideaId}' AND version=2`)
+    if (heldTitle !== 'Synthetic later held material') throw new Error('Synthetic held revision is ambiguous')
     const heldRevision = await sql(source, `SELECT id FROM idea_revisions WHERE idea_id='${ideaId}' AND version=2`)
     heldReference = await writeUnverifiedHeldMaterial(journal, journalTarget, heldArtifact, Buffer.from(heldTitle))
     const manifest = encodeUnverifiedHeldManifest({ environment: 'dev', operationId: holdOperation, ideaId, holdId: committedHoldId,
@@ -326,15 +327,9 @@ try {
       return decoded.operationId === holdOperation && decoded.recordType === 'hold_commit_confirmation'
     })
     if (!holdIntent || !holdConfirmation) throw new Error('Synthetic hold records are missing')
-    const selected = summary.holdIdentities[0]?.heldManifest
-    if (!selected) throw new Error('Synthetic held manifest reference is missing')
-    const manifest = await readUnverifiedHeldMaterial(journal, journalTarget, selected.artifactId, selected)
-    const match = matchUnverifiedHeldManifest(holdIntent, holdConfirmation, manifest, 'dev')
-    const entry = match.manifest.entries[0]
-    if (!entry || match.manifest.entries.length !== 1 || match.coverageVerified !== false) throw new Error('Synthetic held manifest is ambiguous')
-    const heldTitle = await readUnverifiedHeldMaterial(journal, journalTarget, entry.artifactId, entry)
+    const checked = await verifyUnverifiedHeldCapture(journal, journalTarget, holdIntent, holdConfirmation)
     if (heldReference.coverageVerified !== false || manifestReference.coverageVerified !== false ||
-        Buffer.from(heldTitle).toString() !== 'Synthetic later held material') {
+        checked.coverageVerified !== false || checked.checkedArtifacts !== 1 || checked.totalBytes !== heldReference.size) {
       throw new Error('Synthetic held material readback failed')
     }
   } finally {

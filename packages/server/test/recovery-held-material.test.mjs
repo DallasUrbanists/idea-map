@@ -4,6 +4,9 @@ import { Readable, Writable } from 'node:stream'
 import { after, test } from 'node:test'
 import { CRC32C } from '@google-cloud/storage'
 import { readUnverifiedHeldMaterial, writeUnverifiedHeldMaterial } from '../dist/recovery-journal-storage.js'
+import { encodeUnverifiedHeldManifest } from '../dist/recovery-held-manifest.js'
+import { encodeRecoveryHoldManifestConfirmation, encodeRecoveryIntent } from '../dist/recovery-journal-record.js'
+import { verifyUnverifiedHeldCapture } from '../dist/recovery-held-verification.js'
 
 const target = { environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789' }
 const artifact = '11111111-1111-4111-8111-111111111111'
@@ -17,6 +20,7 @@ after(() => {
 
 function fake({ wrongChecksum = false, missingHeader = false, failWrite = false } = {}) {
   const objects = new Map()
+  let reads = 0
   const storage = { bucket(name) { return {
     async getMetadata() { return [{ name, projectNumber: target.projectNumber,
       iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
@@ -38,6 +42,7 @@ function fake({ wrongChecksum = false, missingHeader = false, failWrite = false 
             callback()
           } })
       }, createReadStream() {
+        reads++
         const object = objects.get(path)
         const request = file.interceptors[0].request({ uri: '/synthetic', qs: {} })
         if (!object || request.qs.generation !== object.metadata.generation || request.qs.ifGenerationMatch !== object.metadata.generation) {
@@ -52,7 +57,7 @@ function fake({ wrongChecksum = false, missingHeader = false, failWrite = false 
       return file
     },
   } } }
-  return { storage, objects }
+  return { storage, objects, reads: () => reads }
 }
 
 test('private held material is create-only and read by exact generation and digest', async () => {
@@ -89,4 +94,51 @@ test('the selected bytes and reference cannot change while storage is pending', 
   reference.sha256 = '0'.repeat(64)
   reference.size = 1
   assert.deepEqual(Buffer.from(await pendingRead), contents)
+})
+
+test('verification reads every selected generation but never asserts hold coverage', async () => {
+  const { storage, objects, reads } = fake()
+  const operationId = '22222222-2222-4222-8222-222222222222', ideaId = '33333333-3333-4333-8333-333333333333'
+  const holdId = '44444444-4444-4444-8444-444444444444', actorId = '55555555-5555-4555-8555-555555555555'
+  const manifestId = '66666666-6666-4666-8666-666666666666', mediaId = '77777777-7777-4777-8777-777777777777'
+  const saved = await writeUnverifiedHeldMaterial(storage, target, artifact, contents)
+  const secondId = '99999999-9999-4999-8999-999999999999', secondBytes = Buffer.from('synthetic media')
+  const second = await writeUnverifiedHeldMaterial(storage, target, secondId, secondBytes)
+  const entry = { kind: 'revision', sourceId: mediaId, sourceGeneration: null, artifactId: artifact,
+    generation: saved.generation, size: saved.size, sha256: saved.sha256 }
+  const media = { kind: 'media', sourceId: mediaId, sourceGeneration: '123', artifactId: secondId,
+    generation: second.generation, size: second.size, sha256: second.sha256 }
+  const manifest = encodeUnverifiedHeldManifest({ environment: 'dev', operationId, ideaId, holdId, entries: [entry, media] })
+  const manifestRef = await writeUnverifiedHeldMaterial(storage, target, manifestId, manifest)
+  const intent = encodeRecoveryIntent({ environment: 'dev', operationId, ideaId, actorId, authorizedAt: '2026-11-03T12:00:00.000Z',
+    decision: { kind: 'hold_placement', caseReference: 'synthetic case', reason: 'synthetic reason',
+      authorizationReference: 'synthetic authority', scope: 'synthetic scope' } })
+  const confirmation = encodeRecoveryHoldManifestConfirmation(operationId, 'dev', '2026-11-03T12:01:00.000Z', holdId,
+    '88888888-8888-4888-8888-888888888888', '2026-11-03T12:00:00.123456Z',
+    { actorId, authority: 'executive_director', grantedBy: actorId, grantedAt: '2026-11-03T11:59:00.000000Z',
+      authorizationReference: 'synthetic authority' },
+    { artifactId: manifestId, generation: manifestRef.generation, size: manifestRef.size, sha256: manifestRef.sha256 })
+  assert.deepEqual(await verifyUnverifiedHeldCapture(storage, target, intent, confirmation),
+    { checkedArtifacts: 2, totalBytes: contents.length + secondBytes.length, coverageVerified: false })
+  const mediaPath = `idea-map-v2/dev/held-material/${secondId}.bin`
+  objects.get(mediaPath).body = Buffer.alloc(secondBytes.length, 1)
+  await assert.rejects(verifyUnverifiedHeldCapture(storage, target, intent, confirmation), /could not be verified/)
+  objects.delete(`idea-map-v2/dev/held-material/${secondId}.bin`)
+  await assert.rejects(verifyUnverifiedHeldCapture(storage, target, intent, confirmation), error =>
+    error.message === 'Held capture could not be verified' && !error.message.includes('private'))
+  await assert.rejects(verifyUnverifiedHeldCapture(storage, target, intent, confirmation, 0), /Invalid/)
+  const bigEntries = Array.from({ length: 9 }, (_, index) => ({ kind: 'revision',
+    sourceId: `aaaaaaaa-aaaa-4aaa-8aaa-${String(index).padStart(12, '0')}`, sourceGeneration: null,
+    artifactId: `bbbbbbbb-bbbb-4bbb-8bbb-${String(index).padStart(12, '0')}`, generation: '1', size: 16 * 1024 * 1024, sha256: 'a'.repeat(64) }))
+  const bigBytes = encodeUnverifiedHeldManifest({ environment: 'dev', operationId, ideaId, holdId, entries: bigEntries })
+  const bigId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const bigRef = await writeUnverifiedHeldMaterial(storage, target, bigId, bigBytes)
+  const bigConfirmation = encodeRecoveryHoldManifestConfirmation(operationId, 'dev', '2026-11-03T12:01:00.000Z', holdId,
+    '88888888-8888-4888-8888-888888888888', '2026-11-03T12:00:00.123456Z',
+    { actorId, authority: 'executive_director', grantedBy: actorId, grantedAt: '2026-11-03T11:59:00.000000Z',
+      authorizationReference: 'synthetic authority' },
+    { artifactId: bigId, generation: bigRef.generation, size: bigRef.size, sha256: bigRef.sha256 })
+  const before = reads()
+  await assert.rejects(verifyUnverifiedHeldCapture(storage, target, intent, bigConfirmation), /could not be verified/)
+  assert.equal(reads() - before, 1)
 })
