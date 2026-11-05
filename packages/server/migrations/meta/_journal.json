@@ -330,6 +330,13 @@
       "when": 1793850836483,
       "tag": "0046_fence_unresolved_decisions",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1793851952010,
+      "tag": "0047_place_independent_access_closure",
+      "breakpoints": true
     }
   ]
 }

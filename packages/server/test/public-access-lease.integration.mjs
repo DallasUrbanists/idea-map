@@ -164,6 +164,53 @@ test('independent closures serialize with opening and cannot be bypassed', async
   }
 })
 
+test('a separately granted closure capability can close but never reopen access', async () => {
+  const admin = new pg.Pool({ connectionString: url.toString(), max: 3, connectionTimeoutMillis: 2000 })
+  const role = `gate_closer_${randomUUID().replaceAll('-', '')}`
+  const recovery = randomUUID(), operator = randomUUID()
+  const closureSql = 'SELECT public.place_independent_access_closure($1,$2)'
+  let restricted, lease, roleCreated = false
+  try {
+    await admin.query(`CREATE ROLE "${role}" LOGIN PASSWORD 'synthetic-only'`); roleCreated = true
+    await admin.query(`GRANT USAGE ON SCHEMA public TO "${role}"`)
+    const restrictedUrl = new URL(url)
+    restrictedUrl.username = role; restrictedUrl.password = 'synthetic-only'
+    restricted = new pg.Pool({ connectionString: restrictedUrl.toString(), max: 1 })
+    await assert.rejects(restricted.query(closureSql, ['recovery', recovery]), { code: '42501' })
+    await admin.query(`GRANT EXECUTE ON FUNCTION public.place_independent_access_closure(text,uuid) TO "${role}"`)
+    await assert.rejects(restricted.query(closureSql, ['removal', recovery]), /Invalid access closure/)
+    await assert.rejects(restricted.query(closureSql, ['operator', '00000000-0000-8000-8000-000000000001']), /Invalid access closure/)
+    await restricted.query('BEGIN ISOLATION LEVEL REPEATABLE READ')
+    await assert.rejects(restricted.query(closureSql, ['recovery', recovery]), /Invalid access closure/)
+    await restricted.query('ROLLBACK')
+    await admin.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true')
+    lease = await acquirePublicAccessLease(admin)
+    await restricted.query(closureSql, ['recovery', recovery])
+    await restricted.query(closureSql, ['recovery', recovery])
+    await restricted.query(closureSql, ['operator', operator])
+    await waitForAborts(lease.signal)
+    await assert.rejects(lease.release(), /Public access unavailable/)
+    assert.equal((await admin.query('SELECT count(*)::int AS count FROM public.public_access_closures WHERE cause_id=ANY($1::uuid[])', [[recovery, operator]])).rows[0].count, 2)
+    await assert.rejects(restricted.query('DELETE FROM public.public_access_closures'), { code: '42501' })
+    await assert.rejects(restricted.query('UPDATE public.public_access_gate SET is_open=true'), { code: '42501' })
+    await admin.query("DELETE FROM public.public_access_closures WHERE kind='recovery' AND cause_id=$1", [recovery])
+    await assert.rejects(admin.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true'), /Public access unavailable/)
+    const missingGate = await admin.connect()
+    try {
+      await missingGate.query('BEGIN')
+      await missingGate.query('DELETE FROM public.public_access_gate WHERE singleton=true')
+      await assert.rejects(missingGate.query(closureSql, ['recovery', recovery]), /Public access unavailable/)
+    } finally { await missingGate.query('ROLLBACK').catch(() => {}); missingGate.release() }
+  } finally {
+    await lease?.release().catch(() => {})
+    if (restricted) await restricted.end()
+    await admin.query('UPDATE public.public_access_gate SET is_open=false WHERE singleton=true')
+    await admin.query('DELETE FROM public.public_access_closures WHERE cause_id=ANY($1::uuid[])', [[recovery, operator]])
+    if (roleCreated) { await admin.query(`DROP OWNED BY "${role}"`); await admin.query(`DROP ROLE "${role}"`) }
+    await admin.end()
+  }
+})
+
 test('a live lease aborts when an inconsistent open gate has a closure', async () => {
   const pool = new pg.Pool({ connectionString: url.toString(), max: 4, connectionTimeoutMillis: 2000 })
   const cause = randomUUID()
