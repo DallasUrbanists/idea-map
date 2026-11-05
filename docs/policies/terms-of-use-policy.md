@@ -47,19 +47,23 @@ license or grant the public a general reuse license.
 
 ## Acceptable use and moderation
 
-You should share good-faith civic ideas and respect other people. Idea Map does
-not publish credible threats, incitement, targeted harassment, hateful attacks,
-explicit sexual material, unauthorized private information, spam, fraud,
-malware, or material you lack permission to share.
+You should share good-faith civic ideas and respect other people. You should not submit credible threats, incitement, targeted harassment,
+hateful attacks, explicit sexual material, unauthorized private information,
+spam, fraud, malware, or material you lack permission to share.
 
-Idea Map reviews submissions and edits before publication. Moderators can
-approve, reject, request changes, hold a submission, or remove published
-material under the [moderation policy](moderation-policy.md). Good-faith
-criticism, political views, and disagreement alone are not grounds for
-rejection.
+During the open MVP beta, submissions and explicitly submitted edits become
+public immediately without pre-publication review or automated moderation.
+Saved drafts remain private. Operators can remove published material or pause
+new posting in response to abuse or an incident under the
+[moderation policy](moderation-policy.md).
+
+In reviewed-publication mode, submissions and edits are reviewed before
+publication, and moderators can approve, reject, request changes, hold a
+submission, or remove published material. Good-faith criticism, political views,
+and disagreement alone are not grounds for rejection or removal.
 
 You can correct a submission or request another review of a moderation decision.
-An appeal does not make rejected content public. Rights, privacy, removal, and
+A correction or appeal request does not restore removed or rejected content. Rights, privacy, removal, and
 appeal questions can be sent to
 [contact@dallasurbanists.org](mailto:contact@dallasurbanists.org).
 
