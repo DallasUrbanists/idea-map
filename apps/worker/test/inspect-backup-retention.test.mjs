@@ -266,6 +266,9 @@ test('completion inventory rejects unfinished, altered, or mismatched copies', (
   assert.throws(() => confirmCompletedExports(records.map(item => item === marker ? { ...item, metadata: { ...item.metadata, bucket_metageneration: '99' } } : item), 'dev', now))
   assert.throws(() => confirmCompletedExports(records.map(item => item === daily ? { ...item, generation: '9999' } : item), 'dev', now))
   assert.throws(() => confirmCompletedExports(records.map(item => item === weekly ? { ...item, crc32c: 'BBBBBB==' } : item), 'dev', now))
+  const noncanonical = records.map(item => item === daily ? { ...item, crc32c: 'AAAAAB==' } :
+    item === marker ? { ...item, metadata: { ...item.metadata, daily_crc32c: 'AAAAAB==' } } : item)
+  assert.throws(() => confirmCompletedExports(noncanonical, 'dev', now))
   assert.throws(() => confirmCompletedExports(records.filter(item => item !== daily), 'dev', now))
   const olderWeekly = records.find(item => item.name.includes('/weekly/') && now - Date.parse(item.timeCreated) >= 15 * 86_400_000)
   const expiredDaily = records.filter(item => item.name !== olderWeekly.name.replace('/weekly/', '/daily/'))

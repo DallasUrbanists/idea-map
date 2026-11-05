@@ -3,13 +3,22 @@ import { spawn, spawnSync } from 'node:child_process'
 import { Readable, Writable } from 'node:stream'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { backupConfiguration, backupConnectionEnvironment, exportEncryptedBackup, startDump, verifyBackupBucket } from '../ops/export-encrypted-backup.mjs'
+import { backupConfiguration, backupConnectionEnvironment, exportEncryptedBackup, isCanonicalBackupCrc32c, startDump, verifyBackupBucket } from '../ops/export-encrypted-backup.mjs'
 
 const env = { BACKUP_ENVIRONMENT: 'dev', BACKUP_BUCKET: 'synthetic-private-backups', BACKUP_PROJECT_NUMBER: '123456789',
   BACKUP_DATABASE_URL: 'postgres://test:secret@example.invalid/db?sslmode=verify-full&sslrootcert=system' }
 const metadata = { name: env.BACKUP_BUCKET, projectNumber: env.BACKUP_PROJECT_NUMBER, generation: '11', metageneration: '1',
   iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
   versioning: { enabled: true }, softDeletePolicy: { retentionDurationSeconds: '604800' } }
+
+test('backup checksums require canonical four-byte base64', () => {
+  assert.equal(isCanonicalBackupCrc32c('AAAAAA=='), true)
+  // The last base64 character has unused bits: this decodes to the same bytes.
+  assert.deepEqual(Buffer.from('AAAAAB==', 'base64'), Buffer.from('AAAAAA==', 'base64'))
+  for (const value of ['AAAAAB==', 'AAAAAA=', 'AAAAA===', '', null]) {
+    assert.equal(isCanonicalBackupCrc32c(value), false)
+  }
+})
 
 test('backup configuration requires direct verified TLS and a hosted production job', () => {
   assert.equal(backupConfiguration(env).environment, 'dev')
@@ -77,7 +86,7 @@ test('a dump warning fails the export without exposing diagnostic contents', asy
   await assert.rejects(result.done, error => error.message === 'Database export failed or reported a warning' && !error.message.includes('synthetic'))
 })
 
-function provider(bucketMetadata = metadata, failWeekly = false, failCompletion = false, mismatchedWeekly = false, ambiguousCompletion = false, stallUpload = false, archiveBucket = env.BACKUP_BUCKET) {
+function provider(bucketMetadata = metadata, failWeekly = false, failCompletion = false, mismatchedWeekly = false, ambiguousCompletion = false, stallUpload = false, archiveBucket = env.BACKUP_BUCKET, archiveCrc = 'AAAAAA==') {
   const states = []
   const manifests = []
   const bucket = { async getMetadata() { return [bucketMetadata] }, file(name) {
@@ -99,7 +108,7 @@ function provider(bucketMetadata = metadata, failWeekly = false, failCompletion 
         write(chunk, encoding, callback) { state.bytes += chunk.toString(); callback(failWeekly && name.includes('/weekly/') ? new Error('synthetic upload failure') : undefined) },
         final(callback) {
           if (stallUpload) return
-          state.finalized = true; file.metadata = { name, bucket: archiveBucket, generation: '123', metageneration: '1', size: String(Buffer.byteLength(state.bytes) + (mismatchedWeekly && name.includes('/weekly/') ? 1 : 0)), crc32c: 'AAAAAA==' }; callback()
+          state.finalized = true; file.metadata = { name, bucket: archiveBucket, generation: '123', metageneration: '1', size: String(Buffer.byteLength(state.bytes) + (mismatchedWeekly && name.includes('/weekly/') ? 1 : 0)), crc32c: archiveCrc }; callback()
         },
         destroy(error, callback) { state.destroyed = true; callback(error) },
       })
@@ -188,6 +197,12 @@ test('an archive response without the selected bucket prevents completion', asyn
     await assert.rejects(exportEncryptedBackup(backupConfiguration(env), { storage: fake.storage, start: () => source() }))
     assert.equal(fake.manifests.length, 0)
   }
+})
+
+test('a noncanonical archive checksum prevents a completion marker', async () => {
+  const fake = provider(metadata, false, false, false, false, false, env.BACKUP_BUCKET, 'AAAAAB==')
+  await assert.rejects(exportEncryptedBackup(backupConfiguration(env), { storage: fake.storage, start: () => source() }))
+  assert.equal(fake.manifests.length, 0)
 })
 
 test('a changed bucket prevents a verified export', async () => {

@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { backupTarget, verifyBackupBucket } from './export-encrypted-backup.mjs'
+import { backupTarget, isCanonicalBackupCrc32c, verifyBackupBucket } from './export-encrypted-backup.mjs'
 import { parseBackupProviderTime, planBackupRetention } from './plan-backup-retention.mjs'
 
 const backupObjectPattern = /^(daily|weekly|completion)\/(\d{4}-\d{2}-\d{2})\/([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})\.(pgdump|complete)$/
@@ -62,7 +62,7 @@ export function confirmCompletedExports(objects, environment, now, bucketIdentit
   const names = new Set()
   const snapshots = new Map()
   const number = value => typeof value === 'string' && /^[1-9][0-9]*$/.test(value)
-  const crc = value => typeof value === 'string' && /^[A-Za-z0-9+/]{6}==$/.test(value)
+  const crc = isCanonicalBackupCrc32c
   for (const object of objects) {
     if (!object.name?.startsWith(prefix) || names.has(object.name) || object.timeDeleted !== undefined ||
         object.softDeleteTime !== undefined || object.hardDeleteTime !== undefined) throw new Error('Backup generations are ambiguous')

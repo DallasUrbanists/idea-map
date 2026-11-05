@@ -10,6 +10,12 @@ import { verifyBackupBucket } from '@idea-map/server/backup-bucket'
 
 export { verifyBackupBucket } from '@idea-map/server/backup-bucket'
 
+/** Provider CRC32C values must encode exactly four bytes in canonical base64. */
+export function isCanonicalBackupCrc32c(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9+/]{6}==$/.test(value) &&
+    Buffer.from(value, 'base64').toString('base64') === value
+}
+
 export function backupTarget(env) {
   if (typeof env.STORAGE_EMULATOR_HOST === 'string' || !['dev', 'prod'].includes(env.BACKUP_ENVIRONMENT) || !/^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$/.test(env.BACKUP_BUCKET ?? '') ||
       !/^[1-9][0-9]{5,19}$/.test(env.BACKUP_PROJECT_NUMBER ?? '')) throw new Error('Invalid backup target')
@@ -197,7 +203,7 @@ export async function exportEncryptedBackup(config, options = {}) {
       if (saved?.name !== paths[index] || saved.bucket !== destination.bucket ||
           typeof saved.generation !== 'string' || !/^[1-9][0-9]*$/.test(saved.generation) ||
           typeof saved.metageneration !== 'string' || !/^[1-9][0-9]*$/.test(saved.metageneration) ||
-          typeof saved.size !== 'string' || !/^[1-9][0-9]*$/.test(saved.size) || !/^[A-Za-z0-9+/]{6}==$/.test(saved.crc32c ?? '')) {
+          typeof saved.size !== 'string' || !/^[1-9][0-9]*$/.test(saved.size) || !isCanonicalBackupCrc32c(saved.crc32c)) {
         throw new Error('Uploaded backup metadata is incomplete')
       }
       return { generation: saved.generation, size: saved.size, crc32c: saved.crc32c }
