@@ -209,6 +209,10 @@ inventory process. The inventory refuses archives without a matching record,
 and weekly copies whose size or checksum differs from the daily copy. The record
 confirms the export finished; CRC32C detects accidental corruption, not
 malicious alteration. Only a restore test verifies that an archive is usable.
+Bucket metadata and completion-record requests each have a 15-second wait
+limit. The limit does not cancel an SDK request already in flight; it can still
+finish after the exporter reports failure. Review the outcome before retrying.
+The separate hosted job timeout remains necessary for the dump and uploads.
 If an entire week's copy is missing, an authorized operator can rerun the
 command with `--weekly` to write both classes from one new snapshot. This does
 not reconstruct an earlier point in time.

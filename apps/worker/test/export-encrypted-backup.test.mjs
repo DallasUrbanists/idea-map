@@ -160,6 +160,23 @@ test('an ambiguous completion response cannot report a successful backup', async
   assert.equal(manifests.length, 1) // A failed response can still leave the marker at the provider.
 })
 
+test('stalled bucket and completion requests fail without reporting a completed export', async () => {
+  let started = false, finishMetadata
+  const stalledBucket = { bucket: () => ({ async getMetadata() { return new Promise(resolve => { finishMetadata = resolve }) } }) }
+  await assert.rejects(exportEncryptedBackup(backupConfiguration(env), { storage: stalledBucket, providerTimeoutMs: 20,
+    start: () => { started = true; return source() } }), /timed out/)
+  finishMetadata([metadata])
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(started, false)
+  const fake = provider()
+  const bucket = fake.storage.bucket()
+  const original = bucket.file.bind(bucket)
+  bucket.file = name => name.endsWith('.complete') ? { async save() { return new Promise(() => {}) } } : original(name)
+  await assert.rejects(exportEncryptedBackup(backupConfiguration(env), { storage: { bucket: () => bucket }, providerTimeoutMs: 20,
+    now: new Date('2026-11-02T10:00:00Z'), start: () => source() }), /timed out/)
+  assert.ok(fake.states.every(state => state.finalized)) // The provider may still create a marker after the timeout.
+})
+
 test('different archive metadata prevents a completion record', async () => {
   const { storage, manifests } = provider(metadata, false, false, true)
   await assert.rejects(exportEncryptedBackup(backupConfiguration(env), { storage, now: new Date('2026-11-02T10:00:00Z'), start: () => source() }))

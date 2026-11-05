@@ -55,6 +55,20 @@ export function startDump(env, spawnProcess = spawn) {
   return { child, done }
 }
 
+// This bounds waiting, not the lifetime of an SDK request already in flight.
+async function withinProviderTimeout(action, timeoutMs) {
+  const deadline = performance.now() + timeoutMs
+  let timer
+  try {
+    const result = await Promise.race([
+      Promise.resolve().then(action),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Backup storage request timed out')), timeoutMs) }),
+    ])
+    if (performance.now() >= deadline) throw new Error('Backup storage request timed out')
+    return result
+  } finally { clearTimeout(timer) }
+}
+
 /** Stream one dump to a daily object and a matching weekly object when requested. */
 export async function exportEncryptedBackup(config, options = {}) {
   // The database client does not need the storage credentials or other job secrets.
@@ -62,12 +76,14 @@ export async function exportEncryptedBackup(config, options = {}) {
     .filter(key => process.env[key] !== undefined).map(key => [key, process.env[key]]))
   const now = options.now ?? new Date()
   if (!Number.isFinite(now.getTime())) throw new Error('Invalid backup time')
+  const providerTimeoutMs = options.providerTimeoutMs ?? 15_000
+  if (!Number.isInteger(providerTimeoutMs) || providerTimeoutMs < 1 || providerTimeoutMs > 15_000) throw new Error('Invalid backup timeout')
   const date = now.toISOString().slice(0, 10)
   const id = randomUUID()
   const kinds = now.getUTCDay() === 1 || options.forceWeekly === true ? ['daily', 'weekly'] : ['daily']
   const paths = kinds.map(kind => `idea-map-v2/${config.environment}/${kind}/${date}/${id}.pgdump`)
   const bucket = options.storage.bucket(config.bucket)
-  const [metadata] = await bucket.getMetadata()
+  const [metadata] = await withinProviderTimeout(() => bucket.getMetadata(), providerTimeoutMs)
   verifyBackupBucket(metadata, config)
   const dump = (options.start ?? startDump)({ ...env, PGDATABASE: config.databaseUrl, PGCONNECT_TIMEOUT: '10', PGGSSENCMODE: 'disable' })
   const uploads = []
@@ -112,8 +128,8 @@ export async function exportEncryptedBackup(config, options = {}) {
     }
     const completionPath = `idea-map-v2/${config.environment}/completion/${date}/${id}.complete`
     const marker = bucket.file(completionPath)
-    await marker.save('', { resumable: false, validation: 'crc32c',
-      preconditionOpts: { ifGenerationMatch: 0 }, metadata: { metadata: completion } })
+    await withinProviderTimeout(() => marker.save('', { resumable: false, validation: 'crc32c',
+      preconditionOpts: { ifGenerationMatch: 0 }, metadata: { metadata: completion } }), providerTimeoutMs)
     const saved = marker.metadata
     if (saved?.name !== completionPath || saved.bucket !== config.bucket ||
         typeof saved.generation !== 'string' || !/^[1-9][0-9]*$/.test(saved.generation) ||
