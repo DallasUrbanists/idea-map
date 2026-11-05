@@ -23,13 +23,18 @@ as untrusted. It must validate type, format, size, and allowed values before
 use, reject unknown writable fields, and use parameterized queries.
 
 A public data transfer object lists exactly which fields a response can include.
-The published-idea view exposes `title` and `description` only when both the
-idea and its revision are approved. The server must exclude private emails,
-ownership evidence, pending media, unapproved content, and moderator-only
+The public idea view exposes `title` and `description` only for the exact
+revision authorized for public display under the active publication mode.
+Reviewed mode requires idea and revision approval; beta mode requires an
+explicit, durable beta-publication decision for that revision and permitted
+media, without fabricating reviewed approval or an assessment.
+The server must exclude private emails,
+ownership evidence, pending media, unpublished content, and moderator-only
 information from public API, server-rendered, and cached responses.
 
 The public preview endpoint serves only a published preview attached to the
-currently approved revision of an approved idea. It rechecks approval after
+currently authorized public revision of a published idea. It rechecks that
+publication decision and any withdrawal or removal after
 loading the versioned object and does not expose pending object names or storage
 credentials. Preview responses use `private, no-store` so a shared cache cannot
 continue serving them after withdrawal.
@@ -42,6 +47,11 @@ that make a leak detectable.
 `GET` and `HEAD` operations must be side-effect free. The server must reject
 method-override headers and must not trust browser-supplied roles, user
 identifiers, or forwarded identity headers as proof of identity.
+
+The [beta release policy](beta-release-policy.md#publication-and-private-data)
+defines immediate-publication behavior. Enabling that mode must not make an
+unsupported mutation public, weaken resource authorization, publish a saved
+draft, or enable score-based automatic approval.
 
 ## Fail-closed mutations
 

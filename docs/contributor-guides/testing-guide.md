@@ -13,6 +13,7 @@ covers wording changes; code changes need the checks relevant to their behavior.
 The following contents links navigate within this guide:
 
 - [Everyday checks](#everyday-checks)
+- [Open MVP beta acceptance](#open-mvp-beta-acceptance)
 - [CI and contribution gates](#ci-and-contribution-gates)
 - [Offline provider fixtures](#offline-provider-fixtures)
 - [Package tests](#package-tests)
@@ -58,6 +59,19 @@ synthetic outbox, moderation, approval-history, and worker checks on pull
 requests, including forks. It uses a disposable PostGIS service and requires no
 hosted credentials. It does not test real moderation authorization or enable
 automatic publication.
+
+## Open MVP beta acceptance
+
+Reviewers should use the [beta acceptance procedure](../test-procedures/beta-acceptance.md)
+for the actual public browse-and-submit journey, privacy boundaries, technical
+abuse controls, reactive removal and recovery. Beta acceptance does not require
+the later score-based review system or every contributor-platform and catalogue
+feature.
+
+Contributors should retain reviewed-publication tests for that separate mode
+and add beta-specific cases without treating a missing assessment as a valid
+score. The release record should distinguish foundation tests, application
+integration and authorized hosted evidence.
 
 ## CI and contribution gates
 
