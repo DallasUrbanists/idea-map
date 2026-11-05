@@ -294,39 +294,10 @@ before relying on unattended monitoring.
 
 ## Review costs across providers
 
-An operator can compare charges and usage across the services in the
-[cloud cost model](https://github.com/DallasUrbanists/idea-map/wiki/Cloud-Infrastructure-and-Cost-Model).
-Agree on an owner, review interval, reporting currency, and escalation thresholds
-before relying on this review. Use named, authorized access to each account and
-avoid placing account identifiers, invoices, or credentials in public logs.
-
-1. Record the reporting period, collection time, currency, and the environments
-    and accounts covered. Include shared or account-level charges and identify
-    any costs that cannot be allocated between environments.
-2. In [Cloud Billing reports](https://cloud.google.com/billing/docs/how-to/reports),
-    inspect the approved Google Cloud projects and any relevant shared charges.
-    Check the scope of existing [budgets and alerts](https://cloud.google.com/billing/docs/how-to/budgets)
-    and their recipients before proposing changes; a project-filtered budget can
-    omit account-level charges. Record whether each figure includes credits,
-    discounts, taxes, or adjustments.
-3. In the Neon organization's billing view, inspect its usage and charges,
-    including compute, storage, history, and transfer. Check the scope and
-    recipients of any existing [spending limit](https://neon.com/blog/introducing-organization-spending-limits).
-    In Resend, review the plan, [usage and billing history](https://resend.com/changelog/pay-as-you-go-pricing),
-    including enabled overages. Review other enabled providers and subscriptions
-    separately.
-4. Compare like periods and currencies, and avoid counting charges twice when a
-    provider's products share an invoice. Mark unavailable, delayed, estimated,
-    or unallocated amounts as unknown; do not substitute zero. Compare the
-    documented total and its coverage with the agreed thresholds, and escalate
-    gaps or unexpected changes to the cost owner.
-5. Record the reviewed scope, totals, missing data, owner, and follow-up in the
-    approved private operations record. Reconcile estimates against finalized
-    invoices when available.
-
-Provider cost reporting and notifications can lag usage. An alerts-only Google
-Cloud budget is a warning, not a spending cap; Neon limits and provider quotas
-also have their own scope and behavior. Verify current settings and recipients,
-test notification delivery when authorized, and monitor any uncovered accounts
-separately. This manual procedure does not configure alerts, establish a review
-cadence, or prove complete cost coverage.
+Use the [cloud cost model](https://github.com/DallasUrbanists/idea-map/wiki/Cloud-Infrastructure-and-Cost-Model)
+and an approved private operations record to review the coverage of all enabled
+providers and shared resources. Assign an owner and review interval, record the
+reporting period and missing or delayed data, and escalate gaps for follow-up.
+Use named, authorized access and keep account identifiers and credentials out of
+public logs. Verify notification recipients and delivery when authorized. This
+review alone does not configure alerts or establish complete provider coverage.

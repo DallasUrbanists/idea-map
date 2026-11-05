@@ -174,14 +174,9 @@ prevents this boundary from stranding an authorized removal or hold. It must kee
 every version needed by retained backups and active holds available and must
 account for concurrent or ambiguous appends.
 
-Secret Manager charges for enabled and disabled versions, not only requests.
-For example, ten new versions per day retained for 90 days would reach about
-900 active versions, or roughly $54 per month at the published $0.06 per active
-version-month before the shared free tier. This excludes other operations,
-locations, taxes, retries and services, and actual costs are prorated. Review
-[current pricing](https://cloud.google.com/secret-manager/pricing), expected
-volume, retention and safe rollover before provisioning. Do not destroy versions
-needed by a retained backup or an active hold merely to reduce cost.
+Review the expected number of enabled and disabled Secret Manager versions,
+retries, service quotas, retention and safe rollover before provisioning. Do not
+destroy versions needed by a retained backup or an active hold.
 
 The checkpoint needs a coordinated boundary, not merely a timestamp. Suspend
 all covered mutations, drain in-flight transactions and journal writes, verify
