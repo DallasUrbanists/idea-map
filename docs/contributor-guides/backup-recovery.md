@@ -459,7 +459,12 @@ itself establish that a restored service is safe to return to public use.
 
 For a separately authorized synthetic rehearsal, prepare a private working
 directory on the recovery host, a fresh archive path, and an empty isolated
-database. Set `RECOVERY_OBJECT` to the reviewed `gs://` object name,
+database. Confirm the target does not already contain schemas or extension
+objects also present in the archive. For example, the local PostGIS image's
+default database already contains a `tiger` schema and is not an empty restore
+target. For local PostgreSQL tests, create a separate database from `template0`;
+verify the hosted provider's target separately. Set
+`RECOVERY_OBJECT` to the reviewed `gs://` object name,
 `RECOVERY_GENERATION` to its exact decimal generation, `RECOVERY_ARCHIVE` to the
 fresh local path, and `RECOVERY_DB_NAME` to the test database name. Configure
 the direct connection with libpq environment variables and a protected password
