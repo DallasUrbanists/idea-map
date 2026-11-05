@@ -51,10 +51,11 @@ export async function acquirePublicAccessLease(pool: pg.Pool): Promise<PublicAcc
     await client.query(sharedLock)
     const result = await client.query<{ is_open: boolean }>('SELECT public.public_access_allowed() AS is_open')
     if (controller.signal.aborted || result.rows.length !== 1 || result.rows[0]?.is_open !== true) throw new Error('Public access unavailable')
-    let checking = false
+    let checking = false, checkStarted = false
     const timer = setInterval(() => {
       if (checking || controller.signal.aborted) return
       checking = true
+      checkStarted = false
       // A broken connection can leave a query pending without a server-side
       // statement timeout ever reaching this process. Stop delivery locally.
       const deadline = performance.now() + 10_000
@@ -62,12 +63,17 @@ export async function acquirePublicAccessLease(pool: pg.Pool): Promise<PublicAcc
       checkDeadline.unref()
       const clearDeadline = () => clearTimeout(checkDeadline)
       controller.signal.addEventListener('abort', clearDeadline, { once: true })
-      void client.query<{ is_open: boolean | null, closing: boolean }>(accessStillValid).then(status => {
+      void Promise.resolve().then(() => {
+        if (controller.signal.aborted) throw new Error('Public access unavailable')
+        checkStarted = true
+        return client.query<{ is_open: boolean | null, closing: boolean }>(accessStillValid)
+      }).then(status => {
         if (performance.now() >= deadline || status.rows.length !== 1 || status.rows[0]?.is_open !== true || status.rows[0]?.closing !== false) controller.abort()
-      }, () => controller.abort()).finally(() => {
+      }).catch(() => controller.abort()).finally(() => {
         clearDeadline()
         controller.signal.removeEventListener('abort', clearDeadline)
         checking = false
+        checkStarted = false
       })
     }, 250)
     timer.unref()
@@ -81,7 +87,19 @@ export async function acquirePublicAccessLease(pool: pg.Pool): Promise<PublicAcc
             // A disconnected response may leave asynchronous handlers running.
             // Mark the lease unusable before returning its client to the pool.
             controller.abort()
-            await client.query('COMMIT')
+            // A polling query can be stuck behind a broken connection. Do not
+            // queue COMMIT behind it or return that client to the pool.
+            if (checking && checkStarted) { dispose(true); return }
+            const commitDeadline = performance.now() + 10_000
+            let commitTimer: ReturnType<typeof setTimeout> | undefined
+            try {
+              const timeout = new Promise<never>((_, reject) => {
+                commitTimer = setTimeout(() => reject(new Error('Public access unavailable')), 10_000)
+                commitTimer.unref()
+              })
+              await Promise.race([client.query('COMMIT'), timeout])
+              if (performance.now() >= commitDeadline) throw new Error('Public access unavailable')
+            } finally { if (commitTimer) clearTimeout(commitTimer) }
             dispose(false)
           } catch {
             controller.abort()

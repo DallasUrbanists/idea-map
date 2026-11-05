@@ -23,6 +23,57 @@ async function waitForAborts(...signals) {
   } finally { clearTimeout(timer) }
 }
 
+test('a released stalled poll eventually drops its local PostgreSQL lock', { timeout: 30_000 }, async () => {
+  const inspector = new pg.Pool({ connectionString: url.toString(), max: 1, connectionTimeoutMillis: 2000 })
+  const pool = new pg.Pool({ connectionString: url.toString(), max: 1, connectionTimeoutMillis: 2000 })
+  pool.on('error', () => {})
+  let started, backendPid, lease
+  const pollStarted = new Promise(resolve => { started = resolve })
+  const readers = { async connect() {
+    const client = await pool.connect()
+    backendPid = client.processID
+    const query = client.query.bind(client)
+    client.query = (...args) => {
+      if (typeof args[0] === 'string' && args[0].includes('pg_catalog.pg_locks')) {
+        started()
+        return query('SELECT pg_sleep(30)')
+      }
+      return query(...args)
+    }
+    return client
+  } }
+  try {
+    await inspector.query('UPDATE public.public_access_gate SET is_open = true WHERE singleton = true')
+    lease = await acquirePublicAccessLease(readers)
+    let timer
+    try {
+      await Promise.race([pollStarted, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Poll did not start')), 3000) })])
+    } finally { clearTimeout(timer) }
+    let active = false
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const result = await inspector.query("SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid = $1 AND state = 'active' AND query = 'SELECT pg_sleep(30)') AS active", [backendPid])
+      active = result.rows[0].active
+      if (active) break
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+    assert.equal(active, true)
+    await lease.release()
+    let held = true
+    for (let attempt = 0; attempt < 150; attempt++) {
+      const result = await inspector.query("SELECT EXISTS (SELECT 1 FROM pg_locks WHERE pid = $1 AND locktype = 'advisory' AND granted) AS held", [backendPid])
+      held = result.rows[0].held
+      if (!held) break
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    assert.equal(held, false)
+  } finally {
+    await lease?.release().catch(() => {})
+    await inspector.query('UPDATE public.public_access_gate SET is_open = false WHERE singleton = true')
+    await pool.end()
+    await inspector.end()
+  }
+})
+
 test('public-read leases fail closed and drain when a gate writer is waiting', async () => {
   await assert.rejects(acquirePublicAccessLease({ connect: async () => { throw new Error('synthetic sensitive connection details') } }),
     error => error.message === 'Public access unavailable' && !error.message.includes('sensitive'))

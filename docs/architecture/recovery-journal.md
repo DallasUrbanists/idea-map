@@ -548,7 +548,16 @@ would have to use the same reviewed lock convention.
 The prototype also aborts a public response when a liveness check has not
 returned within ten seconds, even if the database connection does not report an
 error. This bounds a stalled check while the Node event loop is running; it does
-not prove an independent network fence or immediate failure detection.
+not prove an independent network fence or immediate failure detection. Release
+destroys a client with a check still in flight and bounds the wait for commit.
+In a local synthetic stalled-query probe, the server held the advisory lock for
+about ten seconds after the client was destroyed, until the configured statement
+timeout. Destroying a client alone is not evidence that a remote database has
+released its lock; test actual network failures and pooler behavior separately.
+The removal application uses a five-second lock timeout and can therefore fail
+while that lock remains. Keep its already-closed gate and pending decision in
+place, and reconcile the result before an authorized retry; do not report the
+removal as complete from the closure alone.
 A synthetic local-fetch probe against the built Nitro runtime did not carry a
 custom server-side context object into the nested request. Do not assume an inner
 request can reuse an outer request's guarded transaction. Test any alternative
