@@ -19,14 +19,14 @@ after(() => {
   else process.env.STORAGE_EMULATOR_HOST = originalEmulator
 })
 
-function fake({ wrongChecksum = false, missingHeader = false, failWrite = false, missingHold = false, changeHoldDuringRead = false, stallMetadata = false, delayStreamEnd = false } = {}) {
+function fake({ wrongChecksum = false, missingHeader = false, failWrite = false, missingHold = false, changeHoldDuringRead = false, stallMetadata = false, delayStreamEnd = false, softDelete = '604800' } = {}) {
   const objects = new Map()
   let reads = 0
   let metadataReads = 0
   const storage = { bucket(name) { return {
     async getMetadata() { return [{ name, projectNumber: target.projectNumber,
       iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
-      versioning: { enabled: true }, softDeletePolicy: { retentionDurationSeconds: '604800' } }] },
+      versioning: { enabled: true }, softDeletePolicy: { retentionDurationSeconds: softDelete } }] },
     file(path) {
       const file = { interceptors: [], createWriteStream(options) {
         assert.equal(options.preconditionOpts.ifGenerationMatch, 0)
@@ -90,6 +90,9 @@ test('ambiguous writes, missing checksums, and invalid inputs fail closed withou
     error => error.message === 'Held material write outcome is uncertain' && !error.message.includes('private'))
   await assert.rejects(writeUnverifiedHeldMaterial(fake({ failWrite: true }).storage, target, artifact, contents), /outcome is uncertain/)
   await assert.rejects(writeUnverifiedHeldMaterial(fake({ missingHold: true }).storage, target, artifact, contents), /outcome is uncertain/)
+  const disabled = fake({ softDelete: '0' })
+  await assert.rejects(writeUnverifiedHeldMaterial(disabled.storage, target, artifact, contents), /outcome is uncertain/)
+  assert.equal(disabled.objects.size, 0)
   const { storage } = fake({ missingHeader: true })
   const saved = await writeUnverifiedHeldMaterial(storage, target, artifact, contents)
   await assert.rejects(readUnverifiedHeldMaterial(storage, target, artifact, saved), /could not be verified/)

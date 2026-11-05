@@ -156,9 +156,11 @@ their identity.
 
 The exporter checks the bucket's project number, enforced public-access
 prevention, uniform access, versioning, Google-managed default encryption, and a
-soft-delete period of at most seven days. It refuses a bucket-wide default hold
-or retention policy, hierarchical namespace, a customer-managed default key,
-lifecycle rules that delete objects, or actions it cannot identify. A default
+seven-day soft-delete period. It refuses disabled soft delete because inventory
+cannot list generations retained under an earlier policy. It also refuses a
+bucket-wide default hold or retention policy, hierarchical namespace, a
+customer-managed default key, lifecycle rules that delete objects, or actions
+it cannot identify. A default
 hold or retention policy could retain unrelated people's data too long, and
 hierarchical namespace does not support the separately scoped object holds.
 Age-based deletion cannot protect the

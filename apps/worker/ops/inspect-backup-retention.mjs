@@ -119,15 +119,14 @@ export async function inspectBackupRetention(storage, target, now, options = {})
   const fixedTime = now !== undefined
   const bucket = storage.bucket(target.bucket)
   const [metadata] = await beforeDeadline(deadline, () => bucket.getMetadata())
+  // Disabled soft delete prevents listing generations retained under an older policy.
+  if (metadata?.softDeletePolicy?.retentionDurationSeconds === '0' || metadata?.softDeletePolicy?.retentionDurationSeconds === 0) {
+    throw new Error('Soft-deleted inventory cannot be verified')
+  }
   verifyBackupBucket(metadata, target)
   if (typeof metadata.generation !== 'string' || !/^[1-9][0-9]*$/.test(metadata.generation) ||
       typeof metadata.metageneration !== 'string' || !/^[1-9][0-9]*$/.test(metadata.metageneration)) {
     throw new Error('Backup bucket identity is ambiguous')
-  }
-  // Disabling soft delete does not remove generations already retained under an
-  // earlier policy, while the softDeleted listing requires an enabled policy.
-  if (Number(metadata.softDeletePolicy.retentionDurationSeconds) === 0) {
-    throw new Error('Soft-deleted inventory cannot be verified')
   }
   const prefix = `idea-map-v2/${target.environment}/`
   // The bucket also contains recovery records. Never list or inspect them as backups.

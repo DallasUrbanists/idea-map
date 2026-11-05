@@ -179,6 +179,7 @@ test('an unverified or public bucket prevents the dump from starting', async () 
     { ...metadata, hierarchicalNamespace: {} },
     { ...metadata, retentionPolicy: { retentionPeriod: '7776000' } },
     { ...metadata, encryption: { defaultKmsKeyName: 'projects/synthetic/locations/global/keyRings/test/cryptoKeys/key' } },
+    { ...metadata, softDeletePolicy: { retentionDurationSeconds: '0' } },
     { ...metadata, softDeletePolicy: { retentionDurationSeconds: '2592000' } },
     { ...metadata, softDeletePolicy: undefined },
     { ...metadata, lifecycle: { rule: [{ action: { type: 'Delete' } }] } },

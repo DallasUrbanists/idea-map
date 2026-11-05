@@ -10,8 +10,7 @@ export function verifyBackupBucket(bucket: BucketMetadata, config: { bucket: str
       (bucket.hierarchicalNamespace !== undefined && bucket.hierarchicalNamespace?.enabled !== false) ||
       bucket.retentionPolicy !== undefined ||
       Boolean(bucket.encryption?.defaultKmsKeyName) ||
-      !/^(0|[1-9][0-9]*)$/.test(String(bucket.softDeletePolicy?.retentionDurationSeconds)) ||
-      Number(bucket.softDeletePolicy?.retentionDurationSeconds) > 604800 ||
+      (bucket.softDeletePolicy?.retentionDurationSeconds !== '604800' && bucket.softDeletePolicy?.retentionDurationSeconds !== 604800) ||
       (bucket.lifecycle !== undefined && (bucket.lifecycle === null || !Array.isArray(bucket.lifecycle.rule) ||
         bucket.lifecycle.rule.some(rule => !['SetStorageClass', 'AbortIncompleteMultipartUpload'].includes(rule.action?.type ?? ''))))) {
     throw new Error('Bucket safeguards are not confirmed')
