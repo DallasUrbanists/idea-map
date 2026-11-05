@@ -1,21 +1,27 @@
 const DAY = 86_400_000
 
-function providerTimeCeiling(value) {
-  if (typeof value !== 'string') return NaN
+/** Parse a provider timestamp without discarding its sub-millisecond precision. */
+export function parseBackupProviderTime(value) {
+  if (typeof value !== 'string') return undefined
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})$/.exec(value)
-  if (!match) return NaN
+  if (!match) return undefined
   const [, y, m, d, h, min, sec, fraction = '', zone] = match
   const year = Number(y), month = Number(m), day = Number(d)
   const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
   const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
   if (year < 1 || month < 1 || month > 12 || day < 1 || day > days[month - 1] ||
       Number(h) > 23 || Number(min) > 59 || Number(sec) > 59 ||
-      (zone !== 'Z' && (Number(zone.slice(1, 3)) > 23 || Number(zone.slice(4)) > 59))) return NaN
+      (zone !== 'Z' && (Number(zone.slice(1, 3)) > 23 || Number(zone.slice(4)) > 59))) return undefined
   const milliseconds = Date.parse(value)
+  if (!Number.isFinite(milliseconds)) return undefined
+  const remainder = Number(fraction.padEnd(9, '0').slice(3))
   // Date.parse truncates finer precision. Round upward so an unexpired
   // sub-millisecond time cannot prematurely become a deletion candidate.
-  return milliseconds + (/[1-9]/.test(fraction.slice(3)) ? 1 : 0)
+  return { milliseconds, ceilingMilliseconds: milliseconds + (remainder > 0 ? 1 : 0),
+    nanoseconds: BigInt(milliseconds) * 1_000_000n + BigInt(remainder) }
 }
+
+const providerTimeCeiling = value => parseBackupProviderTime(value)?.ceilingMilliseconds ?? NaN
 
 function weekOf(date) {
   const day = new Date(`${date}T00:00:00.000Z`)

@@ -2,7 +2,7 @@ import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { backupTarget, verifyBackupBucket } from './export-encrypted-backup.mjs'
-import { planBackupRetention } from './plan-backup-retention.mjs'
+import { parseBackupProviderTime, planBackupRetention } from './plan-backup-retention.mjs'
 
 const backupObjectPattern = /^(daily|weekly|completion)\/(\d{4}-\d{2}-\d{2})\/([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})\.(pgdump|complete)$/
 
@@ -84,7 +84,7 @@ export function confirmCompletedExports(objects, environment, now, bucketIdentit
     const meta = marker.metadata ?? {}
     const startedAt = meta.backup_started_at
     const started = Date.parse(startedAt)
-    const created = Date.parse(marker.timeCreated)
+    const created = parseBackupProviderTime(marker.timeCreated)
     const hasWeekly = ['weekly_generation', 'weekly_size', 'weekly_crc32c'].some(key => meta[key] !== undefined)
     const legacy = meta.backup_version === '2'
     if ((!legacy && meta.backup_version !== '3') ||
@@ -92,7 +92,8 @@ export function confirmCompletedExports(objects, environment, now, bucketIdentit
           meta.bucket_generation !== bucketIdentity.generation || meta.bucket_metageneration !== bucketIdentity.metageneration)) ||
         typeof startedAt !== 'string' || !Number.isFinite(started) ||
         new Date(started).toISOString() !== startedAt || startedAt.slice(0, 10) !== date ||
-        !Number.isFinite(created) || created < started || created > now.getTime() || marker.size !== '0' || marker.crc32c !== 'AAAAAA==' ||
+        !created || created.nanoseconds < BigInt(started) * 1_000_000n || created.nanoseconds > BigInt(now.getTime()) * 1_000_000n ||
+        marker.size !== '0' || marker.crc32c !== 'AAAAAA==' ||
         !number(meta.daily_generation) || !number(meta.daily_size) || !crc(meta.daily_crc32c) ||
         (new Date(started).getUTCDay() === 1 && !hasWeekly) ||
         (hasWeekly && (!number(meta.weekly_generation) || !number(meta.weekly_size) || !crc(meta.weekly_crc32c) ||
@@ -103,11 +104,11 @@ export function confirmCompletedExports(objects, environment, now, bucketIdentit
     for (const kind of ['daily', ...(hasWeekly ? ['weekly'] : [])]) {
       const archive = group[kind]
       if (!archive) {
-        if (now.getTime() - created < (kind === 'daily' ? 15 : 63) * 86_400_000) throw new Error('A recent completed archive is missing')
+        if (now.getTime() - created.ceilingMilliseconds < (kind === 'daily' ? 15 : 63) * 86_400_000) throw new Error('A recent completed archive is missing')
         continue
       }
-      const archiveCreated = Date.parse(archive.timeCreated)
-      if (!Number.isFinite(archiveCreated) || archiveCreated < started || archiveCreated > created ||
+      const archiveCreated = parseBackupProviderTime(archive.timeCreated)
+      if (!archiveCreated || archiveCreated.nanoseconds < BigInt(started) * 1_000_000n || archiveCreated.nanoseconds > created.nanoseconds ||
           archive.generation !== meta[`${kind}_generation`] || archive.size !== meta[`${kind}_size`] || archive.crc32c !== meta[`${kind}_crc32c`]) {
         throw new Error('Backup archive differs from its completion record')
       }

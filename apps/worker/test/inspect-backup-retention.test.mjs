@@ -248,6 +248,29 @@ test('completion inventory rejects unfinished, altered, or mismatched copies', (
   assert.equal(confirmCompletedExports(expiredDaily, 'dev', now).confirmed.length, 87)
 })
 
+test('completion timestamps preserve provider precision and ordering', () => {
+  const daily = make('daily', 2)
+  const marker = completion(daily, null)
+  const start = daily.timeCreated.slice(0, -5)
+  const archive = { ...daily, timeCreated: `${start}.000000002Z` }
+  const earlierMarker = { ...marker, timeCreated: `${start}.000000001Z` }
+  assert.throws(() => confirmCompletedExports([archive, earlierMarker], 'dev', now), /differs/)
+  const laterMarker = { ...marker, timeCreated: `${start}.000000003Z` }
+  assert.equal(confirmCompletedExports([archive, laterMarker], 'dev', now).confirmed.length, 1)
+  const current = make('daily', 0)
+  const futureMarker = { ...completion(current, null), timeCreated: '2026-11-03T12:00:00.000000001Z' }
+  assert.throws(() => confirmCompletedExports([current, futureMarker], 'dev', now), /invalid/)
+  assert.equal(confirmCompletedExports([current, futureMarker], 'dev', new Date(now.getTime() + 1)).confirmed.length, 1)
+})
+
+test('a sub-millisecond completion time cannot shorten missing-archive grace', () => {
+  const observed = new Date(now.getTime() + 86_400_000)
+  const older = make('daily', 14)
+  const marker = { ...completion(older, null), timeCreated: '2026-10-20T12:00:00.000000001Z' }
+  assert.throws(() => confirmCompletedExports([marker], 'dev', observed), /recent completed archive/)
+  assert.equal(confirmCompletedExports([marker], 'dev', new Date(observed.getTime() + 1)).orphanCompletions, 1)
+})
+
 test('legacy markers remain visible but cannot establish a verified retention plan', async () => {
   const marker = records.find(item => item.name.includes('/completion/'))
   const legacyMetadata = { ...marker.metadata, backup_version: '2' }

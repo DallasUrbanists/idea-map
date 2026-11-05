@@ -370,9 +370,11 @@ backup accumulation. `privacyDeadlineVerified` is always false: the inventory
 does not establish that copies of removed content expired by their deadline.
 The inventory checks version-three markers against the observed bucket generation
 and metageneration and fails if either differs. A legitimate bucket metadata
-change also requires separate review. Older version-two markers lack those
-values: `legacyCompletions` counts them, requires review, and prevents a verified
-retention result or deletion candidates. Do not delete or rewrite older records
+change also requires separate review. It checks provider timestamps at their
+reported precision so a completion marker cannot precede its archive. Older
+version-two markers lack the bucket identity values. `legacyCompletions` counts
+them, requires review, and prevents a verified retention result or deletion
+candidates. Do not delete or rewrite older records
 solely to make the inventory pass; reconcile their archives independently.
 `latestDailyAgeSeconds` and `latestWeeklyAgeSeconds` measure the ages of the
 latest exports with matching version-three markers from their conservative start
