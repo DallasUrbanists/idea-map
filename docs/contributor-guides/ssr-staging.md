@@ -5,8 +5,8 @@ This guide helps operators maintain and test the staging environment for
 [staging.ideam.app](https://staging.ideam.app/) in Firebase project
 `dallasurbanists-idea-map-dev` and Hosting site `dallasurbanists-idea-map-dev`.
 Operators should use this environment only for synthetic data and test accounts.
-The shared cache is restricted to this staging service; other environments use
-private, no-store responses until immediate invalidation is supported.
+Guarded idea pages use private, no-store responses, including in this staging
+service, until shared caching can enforce immediate removal.
 
 The following sections cover the environment and its operation:
 
@@ -35,8 +35,9 @@ drive (SSD)* stores the database.
 | Cloud Storage `dallasurbanists-idea-map-dev-ssr-build` | Stores source archives, build logs, and extracted assets for the dedicated staging build identity. |
 | Cloud Storage `dallasurbanists-idea-map-dev_cloudbuild` | Was created by the first unsuccessful build attempt. Its source archive was removed; later builds use the dedicated staging build bucket. |
 
-The Terraform roots accept only the isolated staging project, and the web root
-sets `NUXT_STAGING_HTML_CACHE=true` for its synthetic cache checks.
+The Terraform roots accept only the isolated staging project. The web root's
+legacy `NUXT_STAGING_HTML_CACHE=true` setting does not override no-store for
+guarded idea pages.
 
 The Terraform roots do not create the Hosting release, Firebase Auth settings,
 secrets and their versions, build identity, buckets, artifact repository, or
@@ -58,9 +59,10 @@ The November 1, 2026 deployment used image digest
 from Cloud Build `b54d170d-31fe-42fb-bcbf-add71c87e2e3`. The build included
 uncommitted changes on top of commit `35d09741eb229c6275c454af673149f131cc0e87`,
 so that commit alone cannot reproduce the deployed image. That deployed image
-predates the staging-only cache guard in the current source; the guard takes
-effect after an authorized deployment of a new image. This first Hosting
-release had no earlier application release to restore.
+predates the current no-store and access-gate changes. They take effect only
+after an authorized deployment of a new image and review of older revisions
+and cached responses. This first Hosting release had no earlier application
+release to restore.
 
 ## One-time setup for operators
 
@@ -210,8 +212,7 @@ with a maintainer.
 
 ## Validate staging
 
-The *content delivery network (CDN)* caches eligible public responses. The
-approved synthetic idea is
+The approved synthetic idea is
 `11111111-1111-4111-8111-111111111111`; the private fixture is
 `22222222-2222-4222-8222-222222222222`. Authorized testers can use the Google
 Cloud console steps in the [secret-version access instructions](https://cloud.google.com/secret-manager/docs/access-secret-version)
@@ -222,7 +223,7 @@ window, an authorized tester should complete these checks:
     `https://staging.ideam.app/suggestion/11111111-1111-4111-8111-111111111111`
     and inspect **Network** response headers and the page source. Confirm the
     title and crawler metadata are in the initial HTML, the response includes
-    `public` and `s-maxage=60`, and a linked `/_nuxt/` asset loads.
+    `private` and `no-store`, and a linked `/_nuxt/` asset loads.
 2. Open the private fixture at its corresponding `/suggestion/` URL. Confirm
     status code `404 Not Found` and a `Cache-Control` header containing `private`
     and `no-store`.
@@ -254,10 +255,10 @@ log or review note.
 
     The proxy reports that it is listening and ready; if port `15433` is in use,
     stop and choose an unused port in both the proxy and `psql` commands.
-2. In the separate signed-out private browser window, load the approved idea with
-    a unique query string, such as `?cache_probe=review-001`, and reload it until
-    **Network** shows `X-Cache: HIT`. If no cache hit is observed, record that
-    limitation instead of claiming the CDN expiry was tested.
+2. In the separate signed-out private browser window, load the approved idea and
+    confirm the response includes `private` and `no-store`. Before relying on
+    the gate, isolate old service revisions and allow previously cached copies
+    to expire or verify their purge.
 3. From a second terminal at the repository root, withdraw only the approved synthetic fixture:
 
     ```sh
@@ -266,8 +267,9 @@ log or review note.
 
     Enter the administrator password when prompted and confirm `UPDATE 1`;
     otherwise, stop and investigate the fixture state.
-4. Reload the same URL and record when it returns `404 Not Found`. A cached
-    public response can remain visible for its 60-second shared-cache lifetime.
+4. Reload the same URL and confirm it returns `404 Not Found` with `no-store`.
+    Record any stale response as a failure; investigate the deployed route and
+    caches before relying on removal behavior.
 5. Restore the fixture, including after a failed check:
 
     ```sh

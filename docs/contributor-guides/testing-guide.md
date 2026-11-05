@@ -422,7 +422,7 @@ You should check that server-rendered pages show only approved ideas:
 You should use the [development guide](development-guide.md) for local PostGIS
 setup. This published-page check verifies that both an idea and its displayed
 revision are approved before the page shows the title and description. It also
-checks the default and staging-only HTML cache headers, credential-bearing
+checks the default and staging HTML no-store headers, credential-bearing
 requests, concurrent page renders, closed-gate responses, an in-flight synthetic
 media fetch aborted by a waiting gate closure, and the origin response after a
 synthetic withdrawal. The [Hosting cache guide](../architecture/hosting-cache.md)

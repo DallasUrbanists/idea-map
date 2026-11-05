@@ -41,20 +41,13 @@ and the [moderation policy](../policies/moderation-policy.md#revisions-and-publi
 A cache that retains public content requires an effective invalidation mechanism
 before it can be used for real user content.
 
-The isolated synthetic staging service can opt in to a 60-second shared cache.
-The runtime requires `NUXT_STAGING_HTML_CACHE=true`, the staging Firebase project,
-the staging session origin, and the staging Cloud Run service name. Only a
-successful `GET` or `HEAD` HTML render of an approved synthetic public idea
-without a `Cookie` or `Authorization` request header or a `Set-Cookie` response
-is eligible for `public, max-age=0, s-maxage=60, must-revalidate`. The response
-varies on `Cookie` and `Authorization`; APIs and all other responses remain
-private.
-
-The staging origin reads the current published projection on each request, but
-a cached copy can remain visible until its 60-second lifetime ends. Staging uses
-synthetic data only, and its cache has no immediate purge mechanism. Error
-responses explicitly use `no-store`, including `404 Not Found` responses, to
-avoid Firebase Hosting's default dynamic 404 caching.
+Guarded idea pages also use `private, no-store` in isolated staging, even when
+the staging cache flag is enabled. A shared copy could bypass the public-access
+gate after a removal or journal failure. Older deployed revisions and previously
+cached responses can still serve content, so isolate old revisions and allow
+existing cache entries to expire or verify their purge before relying on the
+gate. Error responses explicitly use `no-store`, including `404 Not Found`
+responses, to avoid Firebase Hosting's default dynamic 404 caching.
 
 Firebase Hosting forwards the `__session` cookie to Cloud Run and includes cookie
 and authorization headers in its dynamic cache key. Other cookies are stripped
@@ -65,8 +58,8 @@ and [rewrite configuration](https://firebase.google.com/docs/hosting/full-config
 ## Validation
 
 Contributors can run the [published-page test](../contributor-guides/testing-guide.md#database-tests) with a
-disposable seeded database after building. It checks the default and isolated
-staging cache policies, crawler metadata, private and credential-bearing
+disposable seeded database after building. It checks no-store responses with the
+default and isolated staging configurations, crawler metadata, private and credential-bearing
 responses, and the origin response after withdrawing the synthetic idea. It restores that fixture and does not
 simulate a CDN.
 
@@ -75,6 +68,6 @@ assets, crawler metadata, `__session` forwarding, private session responses, and
 a CDN cache hit using synthetic fixtures. After the synthetic public idea was
 withdrawn, the origin returned `404 Not Found` immediately and the CDN was
 observed returning that status after 63 seconds; checks ran at five-second
-intervals. The fixture was restored. Operators should repeat these provider
-checks after relevant changes; a single test does not prove behavior at every
-CDN edge.
+intervals. The fixture was restored. This predates the guarded no-store change
+and is not evidence that the new behavior has been deployed or verified at
+every CDN edge.

@@ -71,14 +71,14 @@ async function startServer(overrides) {
   return { base, server }
 }
 
-test('shared HTML caching is limited to the isolated staging service', async () => {
+test('guarded idea HTML is never shared, including in the isolated staging service', async () => {
   const cases = [
     { name: 'default configuration', env: {}, expected: 'private, no-store' },
     { name: 'flag disabled', env: { ...stagingEnvironment, NUXT_STAGING_HTML_CACHE: 'false' }, expected: 'private, no-store' },
     { name: 'different project', env: { ...stagingEnvironment, NUXT_FIREBASE_PROJECT_ID: 'other-project' }, expected: 'private, no-store' },
     { name: 'different origin', env: { ...stagingEnvironment, NUXT_SESSION_ORIGIN: 'https://example.invalid' }, expected: 'private, no-store' },
     { name: 'different service', env: { ...stagingEnvironment, K_SERVICE: 'idea-map-web-prod' }, expected: 'private, no-store' },
-    { name: 'isolated staging', env: stagingEnvironment, expected: 'public, max-age=0, s-maxage=60, must-revalidate' },
+    { name: 'isolated staging', env: stagingEnvironment, expected: 'private, no-store' },
   ]
   for (const { name, env, expected } of cases) {
     const { base, server } = await startServer(env)
@@ -101,9 +101,7 @@ test('SSR exposes only approved public projection and metadata', async () => {
     const page = await fetch(`${base}/suggestion/${approved}`)
     const html = await page.text()
     assert.equal(page.status, 200)
-    assert.equal(page.headers.get('cache-control'), 'public, max-age=0, s-maxage=60, must-revalidate')
-    assert.match(page.headers.get('vary'), /cookie/i)
-    assert.match(page.headers.get('vary'), /authorization/i)
+    assert.equal(page.headers.get('cache-control'), 'private, no-store')
     assert.match(html, /<h1>A safer crossing<\/h1>/)
     assert.match(html, /property="og:title" content="A safer crossing"/)
     assert.match(html, /name="description" content="A synthetic public idea\."/)

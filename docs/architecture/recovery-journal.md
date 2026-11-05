@@ -425,9 +425,10 @@ The suggestion page renders an idea fetched from the idea API. Guarding only the
 inner API response is insufficient: the outer HTML response can continue after
 that fetch finishes. The gate must cover the outer delivery as well as API and
 media responses. Account for nested requests, connection limits, client
-disconnects, and timeouts when choosing the coordination mechanism. The synthetic
-staging cache can continue serving an earlier response, so it is not suitable
-evidence for the immediate removal boundary.
+disconnects, and timeouts when choosing the coordination mechanism. Guarded
+staging responses now request no storage, but older revisions or previously
+cached responses can still serve content. Clear or expire those copies and
+verify the deployed route before relying on the immediate removal boundary.
 
 Hosted web traffic uses Neon transaction pooling and a two-client public-read
 pool. Do not assume a session-level advisory lock remains attached to a backend
@@ -467,8 +468,8 @@ The existing [Hosting cache policy](hosting-cache.md#cache-and-withdrawal-behavi
 uses `private, no-store` for dynamic production responses, and media previews
 recheck publication state after fetching the object. Those controls are useful
 starting points, but a complete failure path must also cover in-flight reads,
-all public projections, and any direct media or cache access. The synthetic
-staging cache has different behavior and is not evidence for live removals.
+all public projections, and any direct media or cache access. Past synthetic
+staging cache tests are not evidence for live removals.
 
 ## Retention and held material
 
