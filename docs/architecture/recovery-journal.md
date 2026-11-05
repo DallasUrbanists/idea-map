@@ -324,8 +324,10 @@ These records cannot by themselves protect a restored database: a backup may
 contain an open gate and no record of a later closure. Recovery must first fence
 public traffic outside the restored database, establish a fresh authorized
 baseline and reconcile the independent journal before releasing that fence. The
-scheme is a design for further implementation and testing; the current schema
-does not store closure causes or automatically reopen the gate.
+scheme is a design for further implementation and testing. The schema records a
+removal closure with its pending decision, but no reviewed recovery or operator
+closure workflow exists. The read gate does not yet evaluate closure records,
+and nothing automatically reopens it.
 
 This boundary must coordinate requests already in flight, including responses
 that have read content but have not finished delivery. An unreadable or missing

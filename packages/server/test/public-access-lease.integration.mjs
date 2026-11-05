@@ -128,6 +128,25 @@ test('authorized pending removal closes the gate atomically and retries without 
     assert.deepEqual(await prepare(verifier, { approvedRevisionId: randomUUID() }), { state: 'authorized', value: 'stale' })
     assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, true)
     assert.equal((await pool.query('SELECT count(*)::int AS count FROM public.public_access_pending_decisions')).rows[0].count, 0)
+    assert.equal((await pool.query('SELECT count(*)::int AS count FROM public.public_access_closures WHERE cause_id=$1', [input.operationId])).rows[0].count, 0)
+    const rolledBackId = randomUUID()
+    const closureTransaction = await pool.connect()
+    try {
+      await closureTransaction.query('BEGIN')
+      await closureTransaction.query(`INSERT INTO public.public_access_pending_decisions
+        (operation_id,record_id,idea_id,actor_id,approved_revision_id,removal_reason,intent)
+        VALUES ($1,$2,$3,$4,$5,'synthetic','{}')`, [rolledBackId, randomUUID(), idea, actor, revision])
+      assert.equal((await closureTransaction.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
+      assert.equal((await closureTransaction.query('SELECT count(*)::int AS count FROM public.public_access_closures WHERE cause_id=$1', [rolledBackId])).rows[0].count, 1)
+      await closureTransaction.query('ROLLBACK')
+      assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, true)
+      assert.equal((await pool.query('SELECT count(*)::int AS count FROM public.public_access_closures WHERE cause_id=$1', [rolledBackId])).rows[0].count, 0)
+      await closureTransaction.query('BEGIN')
+      await closureTransaction.query('DELETE FROM public.public_access_gate WHERE singleton=true')
+      await assert.rejects(closureTransaction.query(`INSERT INTO public.public_access_pending_decisions
+        (operation_id,record_id,idea_id,actor_id,approved_revision_id,removal_reason,intent)
+        VALUES ($1,$2,$3,$4,$5,'synthetic','{}')`, [rolledBackId, randomUUID(), idea, actor, revision]), /Public access unavailable/)
+    } finally { await closureTransaction.query('ROLLBACK').catch(() => {}); closureTransaction.release() }
     reader = await acquirePublicAccessLease(runtimeDatabasePool(url.toString()))
     otherReader = await acquirePublicAccessLease(runtimeDatabasePool(url.toString()))
     // The pending decision and gate commit even while readers still hold their
@@ -151,6 +170,8 @@ test('authorized pending removal closes the gate atomically and retries without 
     assert.equal((await pool.query('SELECT publication_state FROM public.ideas WHERE id=$1', [idea])).rows[0].publication_state, 'approved')
     const rows = (await pool.query('SELECT record_id, approved_revision_id, removal_reason, intent FROM public.public_access_pending_decisions WHERE operation_id=$1', [input.operationId])).rows
     assert.equal(rows.length, 1)
+    assert.deepEqual((await pool.query('SELECT kind, cause_id FROM public.public_access_closures WHERE cause_id=$1', [input.operationId])).rows,
+      [{ kind: 'removal', cause_id: input.operationId }])
     assert.equal(rows[0].record_id, input.recordId)
     assert.equal(rows[0].approved_revision_id, revision)
     assert.equal(rows[0].removal_reason, input.reason)
@@ -166,6 +187,7 @@ test('authorized pending removal closes the gate atomically and retries without 
     await assert.rejects(prepare(verifier, { reason: 'different synthetic reason' }), /Pending removal unavailable/)
     await assert.rejects(prepare(verifier, { reason: '\ud800' }), /Invalid pending removal/)
     assert.equal((await pool.query('SELECT count(*)::int AS count FROM public.public_access_pending_decisions')).rows[0].count, 1)
+    assert.equal((await pool.query('SELECT count(*)::int AS count FROM public.public_access_closures WHERE cause_id=$1', [input.operationId])).rows[0].count, 1)
     assert.equal((await pool.query("SELECT has_table_privilege('public', 'public.public_access_pending_decisions', 'SELECT') AS allowed")).rows[0].allowed, false)
     const functionName = 'public.prepare_pending_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text)'
     assert.equal((await pool.query('SELECT has_function_privilege($1,$2,$3) AS allowed', ['public', functionName, 'EXECUTE'])).rows[0].allowed, false)
@@ -179,6 +201,7 @@ test('authorized pending removal closes the gate atomically and retries without 
     restrictedPool = new pg.Pool({ connectionString: restrictedUrl.toString() })
     await assert.rejects(restrictedPool.query('UPDATE public.public_access_gate SET is_open=true'), { code: '42501' })
     await assert.rejects(restrictedPool.query('SELECT * FROM public.public_access_pending_decisions'), { code: '42501' })
+    await assert.rejects(restrictedPool.query('DELETE FROM public.public_access_closures WHERE cause_id=$1', [input.operationId]), { code: '42501' })
     await assert.rejects(restrictedPool.query('UPDATE public.ideas SET publication_state=$1 WHERE id=$2', ['withdrawn', idea]), { code: '42501' })
     await assert.rejects(restrictedPool.query('SELECT public.remove_published_idea($1,$2,$3,$4,$5,$6)',
       ['firebase:demo-idea-map', session.uid, idea, revision, 'other', 'synthetic']), { code: '42501' })

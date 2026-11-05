@@ -13,6 +13,16 @@ export const publicAccessGate = pgTable('public_access_gate', {
   singleton: boolean('singleton').primaryKey().default(true),
   isOpen: boolean('is_open').notNull().default(false),
 }, table => [check('public_access_gate_singleton', sql`${table.singleton} = true`)])
+// This ledger records independent reasons to keep the gate closed. It does
+// not authorize reopening or establish journal coverage on its own.
+export const publicAccessClosures = pgTable('public_access_closures', {
+  kind: text('kind').notNull(),
+  causeId: uuid('cause_id').notNull(),
+  createdAt: createdAt(),
+}, table => [
+  uniqueIndex('public_access_closures_kind_cause_key').on(table.kind, table.causeId),
+  check('public_access_closures_kind', sql`${table.kind} IN ('removal', 'recovery', 'operator')`),
+])
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   createdAt: createdAt(),
