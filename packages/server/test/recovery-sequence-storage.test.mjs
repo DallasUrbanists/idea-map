@@ -95,6 +95,18 @@ test('timeouts abort the request and leave append outcomes uncertain', async () 
   assert.equal(signal.aborted, true)
 })
 
+test('an append beyond the local scan limit remains uncertain and cannot be read by this transport', async () => {
+  const f = fake()
+  f.versions.length = 10_000
+  await assert.rejects(appendRecoverySequenceVersion(f.transport, target, decision), /outcome is uncertain/)
+  assert.equal(f.versions.length, 10_001)
+  assert.deepEqual(f.versions[10_000], Buffer.from(decision))
+  const calls = f.calls.length
+  await assert.rejects(readRecoverySequenceVersion(f.transport, target, '10001'), /Invalid/)
+  await assert.rejects(readUnverifiedRecoverySequence(f.transport, target, '10001', nonce), /Invalid/)
+  assert.equal(f.calls.length, calls)
+})
+
 test('separate writer and reader must agree on the exact appended bytes', async () => {
   const f = fake()
   const writer = { async request(method, ...args) { assert.equal(method, 'POST'); return f.transport.request(method, ...args) } }
