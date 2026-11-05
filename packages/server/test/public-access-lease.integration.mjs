@@ -287,6 +287,21 @@ test('authorized pending removal closes the gate atomically and retries without 
     assert.equal(rows.length, 1)
     assert.deepEqual((await pool.query('SELECT kind, cause_id FROM public.public_access_closures WHERE cause_id=$1', [input.operationId])).rows,
       [{ kind: 'removal', cause_id: input.operationId }])
+    // A missing ledger record must not let a pending decision become public.
+    const inconsistent = await pool.connect()
+    try {
+      await inconsistent.query('BEGIN')
+      await inconsistent.query('DELETE FROM public.public_access_closures WHERE cause_id=$1', [input.operationId])
+      await assert.rejects(inconsistent.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true'), /Public access unavailable/)
+      await inconsistent.query('ROLLBACK')
+      await inconsistent.query('BEGIN')
+      await inconsistent.query('DELETE FROM public.public_access_closures WHERE cause_id=$1', [input.operationId])
+      await inconsistent.query('ALTER TABLE public.public_access_gate DISABLE TRIGGER reject_open_gate_with_closures')
+      await inconsistent.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true')
+      assert.equal((await inconsistent.query('SELECT public.public_access_allowed() AS allowed')).rows[0].allowed, false)
+      await inconsistent.query(await readFile(new URL('../migrations/0046_fence_unresolved_decisions.sql', import.meta.url), 'utf8'))
+      assert.equal((await inconsistent.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
+    } finally { await inconsistent.query('ROLLBACK').catch(() => {}); inconsistent.release() }
     assert.equal(rows[0].record_id, input.recordId)
     assert.equal(rows[0].approved_revision_id, revision)
     assert.equal(rows[0].removal_reason, input.reason)

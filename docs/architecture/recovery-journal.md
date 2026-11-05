@@ -328,8 +328,10 @@ scheme is a design for further implementation and testing. The schema records a
 removal closure with its pending decision, but no reviewed recovery or operator
 closure workflow exists. Inserting a closure locks and closes the gate, and a
 database guard refuses to open it while any closure remains or under stronger
-transaction isolation. The read lease also checks both the gate and closure
-ledger through a restricted boolean function. Its execution privilege requires
+transaction isolation. The guard also refuses to open while any pending decision
+remains, including when its closure record is missing. The read lease checks the
+gate, closure ledger, and pending decisions through a restricted boolean
+function. Its execution privilege requires
 separate review and grant to the reader identity; absent that grant, access
 fails closed. Nothing automatically reopens the gate. An empty ledger does not
 establish the required journal coverage or authorize access.
