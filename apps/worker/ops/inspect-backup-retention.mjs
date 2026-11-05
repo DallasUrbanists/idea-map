@@ -23,7 +23,7 @@ async function beforeDeadline(deadline, action) {
   }
 }
 
-async function listAll(bucket, query, deadline) {
+async function listAll(bucket, bucketName, query, deadline) {
   const items = []
   const tokens = new Set()
   let next = { ...query, autoPaginate: false, maxResults: 1000 }
@@ -32,6 +32,7 @@ async function listAll(bucket, query, deadline) {
     if (++pages > 100) throw new Error('Inventory has too many pages')
     const [page, following] = await beforeDeadline(deadline, () => bucket.getFiles(next))
     if (page.some(file => !file.metadata?.name?.startsWith(query.prefix))) throw new Error('Inventory prefix is ambiguous')
+    if (page.some(file => file.metadata?.bucket !== bucketName)) throw new Error('Inventory bucket is ambiguous')
     items.push(...page.map(file => file.metadata))
     if (items.length > 100_000) throw new Error('Inventory is too large')
     if (!following) break
@@ -46,7 +47,7 @@ async function listAll(bucket, query, deadline) {
 // completeness or replace the independent writer and lifecycle fences.
 function inventoryFingerprint(objects) {
   return objects.map(object => JSON.stringify([
-    object.name, object.generation, object.metageneration, object.timeCreated, object.timeDeleted,
+    object.name, object.bucket, object.generation, object.metageneration, object.timeCreated, object.timeDeleted,
     object.softDeleteTime, object.hardDeleteTime, object.size, object.crc32c,
     object.eventBasedHold, object.temporaryHold, object.retentionExpirationTime,
     object.retention?.mode, object.retention?.retainUntilTime,
@@ -115,8 +116,13 @@ export function confirmCompletedExports(objects, environment, now) {
 export async function inspectBackupRetention(storage, target, now, options = {}) {
   const timeoutMs = options?.timeoutMs ?? 60_000
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000) throw new Error('Invalid inventory timeout')
+  target = { environment: target?.environment, bucket: target?.bucket, projectNumber: target?.projectNumber }
   const deadline = performance.now() + timeoutMs
   const fixedTime = now !== undefined
+  if (fixedTime) {
+    if (!(now instanceof Date) || !Number.isFinite(now.getTime())) throw new Error('Invalid inventory time')
+    now = new Date(now.getTime())
+  }
   const bucket = storage.bucket(target.bucket)
   const [metadata] = await beforeDeadline(deadline, () => bucket.getMetadata())
   // Disabled soft delete prevents listing generations retained under an older policy.
@@ -131,10 +137,10 @@ export async function inspectBackupRetention(storage, target, now, options = {})
   const prefix = `idea-map-v2/${target.environment}/`
   // The bucket also contains recovery records. Never list or inspect them as backups.
   const backupPrefixes = ['daily', 'weekly', 'completion'].map(kind => `${prefix}${kind}/`)
-  const objects = (await Promise.all(backupPrefixes.map(objectPrefix => listAll(bucket, { prefix: objectPrefix, versions: true }, deadline)))).flat()
-  const softDeleted = (await Promise.all(backupPrefixes.map(objectPrefix => listAll(bucket, { prefix: objectPrefix, softDeleted: true }, deadline)))).flat()
-  const observedObjects = (await Promise.all(backupPrefixes.map(objectPrefix => listAll(bucket, { prefix: objectPrefix, versions: true }, deadline)))).flat()
-  const observedSoftDeleted = (await Promise.all(backupPrefixes.map(objectPrefix => listAll(bucket, { prefix: objectPrefix, softDeleted: true }, deadline)))).flat()
+  const objects = (await Promise.all(backupPrefixes.map(objectPrefix => listAll(bucket, target.bucket, { prefix: objectPrefix, versions: true }, deadline)))).flat()
+  const softDeleted = (await Promise.all(backupPrefixes.map(objectPrefix => listAll(bucket, target.bucket, { prefix: objectPrefix, softDeleted: true }, deadline)))).flat()
+  const observedObjects = (await Promise.all(backupPrefixes.map(objectPrefix => listAll(bucket, target.bucket, { prefix: objectPrefix, versions: true }, deadline)))).flat()
+  const observedSoftDeleted = (await Promise.all(backupPrefixes.map(objectPrefix => listAll(bucket, target.bucket, { prefix: objectPrefix, softDeleted: true }, deadline)))).flat()
   const [observedBucket] = await beforeDeadline(deadline, () => bucket.getMetadata())
   verifyBackupBucket(observedBucket, target)
   if (metadata.generation !== observedBucket.generation || metadata.metageneration !== observedBucket.metageneration ||

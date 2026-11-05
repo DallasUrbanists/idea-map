@@ -10,14 +10,14 @@ const metadata = { name: target.bucket, projectNumber: target.projectNumber, gen
 const make = (kind, days) => {
   const timeCreated = new Date(now.getTime() - days * 86_400_000).toISOString()
   return { name: `idea-map-v2/dev/${kind}/${timeCreated.slice(0, 10)}/00000000-0000-4000-8000-${String(days).padStart(12, '0')}.pgdump`,
-    generation: String(days + 1), metageneration: '1', timeCreated, size: '100', crc32c: 'AAAAAA==' }
+    bucket: target.bucket, generation: String(days + 1), metageneration: '1', timeCreated, size: '100', crc32c: 'AAAAAA==' }
 }
 const softDeletedObject = object => ({ ...object,
   softDeleteTime: new Date(now.getTime() - 86_400_000).toISOString(),
   hardDeleteTime: new Date(now.getTime() + 6 * 86_400_000).toISOString() })
 const completion = (daily, weekly) => ({
   name: daily.name.replace('/daily/', '/completion/').replace('.pgdump', '.complete'),
-  generation: daily.generation, metageneration: '1', timeCreated: daily.timeCreated, size: '0', crc32c: 'AAAAAA==',
+  bucket: target.bucket, generation: daily.generation, metageneration: '1', timeCreated: daily.timeCreated, size: '0', crc32c: 'AAAAAA==',
   metadata: { backup_version: '2', backup_started_at: daily.timeCreated,
     daily_generation: daily.generation, daily_size: daily.size, daily_crc32c: daily.crc32c,
     ...(weekly ? { weekly_generation: weekly.generation, weekly_size: weekly.size, weekly_crc32c: weekly.crc32c } : {}) },
@@ -96,6 +96,20 @@ test('inventory rejects changes to the bucket, live objects, or soft-deleted obj
   }
 })
 
+test('inventory retains its selected target and observation time while listing', async () => {
+  const selection = { ...target }
+  const observed = new Date(now)
+  const bucket = { async getMetadata() { return [metadata] }, async getFiles(query) {
+    return [query.softDeleted ? [] : records.map(item => ({ metadata: item })), null]
+  } }
+  const result = inspectBackupRetention(storageFor(bucket), selection, observed)
+  selection.bucket = 'synthetic-wrong-bucket'
+  selection.projectNumber = '999999999'
+  selection.environment = 'prod'
+  observed.setUTCFullYear(2040)
+  assert.equal((await result).latestDailyAgeSeconds, 0)
+})
+
 test('inventory refuses unexpected bucket policy or an incomplete listing', async () => {
   const badBucket = { async getMetadata() { return [{ ...metadata, projectNumber: '999999999' }] } }
   await assert.rejects(inspectBackupRetention({ bucket: () => badBucket }, target, now))
@@ -106,6 +120,15 @@ test('inventory refuses unexpected bucket policy or an incomplete listing', asyn
     return [[{ metadata: { name: 'idea-map-v2/dev/recovery-journal/synthetic' } }], null]
   } }
   await assert.rejects(inspectBackupRetention({ bucket: () => wrongPrefix }, target, now), /prefix is ambiguous/)
+  for (const softDeleted of [false, true]) {
+    for (const reportedBucket of ['synthetic-wrong-bucket', undefined]) {
+      const wrongObject = { ...make('daily', 80), bucket: reportedBucket }
+      const wrongBucket = { async getMetadata() { return [metadata] }, async getFiles(query) {
+        return [Boolean(query.softDeleted) === softDeleted ? [{ metadata: wrongObject }] : [], null]
+      } }
+      await assert.rejects(inspectBackupRetention(storageFor(wrongBucket), target, now), /bucket is ambiguous/)
+    }
+  }
 })
 
 test('bootstrap inventory reports missing copies without proposing deletion', async () => {
