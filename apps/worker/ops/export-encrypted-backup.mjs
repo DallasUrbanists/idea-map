@@ -206,7 +206,8 @@ export async function exportEncryptedBackup(config, options = {}) {
       throw new Error('Uploaded backup copies differ')
     }
     await checkBucket()
-    const completion = { backup_version: '2', backup_started_at: now.toISOString() }
+    const completion = { backup_version: '3', backup_started_at: now.toISOString(),
+      bucket_generation: initialBucket.generation, bucket_metageneration: initialBucket.metageneration }
     for (let index = 0; index < kinds.length; index++) {
       for (const key of ['generation', 'size', 'crc32c']) completion[`${kinds[index]}_${key}`] = generations[index][key]
     }

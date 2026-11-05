@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { confirmCompletedExports, inspectBackupRetention } from '../ops/inspect-backup-retention.mjs'
+import { confirmCompletedExports as confirmExports, inspectBackupRetention } from '../ops/inspect-backup-retention.mjs'
 
 const target = { environment: 'dev', bucket: 'synthetic-backups', projectNumber: '123456789' }
 const now = new Date('2026-11-03T12:00:00Z')
 const metadata = { name: target.bucket, projectNumber: target.projectNumber, generation: '11', metageneration: '1',
   iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
   versioning: { enabled: true }, softDeletePolicy: { retentionDurationSeconds: '604800' } }
+const confirmCompletedExports = (objects, environment, time) => confirmExports(objects, environment, time, metadata)
 const make = (kind, days) => {
   const timeCreated = new Date(now.getTime() - days * 86_400_000).toISOString()
   return { name: `idea-map-v2/dev/${kind}/${timeCreated.slice(0, 10)}/00000000-0000-4000-8000-${String(days).padStart(12, '0')}.pgdump`,
@@ -18,7 +19,8 @@ const softDeletedObject = object => ({ ...object,
 const completion = (daily, weekly) => ({
   name: daily.name.replace('/daily/', '/completion/').replace('.pgdump', '.complete'),
   bucket: target.bucket, generation: daily.generation, metageneration: '1', timeCreated: daily.timeCreated, size: '0', crc32c: 'AAAAAA==',
-  metadata: { backup_version: '2', backup_started_at: daily.timeCreated,
+  metadata: { backup_version: '3', backup_started_at: daily.timeCreated,
+    bucket_generation: metadata.generation, bucket_metageneration: metadata.metageneration,
     daily_generation: daily.generation, daily_size: daily.size, daily_crc32c: daily.crc32c,
     ...(weekly ? { weekly_generation: weekly.generation, weekly_size: weekly.size, weekly_crc32c: weekly.crc32c } : {}) },
 })
@@ -80,6 +82,21 @@ test('inventory rejects changes to the bucket, live objects, or soft-deleted obj
     return [{ ...metadata, generation: ++bucketReads === 1 ? '11' : '12' }]
   }, async getFiles() { return [[], null] } }
   await assert.rejects(inspectBackupRetention(storageFor(replacedBucket), target, now), /inventory changed/)
+  const sharedMetadata = { ...metadata }
+  let sharedReads = 0
+  const mutatedBucket = { async getMetadata() {
+    if (++sharedReads === 2) sharedMetadata.metageneration = '2'
+    return [sharedMetadata]
+  }, async getFiles() { return [[], null] } }
+  await assert.rejects(inspectBackupRetention(storageFor(mutatedBucket), target, now), /inventory changed/)
+  const sharedObject = make('daily', 0)
+  let sharedObjectReads = 0
+  const mutatedObject = { async getMetadata() { return [metadata] }, async getFiles(query) {
+    if (!query.prefix.endsWith('/daily/') || query.softDeleted) return [[], null]
+    if (++sharedObjectReads === 2) sharedObject.metageneration = '2'
+    return [[{ metadata: sharedObject }], null]
+  } }
+  await assert.rejects(inspectBackupRetention(storageFor(mutatedObject), target, now), /inventory changed/)
 
   for (const changedSoftDelete of [false, true]) {
     const counts = new Map()
@@ -211,12 +228,29 @@ test('completion inventory rejects unfinished, altered, or mismatched copies', (
   const marker = records.find(item => item.name === daily.name.replace('/daily/', '/completion/').replace('.pgdump', '.complete'))
   assert.throws(() => confirmCompletedExports(records.filter(item => item !== marker), 'dev', now))
   assert.throws(() => confirmCompletedExports(records.map(item => item === marker ? { ...item, metadata: {} } : item), 'dev', now))
+  assert.throws(() => confirmCompletedExports(records.map(item => item === marker ? { ...item, metadata: { ...item.metadata, bucket_generation: '99' } } : item), 'dev', now))
+  assert.throws(() => confirmCompletedExports(records.map(item => item === marker ? { ...item, metadata: { ...item.metadata, bucket_metageneration: '99' } } : item), 'dev', now))
   assert.throws(() => confirmCompletedExports(records.map(item => item === daily ? { ...item, generation: '9999' } : item), 'dev', now))
   assert.throws(() => confirmCompletedExports(records.map(item => item === weekly ? { ...item, crc32c: 'BBBBBB==' } : item), 'dev', now))
   assert.throws(() => confirmCompletedExports(records.filter(item => item !== daily), 'dev', now))
   const olderWeekly = records.find(item => item.name.includes('/weekly/') && now - Date.parse(item.timeCreated) >= 15 * 86_400_000)
   const expiredDaily = records.filter(item => item.name !== olderWeekly.name.replace('/weekly/', '/daily/'))
   assert.equal(confirmCompletedExports(expiredDaily, 'dev', now).confirmed.length, 87)
+})
+
+test('legacy markers remain visible but cannot establish a verified retention plan', async () => {
+  const marker = records.find(item => item.name.includes('/completion/'))
+  const legacyMetadata = { ...marker.metadata, backup_version: '2' }
+  delete legacyMetadata.bucket_generation
+  delete legacyMetadata.bucket_metageneration
+  const objects = records.map(item => item === marker ? { ...item, metadata: legacyMetadata } : item)
+  const bucket = { async getMetadata() { return [metadata] },
+    async getFiles(query) { return [query.softDeleted ? [] : objects.map(item => ({ metadata: item })), null] } }
+  const result = await inspectBackupRetention(storageFor(bucket), target, now)
+  assert.equal(result.legacyCompletions, 1)
+  assert.equal(result.retentionSatisfied, false)
+  assert.equal(result.reviewRequired, true)
+  assert.deepEqual(result.candidates, [])
 })
 
 test('an old completion record can outlive its archive without being counted as a backup', async () => {

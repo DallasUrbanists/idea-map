@@ -206,7 +206,9 @@ fails; a completed copy may remain and must be investigated rather than assumed
 to make the other copy complete. Treat an ambiguous upload as unverified.
 After all required objects pass their upload checks, including the returned
 bucket and object identity, the exporter creates one zero-byte completion record
-with the archive generations, sizes, and checksums.
+with the bucket generation and metageneration, archive generations, sizes, and
+checksums. These bucket values describe the observed metadata state, not its IAM
+policy or the contents of the archive.
 The record uses a create-only precondition and requires no update to existing
 objects. The exporter checks the returned marker identity, empty-object checksum,
 and exact completion metadata before reporting success. It also compares the
@@ -359,6 +361,12 @@ to false, proposes no deletions, and causes the command to exit nonzero. The
 output still reports the distinct period counts and freshness during initial
 backup accumulation. `privacyDeadlineVerified` is always false: the inventory
 does not establish that copies of removed content expired by their deadline.
+The inventory checks version-three markers against the observed bucket generation
+and metageneration and fails if either differs. A legitimate bucket metadata
+change also requires separate review. Older version-two markers lack those
+values: `legacyCompletions` counts them, requires review, and prevents a verified
+retention result or deletion candidates. Do not delete or rewrite older records
+solely to make the inventory pass; reconcile their archives independently.
 `latestDailyAgeSeconds` and `latestWeeklyAgeSeconds`
 measure the ages of the latest confirmed exports from their conservative start
 times. `dailyFreshEnough` and `weeklyFreshEnough` are false when the respective

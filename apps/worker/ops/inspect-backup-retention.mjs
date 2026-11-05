@@ -33,7 +33,8 @@ async function listAll(bucket, bucketName, query, deadline) {
     const [page, following] = await beforeDeadline(deadline, () => bucket.getFiles(next))
     if (page.some(file => !file.metadata?.name?.startsWith(query.prefix))) throw new Error('Inventory prefix is ambiguous')
     if (page.some(file => file.metadata?.bucket !== bucketName)) throw new Error('Inventory bucket is ambiguous')
-    items.push(...page.map(file => file.metadata))
+    // Provider objects may be reused or mutated while subsequent pages load.
+    items.push(...page.map(file => structuredClone(file.metadata)))
     if (items.length > 100_000) throw new Error('Inventory is too large')
     if (!following) break
     if (typeof following.pageToken !== 'string' || !following.pageToken || tokens.has(following.pageToken)) throw new Error('Inventory pagination is ambiguous')
@@ -56,7 +57,7 @@ function inventoryFingerprint(objects) {
 }
 
 /** Match each archive to a create-only completion record; never count orphan records. */
-export function confirmCompletedExports(objects, environment, now) {
+export function confirmCompletedExports(objects, environment, now, bucketIdentity) {
   const prefix = `idea-map-v2/${environment}/`
   const names = new Set()
   const snapshots = new Map()
@@ -75,6 +76,7 @@ export function confirmCompletedExports(objects, environment, now) {
   }
   const confirmed = []
   let orphanCompletions = 0
+  let legacyCompletions = 0
   for (const [snapshot, group] of snapshots) {
     const marker = group.completion
     if (!marker) throw new Error('Backup completion record is missing')
@@ -84,7 +86,11 @@ export function confirmCompletedExports(objects, environment, now) {
     const started = Date.parse(startedAt)
     const created = Date.parse(marker.timeCreated)
     const hasWeekly = ['weekly_generation', 'weekly_size', 'weekly_crc32c'].some(key => meta[key] !== undefined)
-    if (meta.backup_version !== '2' || typeof startedAt !== 'string' || !Number.isFinite(started) ||
+    const legacy = meta.backup_version === '2'
+    if ((!legacy && meta.backup_version !== '3') ||
+        (!legacy && (!number(bucketIdentity?.generation) || !number(bucketIdentity?.metageneration) ||
+          meta.bucket_generation !== bucketIdentity.generation || meta.bucket_metageneration !== bucketIdentity.metageneration)) ||
+        typeof startedAt !== 'string' || !Number.isFinite(started) ||
         new Date(started).toISOString() !== startedAt || startedAt.slice(0, 10) !== date ||
         !Number.isFinite(created) || created < started || created > now.getTime() || marker.size !== '0' || marker.crc32c !== 'AAAAAA==' ||
         !number(meta.daily_generation) || !number(meta.daily_size) || !crc(meta.daily_crc32c) ||
@@ -93,6 +99,7 @@ export function confirmCompletedExports(objects, environment, now) {
           meta.weekly_size !== meta.daily_size || meta.weekly_crc32c !== meta.daily_crc32c))) {
       throw new Error('Backup completion metadata is invalid')
     }
+    if (legacy) legacyCompletions++
     for (const kind of ['daily', ...(hasWeekly ? ['weekly'] : [])]) {
       const archive = group[kind]
       if (!archive) {
@@ -109,7 +116,7 @@ export function confirmCompletedExports(objects, environment, now) {
     if (group.weekly && !hasWeekly) throw new Error('Unexpected weekly backup')
     if (!group.daily && !group.weekly) orphanCompletions++
   }
-  return { confirmed, orphanCompletions }
+  return { confirmed, orphanCompletions, legacyCompletions }
 }
 
 /** Inspect all live, noncurrent, and soft-deleted backup generations; never delete. */
@@ -134,6 +141,7 @@ export async function inspectBackupRetention(storage, target, now, options = {})
       typeof metadata.metageneration !== 'string' || !/^[1-9][0-9]*$/.test(metadata.metageneration)) {
     throw new Error('Backup bucket identity is ambiguous')
   }
+  const bucketIdentity = { generation: metadata.generation, metageneration: metadata.metageneration }
   const prefix = `idea-map-v2/${target.environment}/`
   // The bucket also contains recovery records. Never list or inspect them as backups.
   const backupPrefixes = ['daily', 'weekly', 'completion'].map(kind => `${prefix}${kind}/`)
@@ -143,7 +151,7 @@ export async function inspectBackupRetention(storage, target, now, options = {})
   const observedSoftDeleted = (await Promise.all(backupPrefixes.map(objectPrefix => listAll(bucket, target.bucket, { prefix: objectPrefix, softDeleted: true }, deadline)))).flat()
   const [observedBucket] = await beforeDeadline(deadline, () => bucket.getMetadata())
   verifyBackupBucket(observedBucket, target)
-  if (metadata.generation !== observedBucket.generation || metadata.metageneration !== observedBucket.metageneration ||
+  if (bucketIdentity.generation !== observedBucket.generation || bucketIdentity.metageneration !== observedBucket.metageneration ||
       JSON.stringify(inventoryFingerprint(objects)) !== JSON.stringify(inventoryFingerprint(observedObjects)) ||
       JSON.stringify(inventoryFingerprint(softDeleted)) !== JSON.stringify(inventoryFingerprint(observedSoftDeleted))) {
     throw new Error('Backup inventory changed')
@@ -203,7 +211,8 @@ export async function inspectBackupRetention(storage, target, now, options = {})
     const weekly = marker.name.replace('/completion/', '/weekly/').replace(/\.complete$/, '.pgdump')
     if (archiveNames.has(daily) || archiveNames.has(weekly)) throw new Error('Completion record became noncurrent before its archives')
   }
-  const { confirmed, orphanCompletions } = confirmCompletedExports([...live, ...pending, ...completions, ...pendingCompletions], target.environment, now)
+  const { confirmed, orphanCompletions, legacyCompletions } = confirmCompletedExports(
+    [...live, ...pending, ...completions, ...pendingCompletions], target.environment, now, bucketIdentity)
   const liveNames = new Set(live.map(object => object.name))
   const confirmedLive = confirmed.filter(object => liveNames.has(object.name))
   const plan = planBackupRetention({ environment: target.environment, complete: true, objects: confirmedLive, now })
@@ -230,11 +239,12 @@ export async function inspectBackupRetention(storage, target, now, options = {})
   const expiryAttentionPending = pending.filter(object => now.getTime() - earliestStart(object) >= 69 * 86_400_000).length
   const expiryAttentionSoftDeleted = softDeleted.filter(object => !object.name.startsWith(`${prefix}completion/`) &&
     now.getTime() - earliestStart(object) >= 69 * 86_400_000).length
-  const reviewRequired = plan.oldOrHeld > 0 || oldPendingArchives > 0 || oldSoftDeleted > 0 || plan.expiryAttention > 0 ||
+  const reviewRequired = legacyCompletions > 0 || plan.oldOrHeld > 0 || oldPendingArchives > 0 || oldSoftDeleted > 0 || plan.expiryAttention > 0 ||
     expiryAttentionPending > 0 || expiryAttentionSoftDeleted > 0 || longSoftDelete > 0 || overdueSoftDeletion > 0
-  return { ...plan, candidates: dailyFreshEnough && weeklyFreshEnough ? plan.candidates : [],
+  const retentionSatisfied = plan.retentionSatisfied && legacyCompletions === 0
+  return { ...plan, retentionSatisfied, candidates: retentionSatisfied && dailyFreshEnough && weeklyFreshEnough ? plan.candidates : [],
     dailyFreshEnough, latestDailyAgeSeconds, weeklyFreshEnough, latestWeeklyAgeSeconds,
-    pendingLifecycle: pending.length, pendingCompletions: pendingCompletions.length, orphanCompletions,
+    pendingLifecycle: pending.length, pendingCompletions: pendingCompletions.length, orphanCompletions, legacyCompletions,
     softDeleted: softDeleted.length, oldSoftDeleted, longSoftDelete, overdueSoftDeletion, oldPendingArchives,
     expiryAttentionPending, expiryAttentionSoftDeleted, reviewRequired }
 }

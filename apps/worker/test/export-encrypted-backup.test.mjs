@@ -146,6 +146,9 @@ test('one completed Monday dump finalizes identical daily and weekly uploads', a
   assert.equal(manifests.length, 1)
   for (const marker of manifests) {
     assert.equal(marker.options.metadata.metadata.backup_started_at, '2026-11-02T10:00:00.000Z')
+    assert.equal(marker.options.metadata.metadata.backup_version, '3')
+    assert.equal(marker.options.metadata.metadata.bucket_generation, metadata.generation)
+    assert.equal(marker.options.metadata.metadata.bucket_metageneration, metadata.metageneration)
     assert.equal(marker.options.metadata.metadata.daily_generation, '123')
     assert.equal(marker.options.metadata.metadata.weekly_generation, '123')
     assert.equal(marker.options.preconditionOpts.ifGenerationMatch, 0)
