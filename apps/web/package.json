@@ -5,7 +5,10 @@
   "type": "module",
   "license": "Apache-2.0",
   "dependencies": {
+    "@fontsource-variable/figtree": "^5.3.0",
+    "@iconify-json/fluent-emoji": "^1.2.7",
     "@idea-map/server": "workspace:*",
+    "@lordicon/element": "^3.0.2",
     "firebase": "^13.1.0",
     "firebase-admin": "^14.5.0",
     "h3": "1.15.11",
@@ -15,7 +18,9 @@
     "vue-router": "5.4.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@playwright/test": "1.64.1",
+    "@storybook/addon-docs": "10.6.5",
     "@storybook/vue3-vite": "10.6.5",
     "@vitejs/plugin-vue": "6.0.10",
     "storybook": "10.6.5",
@@ -25,10 +30,12 @@
   "scripts": {
     "dev": "nuxt dev",
     "test:dialog": "nuxt prepare && node --test ../../scripts/dialog-ssr.mjs && playwright test --config tests/dialog/playwright.config.mjs",
+    "test:storybook-docs": "playwright test --config tests/storybook/playwright.config.mjs",
     "storybook": "storybook dev -p 6006",
     "build:storybook": "storybook build",
     "build": "nuxt build",
     "typecheck": "nuxt typecheck",
-    "preview": "nuxt preview"
+    "preview": "nuxt preview",
+    "test:controls": "nuxt prepare && node --test ../../scripts/controls-ssr.mjs && playwright test --config tests/controls/playwright.config.mjs"
   }
 }

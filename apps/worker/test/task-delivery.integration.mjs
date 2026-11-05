@@ -5,6 +5,7 @@ import pg from 'pg'
 import { createCloudTasksDispatcher, recordAndDispatchAssessment, reconcileOutbox, standardReviewWaitMilliseconds } from '@idea-map/server'
 import { createWorkerHandler } from '../dist/worker.js'
 import { createJobExecutor } from '../dist/job-router.js'
+import { recoverMissingTask } from '../dist/recover.js'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !new URL(url).pathname.startsWith('/idea_map_test_') || !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname)) {
@@ -13,7 +14,7 @@ if (!url || !new URL(url).pathname.startsWith('/idea_map_test_') || !['127.0.0.1
 
 // The transport, token verifier, and approval callback are fakes. This does not
 // enable the production worker's automatic publication or prove provider behavior.
-test('policy deadlines survive authenticated delivery, lost responses, and delayed repair', async () => {
+test('policy deadlines survive delivery failures, guarded recovery, and replay', async () => {
   const setup = new pg.Pool({ connectionString: url, max: 2 })
   let pool, server
   try {
@@ -29,22 +30,27 @@ test('policy deadlines survive authenticated delivery, lost responses, and delay
     const repairInvoker = 'repair@synthetic-project.iam.gserviceaccount.com'
     const tasks = new Map()
     let loseResponse = false
-    const dispatcher = createCloudTasksDispatcher({ queue, workerOrigin: origin, invokerEmail: taskInvoker,
-      transport: { async request(method, path, body) {
-        if (method === 'GET') return { status: tasks.has(path.split('?')[0]) ? 200 : 404, data: tasks.get(path.split('?')[0]) }
-        assert.equal(path, `${queue}/tasks`)
-        if (tasks.has(body.task.name)) return { status: 409 }
-        tasks.set(body.task.name, body.task)
-        if (loseResponse) { loseResponse = false; throw new Error('synthetic lost response') }
-        return { status: 200 }
-      } },
-    })
+    let rejectCreates = false
+    let inspectionDenied = false
+    let approvalUnavailable = false
+    const transport = { async request(method, path, body) {
+      if (method === 'GET' && path === queue) return { status: 200, data: { name: queue } }
+      if (method === 'GET' && inspectionDenied) return { status: 403 }
+      if (method === 'GET') return { status: tasks.has(path.split('?')[0]) ? 200 : 404, data: tasks.get(path.split('?')[0]) }
+      assert.equal(path, `${queue}/tasks`)
+      if (rejectCreates) return { status: 503 }
+      if (tasks.has(body.task.name)) return { status: 409 }
+      tasks.set(body.task.name, body.task)
+      if (loseResponse) { loseResponse = false; throw new Error('synthetic lost response') }
+      return { status: 200 }
+    } }
+    const dispatcher = createCloudTasksDispatcher({ queue, workerOrigin: origin, invokerEmail: taskInvoker, transport })
     server = createServer(createWorkerHandler({ origin, taskInvoker, repairInvoker,
       async verify(token, audience) {
         if (audience !== origin || !['task', 'repair'].includes(token)) throw new Error('invalid token')
         return { email: token === 'task' ? taskInvoker : repairInvoker, verified: true }
       },
-      execute: createJobExecutor(pool, { moderationPolicy: async () => 'allow' }),
+      execute: createJobExecutor(pool, { moderationPolicy: async () => approvalUnavailable ? 'retry' : 'allow' }),
       async repair() { return reconcileOutbox(pool, dispatcher, 20) },
     }))
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -59,7 +65,11 @@ test('policy deadlines survive authenticated delivery, lost responses, and delay
     }
     const assess = (id, revisionId, score) => recordAndDispatchAssessment(pool, { id, revisionId,
       fingerprint: 'a'.repeat(64), waitMilliseconds: standardReviewWaitMilliseconds(score), shortcutRequested: false }, dispatcher)
-    const taskFor = id => tasks.get(`${queue}/tasks/job-${id}-0`)
+    const taskName = (id, generation = 0) => `${queue}/tasks/job-${id}-${generation}`
+    const taskFor = (id, generation = 0) => tasks.get(taskName(id, generation))
+    const durable = async id => (await pool.query(`SELECT j.state, j.scheduled_at, o.dispatch_attempts, o.delivery_generation, o.published_at
+      FROM jobs j JOIN outbox o ON o.job_id=j.id WHERE j.id=$1`, [id])).rows[0]
+    const recover = (id, generation = 0) => recoverMissingTask(pool, transport, { queue, jobId: id, generation }, new AbortController().signal)
 
     const immediate = await createRevision()
     const instant = await assess('delivery-immediate', immediate.revision, 95)
@@ -104,6 +114,76 @@ test('policy deadlines survive authenticated delivery, lost responses, and delay
     assert.equal((await post('/tasks/execute', 'task', { jobId: replacement.jobIds[0] })).status, 204)
     assert.equal((await pool.query('SELECT state FROM jobs WHERE id=$1', [replacement.jobIds[0]])).rows[0].state, 'stale')
     assert.equal((await pool.query('SELECT publication_state FROM ideas WHERE id=$1', [superseded.idea])).rows[0].publication_state, 'private')
+
+    // Exhaust the database's five create attempts, then require a confirmed
+    // absence before an operator rearms a fresh delivery generation.
+    assert.equal((await post('/tasks/repair', 'repair')).status, 204)
+    const dispatchTarget = await createRevision()
+    rejectCreates = true
+    const dispatchAssessment = await assess('delivery-dispatch-exhausted', dispatchTarget.revision, 60)
+    const dispatchId = dispatchAssessment.jobIds[0]
+    assert.equal(dispatchAssessment.dispatchFailures, 1)
+    for (let attempt = 2; attempt <= 5; attempt++) {
+      assert.equal((await post('/tasks/repair', 'repair')).status, 503)
+      assert.equal((await durable(dispatchId)).dispatch_attempts, attempt)
+    }
+    rejectCreates = false
+    assert.equal((await post('/tasks/repair', 'repair')).status, 204)
+    let row = await durable(dispatchId)
+    assert.equal(row.dispatch_attempts, 5)
+    assert.equal(row.published_at, null)
+    assert.equal(taskFor(dispatchId), undefined)
+    inspectionDenied = true
+    assert.equal(await recover(dispatchId), 'unknown')
+    assert.equal((await durable(dispatchId)).delivery_generation, 0)
+    inspectionDenied = false
+    assert.equal(await recover(dispatchId), 'rearmed')
+    row = await durable(dispatchId)
+    assert.equal(row.delivery_generation, 1)
+    assert.equal(row.dispatch_attempts, 0)
+    assert.equal(row.scheduled_at.getTime(), dispatchAssessment.deadline.getTime())
+    assert.equal((await post('/tasks/repair', 'repair')).status, 204)
+    assert.equal(taskFor(dispatchId, 1).scheduleTime, dispatchAssessment.deadline.toISOString())
+    assert.equal((await post('/tasks/execute', 'task', { jobId: dispatchId })).status, 503)
+    await advance(dispatchAssessment.deadline)
+    assert.equal((await post('/tasks/execute', 'task', { jobId: dispatchId })).status, 204)
+    assert.equal((await post('/tasks/execute', 'task', { jobId: dispatchId })).status, 204)
+    assert.equal((await durable(dispatchId)).state, 'completed')
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM jobs WHERE kind='projection' AND revision_id=$1", [dispatchTarget.revision])).rows[0].n, 1)
+
+    // Model five retryable HTTP deliveries and provider exhaustion. The fake
+    // removes the task to represent provider-confirmed absence, not live behavior.
+    const executionTarget = await createRevision()
+    const executionAssessment = await assess('delivery-execution-exhausted', executionTarget.revision, 60)
+    const executionId = executionAssessment.jobIds[0]
+    await advance(new Date(executionAssessment.deadline.getTime() + 3_600_000))
+    approvalUnavailable = true
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      assert.equal((await post('/tasks/execute', 'task', { jobId: executionId })).status, 503)
+    }
+    row = await durable(executionId)
+    assert.equal(row.state, 'pending')
+    assert.ok(row.published_at)
+    assert.equal((await pool.query('SELECT publication_state FROM ideas WHERE id=$1', [executionTarget.idea])).rows[0].publication_state, 'private')
+    assert.equal(await recover(executionId), 'present')
+    assert.equal((await durable(executionId)).delivery_generation, 0)
+    tasks.delete(taskName(executionId))
+    assert.equal(await recover(executionId), 'rearmed')
+    assert.equal(await recover(executionId), 'unchanged')
+    row = await durable(executionId)
+    assert.equal(row.delivery_generation, 1)
+    assert.equal(row.scheduled_at.getTime(), executionAssessment.deadline.getTime())
+    assert.equal((await post('/tasks/repair', 'repair')).status, 204)
+    const recoveredTask = taskFor(executionId, 1)
+    assert.equal(recoveredTask.scheduleTime, executionAssessment.deadline.toISOString())
+    assert.deepEqual(JSON.parse(Buffer.from(recoveredTask.httpRequest.body, 'base64').toString()), { jobId: executionId })
+    approvalUnavailable = false
+    assert.equal((await post('/tasks/execute', 'task', { jobId: executionId })).status, 204)
+    assert.equal((await post('/tasks/execute', 'task', { jobId: executionId })).status, 204)
+    tasks.delete(taskName(executionId, 1))
+    assert.equal(await recover(executionId, 1), 'unchanged')
+    assert.equal((await pool.query('SELECT revision_id FROM approved_revisions WHERE idea_id=$1', [executionTarget.idea])).rows[0].revision_id, executionTarget.revision)
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM jobs WHERE kind='projection' AND revision_id=$1", [executionTarget.revision])).rows[0].n, 1)
   } finally {
     if (server?.listening) await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
     if (pool) await pool.end()

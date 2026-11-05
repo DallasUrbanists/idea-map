@@ -1,0 +1,105 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as ButtonStories from './Button.stories.js'
+
+<Meta of={ButtonStories} name="Usage" />
+
+# Button usage
+
+Use a button to start an action. Choose a variant for the action's role and use
+clear labels that describe the result. Buttons default to `type="button"`; set
+`type="submit"` when the button submits a form.
+
+## Primary
+
+Use `primary` for the main action in a group. It is the default variant.
+
+```html
+<Button type="submit">Save idea</Button>
+```
+
+<Canvas of={ButtonStories.UsagePrimary} sourceState="none" />
+
+## Secondary
+
+Use `secondary` for an alternative action, such as previewing a draft.
+
+```html
+<Button variant="secondary">Preview</Button>
+```
+
+<Canvas of={ButtonStories.UsageSecondary} sourceState="none" />
+
+## Warning
+
+Use `warning` for an action that needs caution. State the reason or consequence
+in visible text; color alone does not explain the warning.
+
+```html
+<Button variant="warning">Review before continuing</Button>
+```
+
+<Canvas of={ButtonStories.UsageWarning} sourceState="none" />
+
+## Transparent
+
+Use `transparent` for a lower-emphasis action when the surrounding layout makes
+the control clear.
+
+```html
+<Button variant="transparent">Show details</Button>
+```
+
+<Canvas of={ButtonStories.UsageTransparent} sourceState="none" />
+
+## Icons and accessible names
+
+Put a decorative icon in the `icon` slot. For an icon-only action, set
+`icon-only` and provide an `aria-label`; the label also appears in a tooltip on
+hover and focus. Keep it accurate while the action is loading.
+
+```html
+<Button icon-only aria-label="Add idea">
+  <template #icon>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <path d="M12 4v16M4 12h16" />
+    </svg>
+  </template>
+</Button>
+```
+
+<Canvas of={ButtonStories.UsageIcon} sourceState="none" />
+
+For an icon with visible text, use the same `icon` slot and put the action text
+in the default slot. A disabled button shows a slash over the icon.
+
+```html
+<Button variant="secondary">
+  <template #icon>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <path d="M12 4v16M4 12h16" />
+    </svg>
+  </template>
+  Add idea
+</Button>
+```
+
+## Loading and disabled
+
+Use `loading` while an action is pending and give `loading-label` an accurate
+description. Loading keeps focus and blocks activation; also guard duplicate
+requests in the submit handler. Use `disabled` when an action is unavailable,
+and explain why nearby when it is not obvious. A disabled button leaves the tab
+order.
+
+```html
+<Button :loading="saving" loading-label="Saving idea…">Save idea</Button>
+<Button disabled>Submit unavailable</Button>
+```
+
+<Canvas of={ButtonStories.UsageStates} sourceState="none" />
+
+Use the optional `loading` slot to replace the loading label with custom content.
+For icon-only buttons, supply a loading icon in that slot and update the
+accessible name to describe the pending action.

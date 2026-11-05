@@ -47,7 +47,7 @@ verification and session mutation checks.
 
 The application loads `apps/web/src/styles/tokens.css` once through Nuxt's `css`
 configuration. Project-owned components use scoped CSS, semantic classes, and
-the [design system](../design/design-system.md). You should use native elements
+the [Storybook design system](storybook.md). You should use native elements
 for simple responsibilities and wrap selected [Reka primitives](reka.md) behind
 stable component contracts.
 

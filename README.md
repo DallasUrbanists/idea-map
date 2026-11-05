@@ -5,11 +5,15 @@ places where we live. If you want to contribute, you can run a local checkout
 with synthetic data and no production credentials, then use the repository map
 below to find the code and guidance for your change.
 
+Want to help? Start with the [contributing guide](CONTRIBUTING.md).
+The [documentation index](docs/README.md) covers user guidance, contributor
+instructions, architecture, and policies.
 - [What you can try](#what-you-can-try)
 - [Run locally](#run-locally)
 - [Find your way around](#find-your-way-around)
 - [Contribute and plan](#contribute-and-plan)
 - [License and policies](#license-and-policies)
+- [Animated icons by Lordicon.com](https://lordicon.com/)
 
 ## What you can try
 
@@ -18,6 +22,22 @@ Idea Map brings community ideas into a map and presentation experience. The
 explains the intended experience, and the
 [open issues](https://github.com/DallasUrbanists/idea-map/issues) track
 implementation status.
+
+The open MVP beta focuses on the core browse-and-submit experience and feedback
+from personally invited stakeholders and potential supporters. The release scope is a
+publicly accessible site where accepted posts publish immediately without
+pre-publication content review or automated moderation. The
+[beta release policy](docs/policies/beta-release-policy.md) defines scope and
+safeguards; the [acceptance procedure](docs/test-procedures/beta-acceptance.md)
+defines the evidence needed for launch.
+
+- [Architecture overview](docs/architecture/architecture-overview.md)
+- [Development guide](docs/contributor-guides/development-guide.md)
+- [Design system in Storybook](docs/architecture/storybook.md)
+- [API policy](docs/policies/api-policy.md)
+- [Privacy Policy](docs/policies/privacy-policy.md)
+- [Terms of Use](docs/policies/terms-of-use-policy.md)
+- [Release procedure](docs/policies/release-procedure.md)
 
 The selected stack combines Vue and Nuxt with TypeScript on Node.js, using pnpm
 workspaces. PostgreSQL with PostGIS stores authoritative geographic and content

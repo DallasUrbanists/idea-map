@@ -1,0 +1,56 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './ErrorState.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Error state usage
+
+You can explain a failed request and offer recovery with ErrorState. The message describes the failure in ordinary language; exception names and provider responses belong outside the interface.
+
+## Full surface and recovery
+
+You should use surface when no trustworthy results are available. The retry event lets the parent start another request; retrying keeps the button focused while blocking repeat activation.
+
+```html
+<ErrorState message="Could not load ideas"
+  description="Check your connection and try again."
+  retry-label="Try again" :retrying="loading" @retry="loadIdeas" />
+```
+
+<Canvas of={Stories.UsageDefault} sourceState="none" />
+
+## Inline stale content
+
+You can keep previous results visible and show an inline error. The description should state when the results last updated so stale content does not appear current.
+
+```html
+<ErrorState variant="inline" message="Could not update ideas"
+  description="Last updated 3 minutes ago. The previous results are still shown."
+  retry-label="Try again" @retry="loadIdeas" />
+```
+
+<Canvas of={Stories.UsageInline} sourceState="none" />
+
+## Compact value
+
+You can use compact for a small unavailable value. This variant has no retry button; a recovery action should remain available in the surrounding surface.
+
+```html
+<ErrorState variant="compact" message="Cannot update" />
+```
+
+<Canvas of={Stories.UsageCompact} sourceState="none" />
+
+## Component contract
+
+Required `message` names the failure. Optional props are `description`, `variant` (`surface`, `inline`, or `compact`; default `surface`), `retryLabel`, and Boolean `retrying`. Set `retryLabel` to display a retry button in the surface and inline variants. The component emits `retry` without arguments. It does not fetch data or announce repeated errors automatically; the parent owns the request and a persistent live region for asynchronous outcomes.
+
+## Foundations and reference
+
+The examples follow Idea Map's [color](/docs/foundations-color--docs),
+[typography](/docs/foundations-typography--docs),
+[size and space](/docs/foundations-size-and-space--docs), and
+[container](/docs/foundations-containers--docs) requirements.
+The component pattern is informed by [Signal's error state reference](https://signal.chitransit.app/components/error-state);
+Idea Map's Foundation tokens and interaction requirements determine this implementation.
+

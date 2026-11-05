@@ -39,7 +39,7 @@ The following guides cover common development tasks:
 | Topic | More guidance |
 | --- | --- |
 | Developer setup | [Developer setup and troubleshooting](docs/contributor-guides/development-guide.md) |
-| Components and appearance | [Design system and Storybook](docs/design/design-system.md) |
+| Components and appearance | [Design system in Storybook](docs/architecture/storybook.md) |
 | Validation | [Testing and definition of done](docs/contributor-guides/testing-guide.md) |
 
 ## Run locally

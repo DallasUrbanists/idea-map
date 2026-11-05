@@ -20,7 +20,7 @@ test('worker responds to SIGTERM after it starts', async () => {
   try {
     let ready = false
     for (let i = 0; i < 100 && !ready; i++) {
-      try { ready = (await fetch(`http://127.0.0.1:${port}/healthz`)).status === 200 } catch { /* still starting */ }
+      try { ready = (await fetch(`http://127.0.0.1:${port}/health`)).status === 200 } catch { /* still starting */ }
       if (!ready) await new Promise(resolve => setTimeout(resolve, 50))
     }
     assert.ok(ready, 'worker must start')
@@ -58,7 +58,7 @@ test('offline worker refuses remote databases and disables provider authenticati
   try {
     let ready = false
     for (let i = 0; i < 100 && !ready; i++) {
-      try { ready = (await fetch(`http://127.0.0.1:${port}/healthz`)).status === 200 } catch { /* still starting */ }
+      try { ready = (await fetch(`http://127.0.0.1:${port}/health`)).status === 200 } catch { /* still starting */ }
       if (!ready) await new Promise(resolve => setTimeout(resolve, 50))
     }
     assert.ok(ready)

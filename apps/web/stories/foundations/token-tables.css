@@ -1,0 +1,29 @@
+.sbdocs .sbdocs-content .token-reference {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.sbdocs .sbdocs-content .token-reference tbody th,
+.sbdocs .sbdocs-content .token-reference tbody th code {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+.sbdocs .sbdocs-content .token-colors tbody tr:nth-of-type(2n) {
+  background: transparent;
+}
+
+/* Keep labels readable over any swatch, including page gradients. */
+.sbdocs .sbdocs-content .token-colors td code {
+  display: inline-block;
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.sbdocs .sbdocs-content .token-colors td.solid-color code {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}

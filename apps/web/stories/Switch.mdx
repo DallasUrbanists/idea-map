@@ -1,0 +1,44 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './Switch.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Switch usage
+
+You can apply a Boolean setting immediately with Switch. The catalog switch reuses Toggle's native checkbox, stable label, hint association, and v-model contract, with a trailing track and thumb.
+
+## Immediate setting
+
+You should use a stable label for the setting. Thumb position and visible On or Off text communicate state independently of color; the whole label row toggles it.
+
+```html
+<Switch v-model="showIdeas" label="Show community ideas"
+  hint="Changes apply immediately." />
+```
+
+<Canvas of={Stories.UsageDefault} sourceState="none" />
+
+## Unavailable settings
+
+You should explain why a setting is unavailable. Disabled switches leave the Tab order and show a dashed track boundary.
+
+```html
+<Switch :model-value="true" label="Email updates" disabled
+  hint="Sign in to change email settings." />
+```
+
+<Canvas of={Stories.UsageDisabled} sourceState="none" />
+
+## Component contract
+
+Required props are `label` and Boolean `modelValue`. Optional props are `id`, `hint`, and `disabled`. The component emits `update:modelValue(boolean)` and has no slots. Native attributes reach the checkbox. Space toggles the focused switch. A choice between named alternatives belongs in SegmentedControl, and consent belongs in an ordinary checkbox.
+
+## Foundations and reference
+
+The examples follow Idea Map's [color](/docs/foundations-color--docs),
+[typography](/docs/foundations-typography--docs),
+[size and space](/docs/foundations-size-and-space--docs), and
+[container](/docs/foundations-containers--docs) requirements.
+The component pattern is informed by [Signal's switch reference](https://signal.chitransit.app/components/switch);
+Idea Map's Foundation tokens and interaction requirements determine this implementation.
+

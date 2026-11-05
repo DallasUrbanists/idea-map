@@ -1,12 +1,14 @@
 # Moderation policy
 
-When someone shares an idea or edits it, Idea Map checks the content before
-making it public. This policy explains when approval can happen automatically,
-how moderators can step in, and how people can ask for another review. It also
-includes the rules and acceptance scenarios contributors should preserve.
+The publication policy distinguishes immediate posting during the open MVP beta
+from a separately gated reviewed-publication mode. This policy explains which rules apply to each
+mode, how operators respond to concerns, and how people request correction or
+removal.
 
 The following contents links navigate within this guide:
 
+- [Open MVP beta](#open-mvp-beta)
+- [Reviewed publication](#reviewed-publication)
 - [Approval rules](#approval-rules)
 - [Waiting period](#waiting-period)
 - [Trusted-user shortcut](#trusted-user-shortcut)
@@ -18,6 +20,32 @@ The following contents links navigate within this guide:
 - [Audit, privacy, and reviewer accountability](#audit-privacy-and-reviewer-accountability)
 - [User-facing messages and appeals](#user-facing-messages-and-appeals)
 - [Acceptance scenarios](#acceptance-scenarios)
+
+## Open MVP beta
+
+During beta, accepted submissions publish immediately after authorization,
+consent and technical validation, without pre-publication content review,
+compliance scoring or moderation waiting periods. The
+[beta release policy](beta-release-policy.md) defines the exact publication
+boundary, essential safeguards and launch evidence.
+
+Operators can remove published material and pause new posting in response to
+abuse or an incident. Drafts, incomplete uploads, private contact information,
+ownership evidence and staff-only records remain private; public display does
+not verify identity, establish trust history or imply content approval.
+
+The content standards and privacy/removal protections apply during beta.
+The service must record beta publication separately from a reviewed approval
+and must not create a passing assessment to bypass the reviewed-mode gates.
+
+## Reviewed publication
+
+The approval bands, waiting periods, trusted-user shortcut, assessment,
+pre-publication intervention, publication sequence, reviewed-mode audit fields,
+review-state messages and associated acceptance scenarios below apply only when
+reviewed publication is separately enabled. Those features are
+post-beta work and retain their scoring, provider, moderator-control and
+end-to-end publication/privacy acceptance requirements.
 
 ## Approval rules
 
@@ -199,12 +227,15 @@ violation is discovered.
 
 ## Content rules
 
-Both automated checks and moderators assess the whole submission, captions, and
-each image in context. Moderators should allow good-faith civic criticism,
+The content standards apply to every publication mode. In reviewed mode,
+automated checks and moderators assess the whole submission, captions, and each
+image in context. Moderators should allow good-faith civic criticism,
 political viewpoints, descriptions of unsafe streets and discussion of public
 officials; disagreement or an AI category alone is not grounds for rejection.
 
-The publication service must exclude material in these categories:
+In reviewed mode, the publication service must exclude material in these
+categories. During beta, people should not submit this material, and operators
+can remove it when a violation is identified:
 
 - Credible threats, incitement to violence, or targeted harassment
 - Hateful attacks on protected characteristics or explicit sexual material
@@ -213,8 +244,10 @@ The publication service must exclude material in these categories:
 - spam, fraud, malware links or material the submitter lacks permission to
     share.
 
-Moderators should escalate ambiguous privacy, ownership, safety, and contextual
-cases to a second moderator. Do not infer a legal conclusion, protected status,
+In reviewed mode, moderators should escalate ambiguous privacy, ownership,
+safety, and contextual cases to a second moderator. Beta operators should follow
+the documented report and escalation procedure without requiring a full
+pre-publication review team. Do not infer a legal conclusion, protected status,
 intent, or permission from a model score. Where a concern is limited to one
 field or photo, offer a correction path; do not silently edit the author's
 meaning. Emergency or credible threat handling requires an operator-approved
@@ -262,7 +295,7 @@ access before sending private content to a provider.
 
 ## Revisions and publication
 
-The publication service must follow this sequence:
+In reviewed mode, the publication service must follow this sequence:
 
 1. Save an accepted submission privately with its revision acceptance timestamp.
     Make it available to moderators immediately and assess that exact revision.
@@ -283,15 +316,20 @@ The publication service must follow this sequence:
 
 ## Audit, privacy, and reviewer accountability
 
-The audit recorder must keep an append-only record of the revision, acceptance
+In reviewed mode, the audit recorder must keep an append-only record of the revision, acceptance
 time, assessment identity, server-recorded assessment receipt time, compliance
 score, scoring-method version, calculated deadline, policy version, approval
 method, service or moderator identity, and reason. Record moderator holds,
 decisions, and overrides. For the trusted-user shortcut, also record the
 verified identity evidence, prior approval count and threshold used.
 
+Beta publication records must identify the exact public revision, acceptance
+time, publication mode and applicable policy version without inventing review
+evidence. Authorized removal and other operator actions must record the actor,
+time and reason.
+
 The audit recorder must record provider identifiers, category signals, and
-failure states only as needed for review. Keep raw content, contact details,
+failure states only when those assessments are enabled and needed for review. Keep raw content, contact details,
 credentials and full provider payloads out of logs. Restrict audit access to
 authorized staff.
 
@@ -309,7 +347,7 @@ recorded with the scope and authorization evidence required by that policy.
 
 ## User-facing messages and appeals
 
-The interface presents these messages for each state:
+In reviewed mode, the interface presents these messages for each state:
 
 - Waiting: “Your idea is saved privately. It is scheduled for automatic review
   completion at [time], unless a moderator requests changes or places it on hold.”
@@ -334,7 +372,7 @@ targets remain unresolved.
 
 ## Acceptance scenarios
 
-These scenarios show the required results for approval and recovery:
+These scenarios show the required results for reviewed-mode approval and recovery:
 
 | Scenario | Expected result |
 | --- | --- |

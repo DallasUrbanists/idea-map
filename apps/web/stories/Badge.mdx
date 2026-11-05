@@ -1,0 +1,49 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './Badge.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Badge usage
+
+You can use a badge for a short object label, such as Draft or Review in progress. A badge is static text with a pill shape; actions belong in a Button, and selectable filters belong in a SegmentedControl.
+
+## Label
+
+The default badge uses the accent text and tint tokens. You should keep the label concise and let longer text wrap.
+
+```html
+<Badge>Draft</Badge>
+```
+
+<Canvas of={Stories.UsageDefault} sourceState="none" />
+
+## Leading icon
+
+You can put a decorative icon in the icon slot. The visible words carry the meaning; the badge hides the icon from assistive technology.
+
+```html
+<Badge>
+  <template #icon>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M4 12a8 8 0 1 0 3-6M4 3v5h5" />
+    </svg>
+  </template>
+  Review in progress
+</Badge>
+```
+
+<Canvas of={Stories.UsageIcon} sourceState="none" />
+
+## Component contract
+
+The default slot supplies the label; the optional `icon` slot supplies a decorative icon. Badge has no props, events, or interactive state. You should use the shared pill container and avoid assigning click behavior to the label.
+
+## Foundations and reference
+
+The examples follow Idea Map's [color](/docs/foundations-color--docs),
+[typography](/docs/foundations-typography--docs),
+[size and space](/docs/foundations-size-and-space--docs), and
+[container](/docs/foundations-containers--docs) requirements.
+The component pattern is informed by [Signal's badge reference](https://signal.chitransit.app/components/badge);
+Idea Map's Foundation tokens and interaction requirements determine this implementation.
+

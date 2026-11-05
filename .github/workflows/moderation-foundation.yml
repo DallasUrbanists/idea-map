@@ -62,7 +62,16 @@ jobs:
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_escalation_transfers
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_database
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_worker
+          docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_registered_drafts
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_delivery
+      - name: Migrate registered-draft test database
+        env:
+          DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_registered_drafts
+        run: pnpm --filter @idea-map/server db:migrate
+      - name: Registered draft inventory
+        env:
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_registered_drafts
+        run: pnpm --filter @idea-map/server test:registered-drafts
       - name: Outbox transactions
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_outbox
@@ -194,6 +203,17 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_ownership_emulator
         run: pnpm test:ownership-claim
+      - name: Prepare registered submission test database
+        run: docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_submission_emulator
+      - name: Migrate registered submission test database
+        env:
+          DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_submission_emulator
+        run: pnpm --filter @idea-map/server db:migrate
+      - name: Verify registered submission sessions
+        env:
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_submission_emulator
+          FIREBASE_AUTH_EMULATOR_HOST: 127.0.0.1:9099
+        run: pnpm test:registered-submission-auth
       - name: Stop Firebase emulators
         if: always()
         run: docker rm -f idea-map-firebase-test || true

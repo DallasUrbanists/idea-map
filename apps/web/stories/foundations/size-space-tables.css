@@ -1,0 +1,6 @@
+.spacing-sample {
+  display: inline-block;
+  height: var(--step-12);
+  background: var(--color-accent);
+  border-radius: var(--step-2);
+}
