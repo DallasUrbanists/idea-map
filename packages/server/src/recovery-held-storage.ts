@@ -74,7 +74,9 @@ export async function writeUnverifiedHeldMaterial(storage: Storage, target: Targ
     await done
     remainingTime(deadline)
     const saved = file.metadata
-    if (saved?.name !== path || typeof saved.generation !== 'string' || !/^[1-9][0-9]{0,19}$/.test(saved.generation) ||
+    if (saved?.name !== path || saved.bucket !== destination.bucket ||
+        typeof saved.generation !== 'string' || !/^[1-9][0-9]{0,19}$/.test(saved.generation) ||
+        typeof saved.metageneration !== 'string' || !/^[1-9][0-9]*$/.test(saved.metageneration) ||
         saved.size !== String(bytes.length) || saved.crc32c !== checksum.toString() || saved.temporaryHold !== true) {
       throw new Error('Held material metadata is ambiguous')
     }

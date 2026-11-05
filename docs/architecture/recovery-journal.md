@@ -527,9 +527,13 @@ in decision records or extend a hold to unrelated material by default.
 An unwired storage primitive can write one already-scoped private artifact to the
 existing backup bucket under a caller-supplied UUIDv4, then read its exact generation
 and check its size and SHA-256 digest. It requests a temporary object hold in the
-create-only upload and requires the returned metadata to confirm it. A failed or
-ambiguous response can still leave a held object behind; reconcile and dispose
-of orphaned artifacts through the separately authorized retention process. A
+create-only upload and requires the returned bucket, object generation,
+metageneration, checksum, size, and hold to agree. A failed or ambiguous response
+can still leave a held object behind; reconcile and dispose of orphaned artifacts
+through the separately authorized retention process. On a checksum mismatch the
+Storage client attempts to delete the upload. A local fake denies that request
+and retains the requested hold; it does not establish actual provider permissions
+or hold enforcement. A
 read checks the exact generation's temporary hold and metageneration before and
 after downloading; a missing hold or changed metadata fails verification. These
 observations do not prove effective permissions or future protection. The

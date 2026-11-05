@@ -19,7 +19,7 @@ after(() => {
   else process.env.STORAGE_EMULATOR_HOST = originalEmulator
 })
 
-function fake({ wrongChecksum = false, missingHeader = false, failWrite = false, missingHold = false, changeHoldDuringRead = false, stallMetadata = false, delayStreamEnd = false, softDelete = '604800' } = {}) {
+function fake({ wrongChecksum = false, wrongBucket = false, missingMetageneration = false, missingHeader = false, failWrite = false, missingHold = false, changeHoldDuringRead = false, stallMetadata = false, delayStreamEnd = false, softDelete = '604800' } = {}) {
   const objects = new Map()
   let reads = 0
   let metadataReads = 0
@@ -39,7 +39,8 @@ function fake({ wrongChecksum = false, missingHeader = false, failWrite = false,
             if (failWrite || objects.has(path)) return callback(new Error('synthetic private provider failure'))
             const body = Buffer.concat(chunks), crc = new CRC32C()
             crc.update(body)
-            file.metadata = { name: path, bucket: name, generation: '90071992547409931234', metageneration: '1', size: String(body.length),
+            file.metadata = { name: path, bucket: wrongBucket ? 'synthetic-wrong-bucket' : name, generation: '90071992547409931234',
+              metageneration: missingMetageneration ? undefined : '1', size: String(body.length),
               crc32c: wrongChecksum ? 'AAAAAA==' : crc.toString(), temporaryHold: !missingHold }
             objects.set(path, { body, metadata: file.metadata })
             callback()
@@ -88,6 +89,8 @@ test('private held material is create-only and read by exact generation and dige
 test('ambiguous writes, missing checksums, and invalid inputs fail closed without content', async () => {
   await assert.rejects(writeUnverifiedHeldMaterial(fake({ wrongChecksum: true }).storage, target, artifact, contents),
     error => error.message === 'Held material write outcome is uncertain' && !error.message.includes('private'))
+  await assert.rejects(writeUnverifiedHeldMaterial(fake({ wrongBucket: true }).storage, target, artifact, contents), /outcome is uncertain/)
+  await assert.rejects(writeUnverifiedHeldMaterial(fake({ missingMetageneration: true }).storage, target, artifact, contents), /outcome is uncertain/)
   await assert.rejects(writeUnverifiedHeldMaterial(fake({ failWrite: true }).storage, target, artifact, contents), /outcome is uncertain/)
   await assert.rejects(writeUnverifiedHeldMaterial(fake({ missingHold: true }).storage, target, artifact, contents), /outcome is uncertain/)
   const disabled = fake({ softDelete: '0' })
