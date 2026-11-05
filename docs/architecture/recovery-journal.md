@@ -513,6 +513,11 @@ authorized hold, with restricted access and its own reviewed release and
 deletion process. The record is not the held material. The exact evidence
 capture, scope, and lifecycle remain unresolved and must be established before
 live backups or holds depend on this design.
+The current `legal_holds` table records the idea, case, reason, and authority,
+but has no structured material scope. The journal intent's scope text alone
+does not prove which revisions or media were authorized for retention. Coordinate
+an authoritative scope and its application-data lifecycle with #56 before
+selecting artifacts or treating a manifest as complete.
 
 Capture must cover material added or changed after the latest archive and any
 associated media, not just a database row or a reference to an expiring object.
