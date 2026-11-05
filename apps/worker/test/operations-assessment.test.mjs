@@ -92,6 +92,22 @@ test('collector combines the existing snapshots and never completes a partial ob
   assert.equal(releases, 2)
 })
 
+test('collector alerts on a blocked guard and rejects an invalid guard observation', async () => {
+  let guardAllowed = false
+  const database = { ...emptyDatabase(), gate_open: true }
+  const pool = { async connect() { return {
+    async query(sql) { return sql.includes('WITH snapshot AS') ? { rows: [{ ...database, guard_allowed: guardAllowed }] } : { rows: [] } },
+    release() {},
+  } } }
+  const queue = 'projects/synthetic/locations/us-central1/queues/test'
+  const transport = { async request() { return { status: 200, data: {} } } }
+  const events = await collectOperations(pool, transport, queue, limits)
+  assert.ok(events.some(event => event.event === 'operations_threshold_breached' && event.signal === 'public_access_closed'))
+  assert.ok(!events.some(event => event.event === 'operations_assessment_healthy'))
+  guardAllowed = null
+  await assert.rejects(collectOperations(pool, transport, queue, limits), /Operations snapshot is invalid/)
+})
+
 test('a failed snapshot discards a connection when rollback also fails', async () => {
   let released, rollbackAttempted = false
   const original = new Error('synthetic query failure')
