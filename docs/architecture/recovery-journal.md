@@ -660,6 +660,13 @@ authenticate the scope, capture all evidence, implement complete retention, lega
 release or disposition, or establish complete recovery. Do not use them to
 authorize deletion or enable a live hold workflow. Review permissions for the
 separate `held-material` prefix before any live integration.
+An unwired comparison can reject a manifest whose revision IDs or media
+generations differ from a separately supplied source inventory, including extra,
+missing, or duplicate sources. A match does not authenticate that inventory or
+prove that it reflects the legal scope, that a revision's bytes are complete, or
+that captured material will remain available. The #56 lifecycle must establish
+and protect the authoritative inventory before this comparison can support a
+recovery decision.
 An unwired sequence check finds the recorded hold placements and verifies each
 available version-three capture. It reports placements without captures and
 other decisions requiring review; it does not authenticate the journal or hold

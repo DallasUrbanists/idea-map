@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { test } from 'node:test'
-import { decodeUnverifiedHeldManifest, encodeUnverifiedHeldManifest, matchUnverifiedHeldManifest } from '../dist/recovery-held-manifest.js'
+import { compareUnverifiedHeldSources, decodeUnverifiedHeldManifest, encodeUnverifiedHeldManifest, matchUnverifiedHeldManifest } from '../dist/recovery-held-manifest.js'
 import { decodeRecoveryRecord, encodeRecoveryHoldManifestConfirmation, encodeRecoveryIntent } from '../dist/recovery-journal-record.js'
 import { summarizeUnverifiedRecovery } from '../dist/recovery-journal-plan.js'
 
@@ -60,4 +60,23 @@ test('manifest mismatch, hold mismatch, and malformed confirmation fail without 
   assert.throws(() => confirmationFor(bytes, { generation: '01' }), /Invalid/)
   assert.throws(() => confirmationFor(bytes, { artifactId: 'aaaaaaaa-aaaa-8aaa-8aaa-aaaaaaaaaaaa' }), /Invalid/)
   assert.throws(() => matchUnverifiedHeldManifest(intent, confirmation, bytes, 'prod'), /could not be reconciled/)
+})
+
+test('a selected source inventory must match the bound hold manifest exactly', () => {
+  const media = { ...entry, kind: 'media', sourceId: '99999999-9999-4999-8999-999999999999', sourceGeneration: '55',
+    artifactId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }
+  const bytes = encodeUnverifiedHeldManifest({ ...input, entries: [entry, media] }), confirmation = confirmationFor(bytes)
+  const revisionSource = { kind: 'revision', sourceId: entry.sourceId, sourceGeneration: null }
+  const mediaSource = { kind: 'media', sourceId: media.sourceId, sourceGeneration: '55' }
+  const compare = sources => compareUnverifiedHeldSources(intent, confirmation, bytes, 'dev', sources)
+  assert.deepEqual(compare([mediaSource, revisionSource]), { matchedSources: 2, scopeVerified: false, coverageVerified: false })
+  assert.throws(() => compare([revisionSource]), /could not be reconciled/)
+  assert.throws(() => compare([revisionSource, mediaSource, { ...mediaSource, sourceGeneration: '56' }]), /could not be reconciled/)
+  assert.throws(() => compare([revisionSource, { ...mediaSource, sourceGeneration: '56' }]), /could not be reconciled/)
+  assert.throws(() => compare([revisionSource, revisionSource]), /could not be reconciled/)
+  assert.throws(() => compare([revisionSource, { ...mediaSource, sourceGeneration: '055' }]), /could not be reconciled/)
+  assert.throws(() => compare([revisionSource, { ...mediaSource, unexpected: true }]), /could not be reconciled/)
+  assert.throws(() => compareUnverifiedHeldSources(intent, confirmation, bytes, 'prod', [revisionSource, mediaSource]), /could not be reconciled/)
+  assert.throws(() => compareUnverifiedHeldSources(intent, confirmationFor(bytes, { sha256: '0'.repeat(64) }), bytes, 'dev',
+    [revisionSource, mediaSource]), /could not be reconciled/)
 })
