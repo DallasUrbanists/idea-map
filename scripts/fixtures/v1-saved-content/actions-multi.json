@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "saved": {
+    "__proto__": {
+      "action": {
+        "key": "synthetic-action",
+        "summary": "Synthetic action",
+        "instructions": "Synthetic instructions",
+        "reason": "Synthetic reason",
+        "sourceUrl": "",
+        "extra": "preserve"
+      },
+      "suggestionId": "synthetic-idea",
+      "suggestionSummary": "Synthetic idea",
+      "savedAt": "2030-01-02T03:04:05.000Z",
+      "futureEntry": 42
+    },
+    "constructor": {
+      "action": {
+        "key": "constructor",
+        "summary": "Synthetic action",
+        "instructions": "Synthetic instructions",
+        "reason": "Synthetic reason",
+        "sourceUrl": "",
+        "extra": "preserve"
+      },
+      "suggestionId": "other",
+      "suggestionSummary": "Other synthetic idea",
+      "savedAt": "2030-01-02T03:04:05.000Z"
+    }
+  },
+  "hidden": {
+    "__proto__": true,
+    "synthetic-hidden": true
+  },
+  "generated": {
+    "constructor": {
+      "fingerprint": "synthetic-fingerprint",
+      "actions": [
+        {
+          "key": "generated-1",
+          "summary": "Synthetic action",
+          "instructions": "Synthetic instructions",
+          "reason": "Synthetic reason",
+          "sourceUrl": "",
+          "extra": "preserve"
+        },
+        {
+          "key": "generated-2",
+          "summary": "Synthetic action",
+          "instructions": "Synthetic instructions",
+          "reason": "Synthetic reason",
+          "sourceUrl": "",
+          "extra": "preserve"
+        }
+      ],
+      "extra": "preserve"
+    },
+    "other": {
+      "fingerprint": "other-fingerprint",
+      "actions": []
+    }
+  },
+  "extraTop": {
+    "preserve": true
+  }
+}
