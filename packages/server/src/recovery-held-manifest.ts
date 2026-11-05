@@ -4,7 +4,7 @@ import { summarizeUnverifiedRecovery } from './recovery-journal-plan.js'
 
 type Entry = HeldArtifactReference & { kind: 'revision' | 'media', sourceId: string, sourceGeneration: string | null }
 type Manifest = { environment: 'dev' | 'prod', operationId: string, ideaId: string, holdId: string, entries: Entry[] }
-type Source = Pick<Entry, 'kind' | 'sourceId' | 'sourceGeneration'>
+export type HeldSource = Pick<Entry, 'kind' | 'sourceId' | 'sourceGeneration'>
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const uuid4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const generation = /^[1-9][0-9]{0,19}$/
@@ -79,25 +79,38 @@ export function matchUnverifiedHeldManifest(intentBytes: Uint8Array, confirmatio
   } catch { throw new Error('Held manifest could not be reconciled') }
 }
 
+/** Copy and validate the bounded selection before any asynchronous storage read. */
+export function snapshotUnverifiedHeldSources(sources: HeldSource[]): HeldSource[] {
+  if (!Array.isArray(sources) || sources.length < 1 || sources.length > 10_000) throw new Error('Invalid held source inventory')
+  const seen = new Set<string>(), selected: HeldSource[] = []
+  const length = sources.length
+  for (let index = 0; index < length; index++) {
+    if (!Object.hasOwn(sources, index)) throw new Error('Invalid held source inventory')
+    const source = sources[index]
+    if (!source || typeof source !== 'object' || !keys(source, ['kind', 'sourceId', 'sourceGeneration'])) throw new Error('Invalid held source inventory')
+    const { kind, sourceId, sourceGeneration } = source
+    if (!['revision', 'media'].includes(kind) || typeof sourceId !== 'string' || !uuid.test(sourceId) ||
+        (kind === 'revision' ? sourceGeneration !== null : typeof sourceGeneration !== 'string' || !generation.test(sourceGeneration))) {
+      throw new Error('Invalid held source inventory')
+    }
+    const key = `${kind}:${sourceId}:${sourceGeneration ?? ''}`
+    if (seen.has(key)) throw new Error('Invalid held source inventory')
+    seen.add(key)
+    selected.push({ kind, sourceId, sourceGeneration })
+  }
+  return selected
+}
+
 /**
  * Compare one supplied source inventory with a bound manifest. The caller must
  * independently authenticate the inventory and establish the authorized scope;
  * matching references do not prove that revision bytes or the journal are complete.
  */
 export function compareUnverifiedHeldSources(intentBytes: Uint8Array, confirmationBytes: Uint8Array,
-  manifestBytes: Uint8Array, environment: 'dev' | 'prod', sources: Source[]) {
+  manifestBytes: Uint8Array, environment: 'dev' | 'prod', sources: HeldSource[]) {
   try {
-    if (!Array.isArray(sources) || sources.length < 1 || sources.length > 10_000) throw new Error('Invalid')
-    const expected = new Set<string>()
-    for (const source of sources) {
-      if (!source || typeof source !== 'object' || !keys(source, ['kind', 'sourceId', 'sourceGeneration']) ||
-          !['revision', 'media'].includes(source.kind) || typeof source.sourceId !== 'string' || !uuid.test(source.sourceId) ||
-          (source.kind === 'revision' ? source.sourceGeneration !== null :
-            typeof source.sourceGeneration !== 'string' || !generation.test(source.sourceGeneration))) throw new Error('Invalid')
-      const key = `${source.kind}:${source.sourceId}:${source.sourceGeneration ?? ''}`
-      if (expected.has(key)) throw new Error('Invalid')
-      expected.add(key)
-    }
+    const selected = snapshotUnverifiedHeldSources(sources)
+    const expected = new Set(selected.map(source => `${source.kind}:${source.sourceId}:${source.sourceGeneration ?? ''}`))
     const { manifest } = matchUnverifiedHeldManifest(intentBytes, confirmationBytes, manifestBytes, environment)
     if (manifest.entries.length !== expected.size || manifest.entries.some(entry =>
       !expected.has(`${entry.kind}:${entry.sourceId}:${entry.sourceGeneration ?? ''}`))) throw new Error('Invalid')

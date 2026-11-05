@@ -8,7 +8,7 @@ import { encodeUnverifiedHeldManifest } from '../dist/recovery-held-manifest.js'
 import { encodeRecoveryHoldManifestConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
 import { encodeRecoverySequenceEntry } from '../dist/recovery-sequence.js'
 import { unverifiedRolloverCheckpoint } from '../dist/recovery-sequence-rollover.js'
-import { verifyRolloverHeldCaptures, verifySequenceChainHeldCaptures, verifySequenceHeldCaptures, verifyUnverifiedHeldCapture } from '../dist/recovery-held-verification.js'
+import { verifyRolloverHeldCaptures, verifySequenceChainHeldCaptures, verifySequenceHeldCaptures, verifyUnverifiedHeldCapture, verifyUnverifiedHeldCaptureAgainstSources } from '../dist/recovery-held-verification.js'
 
 const target = { environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789' }
 const artifact = '11111111-1111-4111-8111-111111111111'
@@ -173,6 +173,20 @@ test('verification reads every selected generation but never asserts hold covera
     { artifactId: manifestId, generation: manifestRef.generation, size: manifestRef.size, sha256: manifestRef.sha256 })
   assert.deepEqual(await verifyUnverifiedHeldCapture(storage, target, intent, confirmation),
     { checkedArtifacts: 2, totalBytes: manifest.length + contents.length + secondBytes.length, coverageVerified: false })
+  const sources = [{ kind: 'revision', sourceId: mediaId, sourceGeneration: null },
+    { kind: 'media', sourceId: mediaId, sourceGeneration: '123' }]
+  const verifying = verifyUnverifiedHeldCaptureAgainstSources(storage, target, intent, confirmation, sources)
+  sources[0].sourceId = operationId
+  sources.pop()
+  assert.deepEqual(await verifying, { checkedArtifacts: 2, totalBytes: manifest.length + contents.length + secondBytes.length,
+    matchedSources: 2, scopeVerified: false, coverageVerified: false })
+  const readsBeforeMismatch = reads()
+  await assert.rejects(verifyUnverifiedHeldCaptureAgainstSources(storage, target, intent, confirmation,
+    [{ kind: 'media', sourceId: mediaId, sourceGeneration: '123' }]), /could not be verified/)
+  assert.equal(reads() - readsBeforeMismatch, 1) // Reject the mismatched inventory before reading artifacts.
+  const readsBeforeInvalid = reads()
+  await assert.rejects(verifyUnverifiedHeldCaptureAgainstSources(storage, target, intent, confirmation, new Array(2)), /Invalid held capture/)
+  assert.equal(reads(), readsBeforeInvalid)
   const readsBeforeBudget = reads()
   await assert.rejects(verifyUnverifiedHeldCapture(storage, target, intent, confirmation, 120_000, contents.length), /could not be verified/)
   assert.equal(reads() - readsBeforeBudget, 0) // The manifest alone exceeds the budget.

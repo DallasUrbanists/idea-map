@@ -1,7 +1,7 @@
 import type { Storage } from '@google-cloud/storage'
 import { decodeRecoveryRecord } from './recovery-journal-record.js'
 import { summarizeUnverifiedRecovery } from './recovery-journal-plan.js'
-import { matchUnverifiedHeldManifest } from './recovery-held-manifest.js'
+import { compareUnverifiedHeldSources, matchUnverifiedHeldManifest, snapshotUnverifiedHeldSources, type HeldSource } from './recovery-held-manifest.js'
 import { readUnverifiedHeldMaterial } from './recovery-held-storage.js'
 import { readUnverifiedRecoverySequence, type RecoverySequenceTransport } from './recovery-sequence-storage.js'
 import { readUnverifiedSequenceChain, readUnverifiedSequenceRollover, type SequenceReaderEpoch } from './recovery-sequence-rollover-storage.js'
@@ -17,6 +17,20 @@ type Inventory = { records: { payload: Uint8Array }[], summary: { reviewOperatio
  */
 export async function verifyUnverifiedHeldCapture(storage: Storage, target: Target,
   intentBytes: Uint8Array, confirmationBytes: Uint8Array, timeoutMs = 120_000, maxTotalBytes = 128 * 1024 * 1024) {
+  return verifyHeldCapture(storage, target, intentBytes, confirmationBytes, timeoutMs, maxTotalBytes)
+}
+
+/** Verify selected held bytes against a supplied inventory without authenticating its scope. */
+export async function verifyUnverifiedHeldCaptureAgainstSources(storage: Storage, target: Target,
+  intentBytes: Uint8Array, confirmationBytes: Uint8Array, sources: HeldSource[], timeoutMs = 120_000, maxTotalBytes = 128 * 1024 * 1024) {
+  let selected: HeldSource[]
+  try { selected = snapshotUnverifiedHeldSources(sources) } catch { throw new Error('Invalid held capture') }
+  const result = await verifyHeldCapture(storage, target, intentBytes, confirmationBytes, timeoutMs, maxTotalBytes, selected)
+  return { ...result, matchedSources: selected.length, scopeVerified: false as const }
+}
+
+async function verifyHeldCapture(storage: Storage, target: Target,
+  intentBytes: Uint8Array, confirmationBytes: Uint8Array, timeoutMs: number, maxTotalBytes: number, sources?: HeldSource[]) {
   if (!target || !['dev', 'prod'].includes(target.environment) ||
       !(intentBytes instanceof Uint8Array) || intentBytes.byteLength < 1 || intentBytes.byteLength > 16_384 ||
       !(confirmationBytes instanceof Uint8Array) || confirmationBytes.byteLength < 1 || confirmationBytes.byteLength > 16_384 ||
@@ -42,6 +56,7 @@ export async function verifyUnverifiedHeldCapture(storage: Storage, target: Targ
     if (reference.size > maxTotalBytes) throw new Error('Held capture is too large')
     const bytes = await readUnverifiedHeldMaterial(storage, destination, reference.artifactId, reference, remaining())
     const { manifest } = matchUnverifiedHeldManifest(intent, confirmation, bytes, destination.environment)
+    if (sources) compareUnverifiedHeldSources(intent, confirmation, bytes, destination.environment, sources)
     const totalBytes = manifest.entries.reduce((total, entry) => total + entry.size, reference.size)
     if (totalBytes > maxTotalBytes) throw new Error('Held capture is too large')
     let next = 0, stopped = false

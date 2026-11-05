@@ -70,6 +70,9 @@ test('a selected source inventory must match the bound hold manifest exactly', (
   const mediaSource = { kind: 'media', sourceId: media.sourceId, sourceGeneration: '55' }
   const compare = sources => compareUnverifiedHeldSources(intent, confirmation, bytes, 'dev', sources)
   assert.deepEqual(compare([mediaSource, revisionSource]), { matchedSources: 2, scopeVerified: false, coverageVerified: false })
+  const overriddenIterator = [revisionSource, mediaSource]
+  overriddenIterator[Symbol.iterator] = function * () { throw new Error('unexpected iterator') }
+  assert.deepEqual(compare(overriddenIterator), { matchedSources: 2, scopeVerified: false, coverageVerified: false })
   assert.throws(() => compare([revisionSource]), /could not be reconciled/)
   assert.throws(() => compare([revisionSource, mediaSource, { ...mediaSource, sourceGeneration: '56' }]), /could not be reconciled/)
   assert.throws(() => compare([revisionSource, { ...mediaSource, sourceGeneration: '56' }]), /could not be reconciled/)

@@ -666,7 +666,10 @@ missing, or duplicate sources. A match does not authenticate that inventory or
 prove that it reflects the legal scope, that a revision's bytes are complete, or
 that captured material will remain available. The #56 lifecycle must establish
 and protect the authoritative inventory before this comparison can support a
-recovery decision.
+recovery decision. An unwired combined verifier checks the selected inventory
+before downloading the artifacts and verifies every selected generation's size,
+digest, and observed hold. It copies the inventory before contacting storage;
+it still cannot establish the inventory's authority or journal coverage.
 An unwired sequence check finds the recorded hold placements and verifies each
 available version-three capture. It reports placements without captures and
 other decisions requiring review; it does not authenticate the journal or hold
