@@ -46,7 +46,8 @@ export function planBackupRetention({ environment, complete, objects, now = new 
     const created = providerTimeCeiling(object.timeCreated)
     if (!Number.isFinite(midnight) || new Date(midnight).toISOString().slice(0, 10) !== match[2] ||
         !Number.isFinite(created) || created < midnight || created >= midnight + 2 * DAY || created > now.getTime() ||
-        object.timeDeleted !== undefined || (object.retentionExpirationTime !== undefined &&
+        object.timeDeleted !== undefined || object.softDeleteTime !== undefined || object.hardDeleteTime !== undefined ||
+        (object.retentionExpirationTime !== undefined &&
           !Number.isFinite(providerTimeCeiling(object.retentionExpirationTime))) ||
         (object.retention !== undefined && (!object.retention || typeof object.retention !== 'object' || Array.isArray(object.retention) ||
           !['Locked', 'Unlocked'].includes(object.retention.mode) || !Number.isFinite(providerTimeCeiling(object.retention.retainUntilTime)))) ||

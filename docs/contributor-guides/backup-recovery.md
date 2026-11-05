@@ -338,7 +338,9 @@ fails if a recent backup unexpectedly becomes noncurrent. It produces a plan,
 never deletes an object, and fails on incomplete,
 unexpected, or ambiguous inventories. Each prefix and listing mode is limited to
 100 pages of up to 1,000 objects; exceeding that limit fails the inventory for
-review. Every listed object must identify the selected bucket. The command
+review. A live or noncurrent listing containing soft-delete timestamps is
+ambiguous; [restored live copies clear those timestamps](https://cloud.google.com/storage/docs/json_api/v1/objects/restore).
+Every listed object must identify the selected bucket. The command
 repeats both listing modes and checks the bucket generation and metadata
 generation again, failing if the observed inventory changes.
 Matching listings do not prove that no objects were missed, stop writers or

@@ -97,6 +97,19 @@ test('inventory does not treat invalid deletion metadata as a live archive', asy
   }
 })
 
+test('version inventory rejects soft-delete metadata on an archive or completion marker', async () => {
+  for (const field of ['softDeleteTime', 'hardDeleteTime']) {
+    for (const kind of ['daily', 'completion']) {
+      const name = kind === 'daily' ? make('daily', 30).name : completion(make('daily', 30), null).name
+      const ambiguous = records.map(item => item.name === name ? { ...item, [field]: '2026-11-01T12:00:00.000Z' } : item)
+      const bucket = { async getMetadata() { return [metadata] }, async getFiles(query) {
+        return query.softDeleted ? [[], null] : [ambiguous.map(item => ({ metadata: item })), null]
+      } }
+      await assert.rejects(inspectBackupRetention(storageFor(bucket), target, now), /lifecycle state is ambiguous/)
+    }
+  }
+})
+
 test('inventory rejects changes to the bucket, live objects, or soft-deleted objects during listing', async () => {
   let bucketReads = 0
   const replacedBucket = { async getMetadata() {

@@ -80,6 +80,9 @@ test('retention fails closed for insufficient, incomplete, ambiguous, or unexpec
   for (const timeDeleted of [null, '']) {
     assert.throws(() => planBackupRetention({ ...baseline, objects: [...baseline.objects, object('daily', 30, { timeDeleted })] }), /Backup state is ambiguous/)
   }
+  for (const field of ['softDeleteTime', 'hardDeleteTime']) {
+    assert.throws(() => planBackupRetention({ ...baseline, objects: [...baseline.objects, object('daily', 30, { [field]: null })] }), /Backup state is ambiguous/)
+  }
   assert.throws(() => planBackupRetention({ ...baseline, objects: [...baseline.objects, object('daily', 30, { name: 'other/backup' })] }))
   assert.throws(() => planBackupRetention({ ...baseline, objects: [...baseline.objects, object('daily', 30, { eventBasedHold: undefined })] }))
 })

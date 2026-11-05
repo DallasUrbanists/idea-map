@@ -64,7 +64,8 @@ export function confirmCompletedExports(objects, environment, now, bucketIdentit
   const number = value => typeof value === 'string' && /^[1-9][0-9]*$/.test(value)
   const crc = value => typeof value === 'string' && /^[A-Za-z0-9+/]{6}==$/.test(value)
   for (const object of objects) {
-    if (!object.name?.startsWith(prefix) || names.has(object.name) || object.timeDeleted !== undefined) throw new Error('Backup generations are ambiguous')
+    if (!object.name?.startsWith(prefix) || names.has(object.name) || object.timeDeleted !== undefined ||
+        object.softDeleteTime !== undefined || object.hardDeleteTime !== undefined) throw new Error('Backup generations are ambiguous')
     names.add(object.name)
     const match = backupObjectPattern.exec(object.name.slice(prefix.length))
     if (!match || (match[1] === 'completion') !== (match[4] === 'complete')) throw new Error('Unexpected backup object')
@@ -163,6 +164,7 @@ export async function inspectBackupRetention(storage, target, now, options = {})
   if (!Number.isFinite(now.getTime())) throw new Error('Invalid inventory time')
   const observedNanoseconds = BigInt(now.getTime()) * 1_000_000n
   const normalized = objects.map(object => {
+    if (object.softDeleteTime !== undefined || object.hardDeleteTime !== undefined) throw new Error('Backup lifecycle state is ambiguous')
     if ((object.eventBasedHold !== undefined && typeof object.eventBasedHold !== 'boolean') ||
         (object.temporaryHold !== undefined && typeof object.temporaryHold !== 'boolean')) throw new Error('Backup hold state is ambiguous')
     return { ...object, eventBasedHold: object.eventBasedHold === true, temporaryHold: object.temporaryHold === true }
