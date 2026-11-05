@@ -69,7 +69,7 @@ jobs:
       STAGING_RUN_ID: ${{ inputs.staging_run_id }}
       STAGING_ATTEMPT: ${{ inputs.staging_attempt }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Inspect evidence run metadata
@@ -124,7 +124,7 @@ jobs:
       WIF_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
       DEPLOYER_ACCOUNT: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Validate deployment identity
