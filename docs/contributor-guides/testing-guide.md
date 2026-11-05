@@ -148,6 +148,26 @@ fall back to the other mode. The demonstration supplies only offline factories;
 supply its own explicitly configured provider adapter and is responsible for
 credentials, authorization, and provider data handling.
 
+Tests can call `fixture.controls.failNextTaskDispatches(count)` or
+`fixture.controls.failNextEmailSends(count)` on an instance returned by
+`createOfflineProviderFixtures()`. Each control replaces the remaining failure
+count with an integer from 0 through 100; zero restores success immediately.
+Each selected task POST returns 503 before storing or checking its name, and
+each selected email send returns a 503 error. After the selected attempts, the
+adapters resume their default behavior. The email boundary classifies this
+synthetic server error as an unknown outcome; it does not prove what a real
+provider would have done.
+
+Tests can call `fixture.controls.observe()` to obtain a copy of the instance's
+counters for task POSTs, task GETs, simulated task failures, duplicate task
+names, email sends, and simulated email failures. The counters contain no task
+names, idempotency keys, addresses, or message contents. Aborted task requests
+are excluded because the adapter checks the abort signal before recording an
+attempt. Task lookup and duplicate verification still use the existing in-memory
+task copies, so contributors should supply synthetic values only. Controls and
+counters are local to each fixture instance and do not exercise real delivery,
+application retries, or cleanup.
+
 These fixtures do not configure the running application or worker, validate a
 real provider, or implement map, Gemini, boundary, or representative adapters.
 Browse, submission, and end-to-end job workflows need their own integrations
