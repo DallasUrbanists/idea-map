@@ -34,8 +34,9 @@ the columns needed by the snapshot: `jobs.id`, `jobs.state`,
 `email_delivery_events.event_type`, `email_delivery_events.created_at`; and
 `public_access_gate.singleton`, `public_access_gate.is_open`. It also
 needs schema usage, database connection, and permission to execute
-`pg_database_size`. These grants allow direct access to those individual column
-values, including job IDs and timing, so restrict the identity and credentials.
+`pg_database_size` and `public.public_access_allowed()`. These grants allow
+direct access to those individual column values, including job IDs and timing,
+so restrict the identity and credentials.
 Access to a hosted or production database requires separate authorization.
 
 From the repository root, run:
@@ -71,10 +72,12 @@ messages, and depend on the webhook receiving and storing provider events. Zero
 does not prove delivery or webhook health. Compare provider evidence and
 investigate gaps separately.
 
-`public_access_open` is the database gate state. `false` indicates that public
-idea and media requests should be blocked; `null` means the gate row is missing.
-An open row does not prove journal coverage, effective routing, or successful
-responses. The process health endpoint does not check the gate.
+`public_access_open` combines the database gate with the guard's check for
+recorded closures and unresolved decisions. `false` indicates that public idea
+and media requests should be blocked; `null` means the gate row is missing. A
+`true` result does not prove journal coverage, effective routing, or successful
+responses. A missing guard function or execute grant fails the snapshot. The
+process health endpoint does not check the gate.
 
 `database_size_bytes` is the database's current size as a decimal string. It is
 a point-in-time PostgreSQL measurement, not a growth rate or the provider's

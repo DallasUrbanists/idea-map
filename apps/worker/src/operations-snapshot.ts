@@ -34,11 +34,16 @@ export async function readOperationsSnapshot(pool: pg.Pool) {
       SELECT s.observed_at, row_to_json(backlog) AS backlog,
         row_to_json(overdue) AS overdue, row_to_json(email) AS email,
         pg_catalog.pg_database_size(pg_catalog.current_database())::text AS database_size_bytes,
-        (SELECT is_open FROM public.public_access_gate WHERE singleton = true) AS public_access_open
+        (SELECT is_open FROM public.public_access_gate WHERE singleton = true) AS gate_open,
+        public.public_access_allowed() AS guard_allowed
       FROM snapshot s CROSS JOIN backlog CROSS JOIN overdue CROSS JOIN email
     `)
+    const row = result.rows[0]
+    if (result.rows.length !== 1 || !row || (row.gate_open !== null && typeof row.gate_open !== 'boolean') ||
+        typeof row.guard_allowed !== 'boolean') throw new Error('Operations snapshot is invalid')
+    const { gate_open, guard_allowed, ...snapshot } = row
     await client.query('COMMIT')
-    return result.rows[0]
+    return { ...snapshot, public_access_open: gate_open === null ? null : gate_open && guard_allowed }
   } catch (error) {
     try { await client.query('ROLLBACK') } catch { destroy = true }
     throw error

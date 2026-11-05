@@ -78,7 +78,7 @@ test('collector combines the existing snapshots and never completes a partial ob
   database.email.failed = 2
   database.database_size_bytes = '9007199254740992'
   const pool = { async connect() { return {
-    async query(sql) { return sql.includes('WITH snapshot AS') ? { rows: [database] } : { rows: [] } },
+    async query(sql) { return sql.includes('WITH snapshot AS') ? { rows: [{ ...database, gate_open: true, guard_allowed: true }] } : { rows: [] } },
     release() { releases++ },
   } } }
   const queue = 'projects/synthetic/locations/us-central1/queues/test'

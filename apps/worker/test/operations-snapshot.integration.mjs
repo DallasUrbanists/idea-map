@@ -54,15 +54,27 @@ test('snapshot reports private aggregate backlog, overdue jobs and recent failur
   }
 })
 
-test('snapshot distinguishes an open, closed, and missing public-access gate', async () => {
+test('snapshot respects closures even if an inconsistent gate row is open', async () => {
   const pool = new pg.Pool({ connectionString: url, max: 1 })
+  const cause = randomUUID()
   try {
     assert.equal((await readOperationsSnapshot(pool)).public_access_open, false)
     await pool.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true')
     assert.equal((await readOperationsSnapshot(pool)).public_access_open, true)
+    const setup = await pool.connect()
+    try {
+      await setup.query('BEGIN')
+      await setup.query('ALTER TABLE public.public_access_closures DISABLE TRIGGER close_gate_for_access_closure')
+      await setup.query("INSERT INTO public.public_access_closures(kind,cause_id) VALUES ('operator',$1)", [cause])
+      await setup.query('ALTER TABLE public.public_access_closures ENABLE TRIGGER close_gate_for_access_closure')
+      await setup.query('COMMIT')
+    } catch (error) { await setup.query('ROLLBACK'); throw error } finally { setup.release() }
+    assert.equal((await readOperationsSnapshot(pool)).public_access_open, false)
+    await pool.query('DELETE FROM public.public_access_closures WHERE cause_id=$1', [cause])
     await pool.query('DELETE FROM public.public_access_gate WHERE singleton=true')
     assert.equal((await readOperationsSnapshot(pool)).public_access_open, null)
   } finally {
+    await pool.query('DELETE FROM public.public_access_closures WHERE cause_id=$1', [cause])
     await pool.query('INSERT INTO public.public_access_gate(singleton,is_open) VALUES (true,false) ON CONFLICT (singleton) DO UPDATE SET is_open=false')
     await pool.end()
   }
@@ -117,6 +129,7 @@ test('the snapshot works with column-scoped read-only access', async () => {
     await pool.query(`GRANT SELECT (job_id, published_at, dispatch_attempts, created_at) ON public.outbox TO "${role}"`)
     await pool.query(`GRANT SELECT (event_type, created_at) ON public.email_delivery_events TO "${role}"`)
     await pool.query(`GRANT SELECT (singleton, is_open) ON public.public_access_gate TO "${role}"`)
+    await pool.query(`GRANT EXECUTE ON FUNCTION public.public_access_allowed() TO "${role}"`)
     client = await pool.connect()
     await client.query(`SET ROLE "${role}"`)
     const scopedPool = { async connect() { return { query: client.query.bind(client), release() {} } } }
@@ -129,6 +142,10 @@ test('the snapshot works with column-scoped read-only access', async () => {
     await assert.rejects(client.query('SELECT * FROM public.contacts'), { code: '42501' })
     await assert.rejects(client.query('UPDATE public.outbox SET published_at=now()'), { code: '42501' })
     await assert.rejects(client.query('UPDATE public.public_access_gate SET is_open=true'), { code: '42501' })
+    await client.query('RESET ROLE')
+    await client.query(`REVOKE EXECUTE ON FUNCTION public.public_access_allowed() FROM "${role}"`)
+    await client.query(`SET ROLE "${role}"`)
+    await assert.rejects(readOperationsSnapshot(scopedPool), { code: '42501' })
   } finally {
     if (client) { await client.query('RESET ROLE'); client.release() }
     if (created) {
