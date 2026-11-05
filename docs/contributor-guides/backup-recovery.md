@@ -225,7 +225,10 @@ to `manage_backup_bucket_separately` with a distinct reviewed backup bucket
 name. This uses the same foundation resource address as the full configuration;
 it does not manage the staging media buckets or grant access to a bucket owned
 by another state. Check existing resources and state ownership before any plan
-or apply. Creating a missing bucket requires separate authorization.
+or apply. The foundation explicitly sets seven-day soft delete on its backup
+bucket; review the actual setting and previous policies before any change,
+because already soft-deleted generations retain their original expiry. Creating
+a missing bucket or changing its policy requires separate authorization.
 
 Prepare an immutable backup image and a dedicated direct database URL secret.
 The image's `pg_dump` major version must support the actual source server;

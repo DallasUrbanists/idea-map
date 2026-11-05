@@ -32,6 +32,10 @@ run "bounded_private_foundation" {
     condition     = alltrue([for bucket in google_storage_bucket.media : bucket.public_access_prevention == "enforced" && bucket.force_destroy == false])
     error_message = "All buckets must prevent public access and forced deletion."
   }
+  assert {
+    condition     = google_storage_bucket.media["backups"].soft_delete_policy[0].retention_duration_seconds == 604800
+    error_message = "The foundation backup bucket must explicitly retain soft-deleted objects for seven days."
+  }
 }
 
 run "public_uptime_is_opt_in" {

@@ -32,9 +32,10 @@ run "development_can_manage_only_the_foundation_backup_bucket" {
   assert {
     condition = toset(keys(google_storage_bucket.media)) == toset(["backups"]) && (
       google_storage_bucket.media["backups"].name == "synthetic-idea-map-dev-backups" &&
+      google_storage_bucket.media["backups"].soft_delete_policy[0].retention_duration_seconds == 604800 &&
       length(google_service_account.upload_signer) == 0 && length(google_storage_bucket_iam_member.preview_reader) == 0
     )
-    error_message = "The dev backup-only option must not create or grant access to media buckets."
+    error_message = "The dev backup-only option must set seven-day soft delete without creating or granting access to media buckets."
   }
 }
 
