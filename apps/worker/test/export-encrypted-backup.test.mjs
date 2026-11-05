@@ -14,7 +14,7 @@ const metadata = { name: env.BACKUP_BUCKET, projectNumber: env.BACKUP_PROJECT_NU
 test('backup configuration requires direct verified TLS and a hosted production job', () => {
   assert.equal(backupConfiguration(env).environment, 'dev')
   assert.equal(backupConfiguration({ ...env, BACKUP_DATABASE_URL: `${env.BACKUP_DATABASE_URL}&gssencmode=disable` }).environment, 'dev')
-  assert.equal(backupConfiguration({ ...env, BACKUP_DATABASE_URL: 'postgres://test@[::1]/db?sslmode=verify-full&sslrootcert=system' }).environment, 'dev')
+  assert.equal(backupConfiguration({ ...env, BACKUP_DATABASE_URL: 'postgres://test:secret@[::1]/db?sslmode=verify-full&sslrootcert=system' }).environment, 'dev')
   assert.deepEqual(backupConnectionEnvironment('postgres://user%40test:p%3Ass@[::1]:5433/data%23set?sslmode=verify-full&sslrootcert=system&channel_binding=require'),
     { PGHOST: '::1', PGDATABASE: 'data#set', PGPORT: '5433', PGUSER: 'user@test', PGPASSWORD: 'p:ss',
       PGSSLMODE: 'verify-full', PGSSLROOTCERT: 'system', PGGSSENCMODE: 'disable', PGCHANNELBINDING: 'require' })
@@ -45,7 +45,19 @@ test('backup configuration requires direct verified TLS and a hosted production 
     { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&sslkeylogfile=keys' },
     { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&requiressl=1' },
     { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full' },
-  ]) assert.throws(() => backupConfiguration({ ...env, ...change }))
+  ]) {
+    // Keep unrelated URL rejection cases independently valid for credentials.
+    if (change.BACKUP_DATABASE_URL && !change.BACKUP_DATABASE_URL.includes('@')) {
+      change.BACKUP_DATABASE_URL = change.BACKUP_DATABASE_URL.replace('postgres://', 'postgres://test:secret@')
+    }
+    assert.throws(() => backupConfiguration({ ...env, ...change }))
+  }
+  for (const url of [
+    'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system',
+    'postgres://test@example.invalid/db?sslmode=verify-full&sslrootcert=system',
+    'postgres://test:@example.invalid/db?sslmode=verify-full&sslrootcert=system',
+    'postgres://:secret@example.invalid/db?sslmode=verify-full&sslrootcert=system',
+  ]) assert.throws(() => backupConfiguration({ ...env, BACKUP_DATABASE_URL: url }))
 })
 
 test('backup configuration failure emits a sanitized alert event', () => {

@@ -43,9 +43,11 @@ export function backupConnectionEnvironment(databaseUrl) {
     user = decodeURIComponent(url.username)
     password = decodeURIComponent(url.password)
   } catch { throw new Error('Invalid backup configuration') }
-  if (!database || [database, user, password].some(value => /[\x00-\x1f\x7f]/u.test(value))) throw new Error('Invalid backup configuration')
+  if (!database || !user || !password || [database, user, password].some(value => /[\x00-\x1f\x7f]/u.test(value))) {
+    throw new Error('Invalid backup configuration')
+  }
   return { PGHOST: ipv6 ? host.slice(1, -1) : host, PGDATABASE: database,
-    ...(url.port ? { PGPORT: url.port } : {}), ...(user ? { PGUSER: user } : {}), ...(password ? { PGPASSWORD: password } : {}),
+    ...(url.port ? { PGPORT: url.port } : {}), PGUSER: user, PGPASSWORD: password,
     PGSSLMODE: 'verify-full', PGSSLROOTCERT: 'system', PGGSSENCMODE: 'disable',
     ...(url.searchParams.has('channel_binding') ? { PGCHANNELBINDING: url.searchParams.get('channel_binding') } : {}) }
 }

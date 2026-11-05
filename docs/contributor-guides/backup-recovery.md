@@ -145,8 +145,9 @@ separate synthetic rehearsal or provider fake for local tests.
 | `BACKUP_PROJECT_NUMBER` | Decimal project number that owns that bucket. |
 | `BACKUP_DATABASE_URL` | Secret direct Neon PostgreSQL URL with `sslmode=verify-full` and `sslrootcert=system`. |
 
-Specify the database, one unescaped DNS or IP host, port, user, and password in
-the URL's main connection fields. The exporter rejects encoded hosts, Unix
+Specify the database, one unescaped DNS or IP host, user, and password in
+the URL's main connection fields. Specify the port when it is not the default
+PostgreSQL port. The exporter requires the user and password and rejects encoded hosts, Unix
 socket paths, host lists, pooled endpoints, and query parameters that override
 those fields. It accepts only `sslmode`, `sslrootcert`, an optional
 `gssencmode=disable`, and an optional `channel_binding=require` or `prefer`;
