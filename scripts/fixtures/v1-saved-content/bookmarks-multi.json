@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "saved": {
+    "__proto__": {
+      "suggestion": {
+        "id": "__proto__",
+        "content": {
+          "summary": "Synthetic idea",
+          "photos": []
+        },
+        "location": {
+          "address": "Synthetic"
+        },
+        "extra": {
+          "preserve": true
+        }
+      },
+      "savedAt": "2030-01-02T03:04:05.000Z",
+      "futureEntry": 42
+    },
+    "constructor": {
+      "suggestion": {
+        "id": "constructor",
+        "content": {
+          "summary": "Synthetic idea",
+          "photos": []
+        },
+        "location": {
+          "address": "Synthetic"
+        },
+        "extra": {
+          "preserve": true
+        }
+      },
+      "savedAt": "2030-01-02T03:04:05.000Z",
+      "futureEntry": 42
+    }
+  },
+  "extraTop": {
+    "preserve": true
+  }
+}
