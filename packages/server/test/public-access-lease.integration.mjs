@@ -75,6 +75,34 @@ test('public-read leases fail closed and drain when a gate writer is waiting', a
   }
 })
 
+test('a lease observes gate closure even when the role defaults to repeatable read', async () => {
+  const admin = new pg.Pool({ connectionString: url.toString(), max: 2, connectionTimeoutMillis: 2000 })
+  const readers = new pg.Pool({ connectionString: url.toString(), max: 1, connectionTimeoutMillis: 2000 })
+  const configuredReaders = { async connect() {
+    const client = await readers.connect()
+    try {
+      await client.query('SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+      return client
+    } catch (error) { client.release(true); throw error }
+  } }
+  let lease
+  try {
+    await admin.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true')
+    lease = await acquirePublicAccessLease(configuredReaders)
+    assert.equal((await publicAccessLeaseClient(lease).query('SHOW transaction_isolation')).rows[0].transaction_isolation, 'read committed')
+    // Close the gate without queuing an exclusive advisory lock, as happens
+    // when the journal is unavailable before the removal can be applied.
+    await admin.query('UPDATE public.public_access_gate SET is_open=false WHERE singleton=true')
+    await waitForAborts(lease.signal)
+    await assert.rejects(lease.release(), /Public access unavailable/)
+  } finally {
+    await lease?.release().catch(() => {})
+    await admin.query('UPDATE public.public_access_gate SET is_open=false WHERE singleton=true')
+    await readers.end()
+    await admin.end()
+  }
+})
+
 test('authorized pending removal closes the gate atomically and retries without duplicating the decision', async () => {
   const pool = new pg.Pool({ connectionString: url.toString(), max: 6, connectionTimeoutMillis: 2000 })
   let reader, otherReader, pendingOperationId, secondOperationId, restrictedUrl, restrictedPool, roleCreated = false

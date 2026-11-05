@@ -43,7 +43,9 @@ export async function acquirePublicAccessLease(pool: pg.Pool): Promise<PublicAcc
     client.release(destroy)
   }
   try {
-    await client.query('BEGIN READ ONLY')
+    // Each poll must see a gate closure committed after the lease began,
+    // regardless of the role's default transaction isolation.
+    await client.query('BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY')
     await client.query("SET LOCAL lock_timeout = '5s'")
     await client.query("SET LOCAL statement_timeout = '10s'")
     await client.query(sharedLock)

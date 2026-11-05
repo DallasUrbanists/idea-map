@@ -289,7 +289,9 @@ an abort signal. The caller must hold the lease through delivery and stop the
 response when the signal aborts. The in-progress web guard uses this primitive for
 current idea, suggestion, and media routes. A reader periodically checks the gate
 and for a waiting exclusive advisory lock, and aborts its response when the gate
-is closed or a lock is waiting.
+is closed or a lock is waiting. The lease explicitly uses read committed isolation
+so a later poll can observe a gate closure even if the role defaults to a stronger
+isolation level.
 The server package's public content entry points require a lease issued by the
 read guard and refuse forged, released, or aborted leases. The public lease does
 not expose its underlying database connection. Projection reads
