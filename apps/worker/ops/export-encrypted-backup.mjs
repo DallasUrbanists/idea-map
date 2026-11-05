@@ -111,8 +111,19 @@ export async function exportEncryptedBackup(config, options = {}) {
       for (const key of ['generation', 'size', 'crc32c']) completion[`${kinds[index]}_${key}`] = generations[index][key]
     }
     const completionPath = `idea-map-v2/${config.environment}/completion/${date}/${id}.complete`
-    await bucket.file(completionPath).save('', { resumable: false, validation: 'crc32c',
+    const marker = bucket.file(completionPath)
+    await marker.save('', { resumable: false, validation: 'crc32c',
       preconditionOpts: { ifGenerationMatch: 0 }, metadata: { metadata: completion } })
+    const saved = marker.metadata
+    if (saved?.name !== completionPath || saved.bucket !== config.bucket ||
+        typeof saved.generation !== 'string' || !/^[1-9][0-9]*$/.test(saved.generation) ||
+        typeof saved.metageneration !== 'string' || !/^[1-9][0-9]*$/.test(saved.metageneration) ||
+        saved.size !== '0' || saved.crc32c !== 'AAAAAA==' || !saved.metadata ||
+        typeof saved.metadata !== 'object' || Array.isArray(saved.metadata) ||
+        Object.keys(saved.metadata).length !== Object.keys(completion).length ||
+        !Object.entries(completion).every(([key, value]) => Object.hasOwn(saved.metadata, key) && saved.metadata[key] === value)) {
+      throw new Error('Backup completion metadata is ambiguous')
+    }
     return { startedAt: now.toISOString(), objects: paths }
   } catch (error) {
     dump.child.kill()

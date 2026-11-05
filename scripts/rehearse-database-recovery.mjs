@@ -110,9 +110,14 @@ try {
     iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
     versioning: { enabled: true }, softDeletePolicy: { retentionDurationSeconds: '604800' } }] },
   file(name) {
-    if (name.endsWith('.complete')) return { async save(content, options) {
-      if (content !== '' || options.preconditionOpts.ifGenerationMatch !== 0 || options.metadata.metadata.daily_generation !== '123') throw new Error('Synthetic completion record is invalid')
-    } }
+    if (name.endsWith('.complete')) {
+      const file = { async save(content, options) {
+        if (content !== '' || options.preconditionOpts.ifGenerationMatch !== 0 || options.metadata.metadata.daily_generation !== '123') throw new Error('Synthetic completion record is invalid')
+        file.metadata = { name, bucket: 'synthetic-private-backups', generation: '124', metageneration: '1',
+          size: '0', crc32c: 'AAAAAA==', metadata: { ...options.metadata.metadata } }
+      } }
+      return file
+    }
     const file = { createWriteStream(options) {
     if (options.preconditionOpts.ifGenerationMatch !== 0 || options.validation !== 'crc32c') throw new Error('Synthetic upload safeguards missing')
     const stream = createWriteStream(archive, { flags: 'wx', mode: 0o600 })

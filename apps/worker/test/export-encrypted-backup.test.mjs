@@ -57,14 +57,20 @@ test('a dump warning fails the export without exposing diagnostic contents', asy
   await assert.rejects(result.done, error => error.message === 'Database export failed or reported a warning' && !error.message.includes('synthetic'))
 })
 
-function provider(bucketMetadata = metadata, failWeekly = false, failCompletion = false, mismatchedWeekly = false) {
+function provider(bucketMetadata = metadata, failWeekly = false, failCompletion = false, mismatchedWeekly = false, ambiguousCompletion = false) {
   const states = []
   const manifests = []
   const bucket = { async getMetadata() { return [bucketMetadata] }, file(name) {
-    if (name.endsWith('.complete')) return { async save(content, options) {
-      if (failCompletion) throw new Error('synthetic completion failure')
-      manifests.push({ name, content, options })
-    } }
+    if (name.endsWith('.complete')) {
+      const file = { async save(content, options) {
+        if (failCompletion) throw new Error('synthetic completion failure')
+        manifests.push({ name, content, options })
+        file.metadata = { name, bucket: env.BACKUP_BUCKET, generation: '124', metageneration: '1',
+          size: '0', crc32c: 'AAAAAA==', metadata: { ...options.metadata.metadata } }
+        if (ambiguousCompletion) delete file.metadata.metadata.daily_generation
+      } }
+      return file
+    }
     const state = { name, finalized: false, destroyed: false, bytes: '', options: null }
     states.push(state)
     const file = { createWriteStream(options) {
@@ -146,6 +152,12 @@ test('a failed completion record leaves both archives unconfirmed', async () => 
   await assert.rejects(exportEncryptedBackup(backupConfiguration(env), { storage, now: new Date('2026-11-02T10:00:00Z'), start: () => source() }))
   assert.ok(states.every(state => state.finalized))
   assert.equal(manifests.length, 0)
+})
+
+test('an ambiguous completion response cannot report a successful backup', async () => {
+  const { storage, manifests } = provider(metadata, false, false, false, true)
+  await assert.rejects(exportEncryptedBackup(backupConfiguration(env), { storage, now: new Date('2026-11-02T10:00:00Z'), start: () => source() }))
+  assert.equal(manifests.length, 1) // A failed response can still leave the marker at the provider.
 })
 
 test('different archive metadata prevents a completion record', async () => {

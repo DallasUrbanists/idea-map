@@ -200,10 +200,13 @@ to make the other copy complete. Treat an ambiguous upload as unverified.
 After all required objects pass their upload checks, the exporter creates one
 zero-byte completion record with the archive generations, sizes, and checksums.
 The record uses a create-only precondition and requires no update to existing
-objects. The inventory refuses archives without a matching record, and weekly
-copies whose size or checksum differs from the daily copy. The record confirms
-the export finished; CRC32C detects accidental corruption, not malicious
-alteration. Only a restore test verifies that an archive is usable.
+objects. The exporter checks the returned marker identity, empty-object checksum,
+and exact completion metadata before reporting success. A failed or ambiguous
+response can still leave a marker behind; review it through the authorized
+inventory process. The inventory refuses archives without a matching record,
+and weekly copies whose size or checksum differs from the daily copy. The record
+confirms the export finished; CRC32C detects accidental corruption, not
+malicious alteration. Only a restore test verifies that an archive is usable.
 If an entire week's copy is missing, an authorized operator can rerun the
 command with `--weekly` to write both classes from one new snapshot. This does
 not reconstruct an earlier point in time.
