@@ -272,6 +272,17 @@ if the write or commit is uncertain,
 and reopen it only after the decision and journal are reconciled. Concurrent
 removals must not reopen the gate while another decision remains pending.
 
+The current gate stores only an open/closed value. It cannot distinguish a
+routine removal pause from a recovery fence or another independent closure.
+Consequently, even an exact readback of every confirmed removal is insufficient
+to reopen it automatically. A reopening design needs durable, independently
+addressable closure causes, or an equivalent independently verified fence.
+Recording and clearing a removal's cause must serialize with new decisions and
+must not clear a recovery or operator closure. A lost commit response must be
+reconciled against durable state; it must not be treated as permission to open.
+The initial closed state and restored databases require independent authorization
+and coverage verification, not an empty list of pending removals.
+
 This boundary must coordinate requests already in flight, including responses
 that have read content but have not finished delivery. An unreadable or missing
 gate state must deny access, and all public serving paths must honor it. A
@@ -563,9 +574,11 @@ Before relying on the journal, test with synthetic data and isolated resources:
     a stalled or disconnected client, a queued gate closure, exhausted database
     connections, a lost database connection, and a terminated reader. Verify the
     shared lock is released only after the protected response finishes or is
-    stopped, and that reopening waits
-    for every pending decision. Exercise the real pooler and the deployed runtime
-    separately from local provider fakes.
+    stopped, and that reopening waits for every pending decision. Test an
+    unrelated recovery closure, a concurrent
+    new removal, a lost reopen response, and a restored gate separately; none may
+    clear another closure or infer journal coverage. Exercise the real pooler and
+    the deployed runtime separately from local provider fakes.
 3. Restore an older archive after later synthetic decisions, reconcile the
     journal, and prove that withdrawn content and held material remain private.
 4. Verify coverage checkpoint handling, old-schema compatibility, retention of
