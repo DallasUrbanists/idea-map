@@ -545,6 +545,10 @@ transaction-scoped advisory lock prevented a later shared lock from entering.
 That result does not validate Neon pooling, resource limits, deadlock handling,
 or the application response lifecycle; all public readers and removal writers
 would have to use the same reviewed lock convention.
+The prototype also aborts a public response when a liveness check has not
+returned within ten seconds, even if the database connection does not report an
+error. This bounds a stalled check while the Node event loop is running; it does
+not prove an independent network fence or immediate failure detection.
 A synthetic local-fetch probe against the built Nitro runtime did not carry a
 custom server-side context object into the nested request. Do not assume an inner
 request can reuse an outer request's guarded transaction. Test any alternative

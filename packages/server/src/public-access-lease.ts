@@ -55,9 +55,20 @@ export async function acquirePublicAccessLease(pool: pg.Pool): Promise<PublicAcc
     const timer = setInterval(() => {
       if (checking || controller.signal.aborted) return
       checking = true
+      // A broken connection can leave a query pending without a server-side
+      // statement timeout ever reaching this process. Stop delivery locally.
+      const deadline = performance.now() + 10_000
+      const checkDeadline = setTimeout(() => controller.abort(), 10_000)
+      checkDeadline.unref()
+      const clearDeadline = () => clearTimeout(checkDeadline)
+      controller.signal.addEventListener('abort', clearDeadline, { once: true })
       void client.query<{ is_open: boolean | null, closing: boolean }>(accessStillValid).then(status => {
-        if (status.rows.length !== 1 || status.rows[0]?.is_open !== true || status.rows[0]?.closing !== false) controller.abort()
-      }, () => controller.abort()).finally(() => { checking = false })
+        if (performance.now() >= deadline || status.rows.length !== 1 || status.rows[0]?.is_open !== true || status.rows[0]?.closing !== false) controller.abort()
+      }, () => controller.abort()).finally(() => {
+        clearDeadline()
+        controller.signal.removeEventListener('abort', clearDeadline)
+        checking = false
+      })
     }, 250)
     timer.unref()
     controller.signal.addEventListener('abort', () => clearInterval(timer), { once: true })
