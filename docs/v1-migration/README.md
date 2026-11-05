@@ -42,6 +42,7 @@ You can use these records to investigate different parts of the migration:
 | [Parity matrix](parity-matrix.md) | Historical routes, capabilities, documentation crosswalks, and migration issue mappings |
 | [Presentation inventory](presentation-inventory.md) | Pinned TV, remote, and audience behavior, pairing, commands, and opt-in transport |
 | [Rights inventory](rights-inventory.md) | Source provenance, permission evidence, asset exclusions, and reuse investigations |
+| [Saved-content compatibility fixtures](saved-content-fixtures.md) | Pinned browser-local shapes and offline synthetic inspection |
 
 ## Interpret the evidence
 

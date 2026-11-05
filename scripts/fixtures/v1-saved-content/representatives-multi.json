@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "saved": {
+    "__proto__": {
+      "representative": {
+        "id": "__proto__",
+        "name": "Synthetic representative",
+        "extra": "preserve"
+      },
+      "suggestionId": "synthetic-idea",
+      "savedAt": "2030-01-02T03:04:05.000Z"
+    },
+    "42": {
+      "representative": {
+        "id": 42,
+        "name": "Another synthetic representative"
+      },
+      "suggestionId": "other",
+      "savedAt": "2030-01-02T03:04:05.000Z"
+    }
+  },
+  "extraTop": {
+    "preserve": true
+  }
+}

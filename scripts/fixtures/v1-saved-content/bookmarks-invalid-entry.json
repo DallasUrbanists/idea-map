@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "saved": {
+    "wrong": {
+      "suggestion": {
+        "id": "different",
+        "content": {
+          "summary": "Synthetic idea",
+          "photos": []
+        },
+        "location": {
+          "address": "Synthetic"
+        },
+        "extra": {
+          "preserve": true
+        }
+      },
+      "savedAt": "2030-01-02T03:04:05.000Z",
+      "futureEntry": 42
+    }
+  }
+}
