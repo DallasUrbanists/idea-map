@@ -68,6 +68,7 @@ details about each platform in these guides:
 | External services | [Resend](architecture/resend.md), [Streetmix](architecture/streetmix.md) |
 | Presentation | [Presentation contracts](architecture/presentation.md): roles, commands, state delivery, and recovery |
 | Drafts | [Dictation recovery model](architecture/dictation-recovery.md): separate transcripts and safe draft changes |
+| Navigation | [Navigation recovery model](architecture/navigation-recovery.md): synthetic browse context and transitions |
 
 ## Design
 
