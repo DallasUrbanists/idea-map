@@ -4,11 +4,11 @@ variable "enable_storage_capacity_alerts" {
   default     = false
   validation {
     condition = !var.enable_storage_capacity_alerts || (
-      var.manage_media_buckets && length(var.monitoring_notification_channels) > 0 &&
+      length(var.monitoring_notification_channels) > 0 && length(toset(values(var.bucket_names))) == 3 &&
       toset(keys(var.storage_capacity_threshold_bytes)) == toset(keys(var.bucket_names)) &&
       alltrue([for name in values(var.bucket_names) : can(regex("^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$", name))])
     )
-    error_message = "Storage alerts require foundation-owned buckets, existing channels, valid names, and a threshold for each bucket."
+    error_message = "Storage alerts require three distinct reviewed bucket names, existing channels, and a threshold for each bucket."
   }
 }
 
@@ -31,7 +31,7 @@ resource "google_monitoring_alert_policy" "bucket_capacity" {
   conditions {
     display_name = "Bucket storage exceeds the reviewed threshold"
     condition_threshold {
-      filter          = "metric.type=\"storage.googleapis.com/storage/v2/total_bytes\" AND resource.type=\"gcs_bucket\" AND resource.label.bucket_name=\"${each.value}\""
+      filter          = "metric.type=\"storage.googleapis.com/storage/v2/total_bytes\" AND resource.type=\"gcs_bucket\" AND resource.label.project_id=\"${var.project_id}\" AND resource.label.bucket_name=\"${each.value}\""
       comparison      = "COMPARISON_GT"
       threshold_value = lookup(var.storage_capacity_threshold_bytes, each.key, 0)
       duration        = "0s"
@@ -51,11 +51,11 @@ variable "enable_storage_growth_alerts" {
   default     = false
   validation {
     condition = !var.enable_storage_growth_alerts || (
-      var.manage_media_buckets && length(var.monitoring_notification_channels) > 0 &&
+      length(var.monitoring_notification_channels) > 0 && length(toset(values(var.bucket_names))) == 3 &&
       toset(keys(var.storage_growth_threshold_percent)) == toset(keys(var.bucket_names)) &&
       alltrue([for name in values(var.bucket_names) : can(regex("^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$", name))])
     )
-    error_message = "Storage growth alerts require foundation-owned buckets, existing channels, valid names, and a threshold for each bucket."
+    error_message = "Storage growth alerts require three distinct reviewed bucket names, existing channels, and a threshold for each bucket."
   }
 }
 
@@ -78,7 +78,7 @@ resource "google_monitoring_alert_policy" "bucket_growth" {
   conditions {
     display_name = "A bucket storage series grows beyond its reviewed percentage"
     condition_threshold {
-      filter          = "metric.type=\"storage.googleapis.com/storage/v2/total_bytes\" AND resource.type=\"gcs_bucket\" AND resource.label.bucket_name=\"${each.value}\""
+      filter          = "metric.type=\"storage.googleapis.com/storage/v2/total_bytes\" AND resource.type=\"gcs_bucket\" AND resource.label.project_id=\"${var.project_id}\" AND resource.label.bucket_name=\"${each.value}\""
       comparison      = "COMPARISON_GT"
       threshold_value = lookup(var.storage_growth_threshold_percent, each.key, 0)
       duration        = "0s"

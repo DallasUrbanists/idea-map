@@ -20,7 +20,7 @@ variable "region" {
   default     = "us-central1"
 }
 variable "bucket_names" {
-  description = "Globally unique names for uploads, approved media and backups when this root manages them."
+  description = "Reviewed names for uploads, approved media and backups managed or monitored by this root."
   type = object({
     uploads = string
     public  = string

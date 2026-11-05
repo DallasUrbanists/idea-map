@@ -139,7 +139,7 @@ run "storage_capacity_alerts_are_scoped" {
   assert {
     condition = length(google_monitoring_alert_policy.bucket_capacity) == 3 && alltrue([
       for key, policy in google_monitoring_alert_policy.bucket_capacity :
-      one(policy.conditions).condition_threshold[0].filter == "metric.type=\"storage.googleapis.com/storage/v2/total_bytes\" AND resource.type=\"gcs_bucket\" AND resource.label.bucket_name=\"${var.bucket_names[key]}\"" &&
+      one(policy.conditions).condition_threshold[0].filter == "metric.type=\"storage.googleapis.com/storage/v2/total_bytes\" AND resource.type=\"gcs_bucket\" AND resource.label.project_id=\"${var.project_id}\" AND resource.label.bucket_name=\"${var.bucket_names[key]}\"" &&
       one(policy.conditions).condition_threshold[0].threshold_value == var.storage_capacity_threshold_bytes[key] &&
       one(policy.conditions).condition_threshold[0].aggregations[0].cross_series_reducer == "REDUCE_SUM" &&
       toset(policy.notification_channels) == toset(var.monitoring_notification_channels)
@@ -160,10 +160,25 @@ run "storage_capacity_alerts_reject_invalid_threshold" {
   expect_failures = [var.storage_capacity_threshold_bytes]
 }
 
-run "storage_alerts_reject_unmanaged_buckets" {
+run "storage_capacity_alerts_can_monitor_separately_owned_buckets" {
   command = plan
   variables {
     manage_media_buckets             = false
+    enable_storage_capacity_alerts   = true
+    monitoring_notification_channels = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
+    storage_capacity_threshold_bytes = { uploads = 1000, public = 2000, backups = 3000 }
+  }
+  assert {
+    condition     = length(google_monitoring_alert_policy.bucket_capacity) == 3 && length(google_storage_bucket.media) == 0 && length(google_storage_bucket_iam_member.upload_creator) == 0
+    error_message = "Monitoring existing buckets must not take ownership or grant media access."
+  }
+}
+
+run "storage_capacity_alerts_reject_duplicate_bucket_names" {
+  command = plan
+  variables {
+    manage_media_buckets             = false
+    bucket_names                     = { uploads = "synthetic-uploads", public = "synthetic-uploads", backups = "synthetic-backups" }
     enable_storage_capacity_alerts   = true
     monitoring_notification_channels = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
     storage_capacity_threshold_bytes = { uploads = 1000, public = 2000, backups = 3000 }
@@ -189,7 +204,7 @@ run "storage_growth_alerts_are_scoped" {
   assert {
     condition = length(google_monitoring_alert_policy.bucket_growth) == 3 && alltrue([
       for key, policy in google_monitoring_alert_policy.bucket_growth :
-      one(policy.conditions).condition_threshold[0].filter == "metric.type=\"storage.googleapis.com/storage/v2/total_bytes\" AND resource.type=\"gcs_bucket\" AND resource.label.bucket_name=\"${var.bucket_names[key]}\"" &&
+      one(policy.conditions).condition_threshold[0].filter == "metric.type=\"storage.googleapis.com/storage/v2/total_bytes\" AND resource.type=\"gcs_bucket\" AND resource.label.project_id=\"${var.project_id}\" AND resource.label.bucket_name=\"${var.bucket_names[key]}\"" &&
       one(policy.conditions).condition_threshold[0].threshold_value == var.storage_growth_threshold_percent[key] &&
       one(policy.conditions).condition_threshold[0].aggregations[0].alignment_period == "86400s" &&
       one(policy.conditions).condition_threshold[0].aggregations[0].per_series_aligner == "ALIGN_PERCENT_CHANGE" &&
@@ -211,10 +226,25 @@ run "storage_growth_alerts_reject_invalid_threshold" {
   expect_failures = [var.storage_growth_threshold_percent]
 }
 
-run "storage_growth_alerts_reject_unmanaged_buckets" {
+run "storage_growth_alerts_can_monitor_separately_owned_buckets" {
   command = plan
   variables {
     manage_media_buckets             = false
+    enable_storage_growth_alerts     = true
+    monitoring_notification_channels = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
+    storage_growth_threshold_percent = { uploads = 25, public = 30, backups = 40 }
+  }
+  assert {
+    condition     = length(google_monitoring_alert_policy.bucket_growth) == 3 && length(google_storage_bucket.media) == 0 && length(google_storage_bucket_iam_member.upload_creator) == 0
+    error_message = "Monitoring existing buckets must not take ownership or grant media access."
+  }
+}
+
+run "storage_growth_alerts_reject_duplicate_bucket_names" {
+  command = plan
+  variables {
+    manage_media_buckets             = false
+    bucket_names                     = { uploads = "synthetic-uploads", public = "synthetic-uploads", backups = "synthetic-backups" }
     enable_storage_growth_alerts     = true
     monitoring_notification_channels = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
     storage_growth_threshold_percent = { uploads = 25, public = 30, backups = 40 }
