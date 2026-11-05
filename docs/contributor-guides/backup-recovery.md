@@ -36,11 +36,13 @@ and the absence of a record inserted after the snapshot. It also withdraws a
 synthetic approved idea, adds a later revision, and places a synthetic legal
 hold after the export. The older isolated restore still contains the previously
 public state and lacks the later hold, revision, actor, and legal-authority
-assignment. The rehearsal appends synthetic journal intents and confirmations
-to an in-memory numbered sequence around those decisions and records the
-synthetic committed hold's ID. It reads each version through a selected fence,
-rejects a deliberately missing version, identifies the synthetic idea for hold
-review, and uses the suppression primitive
+assignment. The rehearsal runs the removal coordinator against a synthetic
+moderator and an in-memory numbered sequence, then appends synthetic hold
+records and captures the committed hold's ID. The coordinator uses a local
+database administrator and fake identity and journal services; this does not
+verify hosted grants or complete journal coverage. It reads each version
+through a selected fence, rejects a deliberately missing version, identifies the
+synthetic idea for hold review, and uses the suppression primitive
 for the known removal in the isolated restore. It also stores and reads back one
 synthetic title from the later revision as a bounded held-material artifact. A
 synthetic manifest links that artifact to the hold and is itself referenced by a

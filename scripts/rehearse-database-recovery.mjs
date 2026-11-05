@@ -9,7 +9,7 @@ import { createRequire } from 'node:module'
 import { pipeline } from 'node:stream/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { dumpArguments, exportEncryptedBackup } from '../apps/worker/ops/export-encrypted-backup.mjs'
-import { decodeRecoveryRecord, encodeRecoveryConfirmation, encodeRecoveryHoldManifestConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../packages/server/dist/recovery-journal-record.js'
+import { decodeRecoveryRecord, encodeRecoveryHoldManifestConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../packages/server/dist/recovery-journal-record.js'
 import { encodeRecoverySequenceEntry } from '../packages/server/dist/recovery-sequence.js'
 import { encodeUnverifiedHeldManifest } from '../packages/server/dist/recovery-held-manifest.js'
 import { verifySequenceHeldCaptures, verifyUnverifiedHeldCapture } from '../packages/server/dist/recovery-held-verification.js'
@@ -17,6 +17,8 @@ import { suppressKnownRemovalsFromSequence, suppressUnverifiedRestoredRemovals }
 import { appendAndVerifyRecoverySequenceVersion, readUnverifiedRecoverySequence } from '../packages/server/dist/recovery-sequence-storage.js'
 import { writeUnverifiedHeldMaterial } from '../packages/server/dist/recovery-held-storage.js'
 import { acquirePublicAccessLease } from '../packages/server/dist/public-access-lease.js'
+import { coordinateSequenceRemoval } from '../packages/server/dist/pending-removal.js'
+import { pendingRemovalDatabasePool } from '../packages/server/dist/runtime-database.js'
 import { readPublishedIdea } from '../packages/server/dist/published-ideas.js'
 import { readMediaPreview } from '../packages/server/dist/media-preview.js'
 
@@ -222,15 +224,25 @@ try {
   const base = { environment: 'dev', ideaId, actorId: director, authorizedAt }
   const previousEmulator = process.env.STORAGE_EMULATOR_HOST
   delete process.env.STORAGE_EMULATOR_HOST
+  let coordinatorPoolUsed = false
   try {
     await appendSequence({ ...sequenceBase, kind: 'baseline', checkpointDigest: 'a'.repeat(64) })
-    await appendDecision(randomUUID(), encodeRecoveryIntent({ ...base, operationId: removalOperation,
-      decision: { kind: 'removal', classification: 'other', reason: 'synthetic removal' } }))
+    const session = { uid: marker, email: 'synthetic-moderator@example.invalid', email_verified: true,
+      firebase: { sign_in_provider: 'password' } }
+    const verifier = { async verifySessionCookie() { return session }, async getUser() {
+      return { uid: session.uid, email: session.email, emailVerified: true, disabled: false }
+    } }
+    coordinatorPoolUsed = true
+    const removed = await coordinateSequenceRemoval(databaseUrl, databaseUrl, 'demo-idea-map', 'synthetic-cookie',
+      verifier, sequenceTarget, sequenceWriter, sequenceReader, { operationId: removalOperation, recordId: randomUUID(),
+        ideaId, approvedRevisionId: revisionId, classification: 'other', reason: 'synthetic removal' })
+    if (removed.state !== 'authorized' || removed.value !== 'confirmed' ||
+        await sql(source, 'SELECT is_open FROM public.public_access_gate WHERE singleton=true') !== 'f') {
+      throw new Error('Synthetic coordinated removal failed')
+    }
     await appendDecision(randomUUID(), encodeRecoveryIntent({ ...base, operationId: holdOperation,
       decision: { kind: 'hold_placement', caseReference: 'synthetic case', reason: 'synthetic preservation',
         authorizationReference: 'synthetic authority', scope: 'synthetic idea' } }))
-    const removed = await sql(source, `SELECT public.remove_published_idea('firebase:demo-idea-map','${marker}','${ideaId}','${revisionId}','other','synthetic removal')`)
-    if (removed !== 'removed') throw new Error('Synthetic removal failed')
     const holdOutcome = await sql(source, `SELECT public.place_legal_hold_outcome('firebase:demo-idea-map','${marker}','${ideaId}','synthetic case','synthetic preservation')`)
     if (holdOutcome !== 'processed') throw new Error('Synthetic legal hold failed')
     committedHoldId = await sql(source, `SELECT id FROM legal_holds WHERE idea_id='${ideaId}' AND case_reference='synthetic case' AND released_at IS NULL`)
@@ -240,8 +252,6 @@ try {
     committedAuthority = JSON.parse(await sql(source, `SELECT json_build_object('actorId', user_id, 'authority', authority,
       'grantedBy', granted_by, 'grantedAt', to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
       'authorizationReference', authorization_reference)::text FROM legal_hold_assignments WHERE id='${committedAuthorityId}'`))
-    const confirmedAt = await sql(source, `SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`)
-    await appendDecision(recoveryConfirmationRecordId(removalOperation), encodeRecoveryConfirmation(removalOperation, 'dev', confirmedAt))
     const heldTitle = await sql(source, `SELECT content->>'title' FROM idea_revisions WHERE idea_id='${ideaId}' AND version=2`)
     if (heldTitle !== 'Synthetic later held material') throw new Error('Synthetic held revision is ambiguous')
     const heldRevision = await sql(source, `SELECT id FROM idea_revisions WHERE idea_id='${ideaId}' AND version=2`)
@@ -257,6 +267,7 @@ try {
           size: manifestReference.size, sha256: manifestReference.sha256 }))
     sequenceFenceVersion = (await appendSequence({ ...sequenceBase, kind: 'fence', nonce: sequenceFenceNonce })).version
   } finally {
+    if (coordinatorPoolUsed) await pendingRemovalDatabasePool(databaseUrl).end()
     if (previousEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
     else process.env.STORAGE_EMULATOR_HOST = previousEmulator
   }
@@ -344,11 +355,11 @@ try {
     if (!holdIntent || !holdConfirmation) throw new Error('Synthetic hold records are missing')
     const checked = await verifyUnverifiedHeldCapture(journal, journalTarget, holdIntent, holdConfirmation)
     if (heldReference.coverageVerified !== false || manifestReference.coverageVerified !== false ||
-        checked.coverageVerified !== false || checked.checkedArtifacts !== 1 || checked.totalBytes !== heldReference.size) {
+        checked.coverageVerified !== false || checked.checkedArtifacts !== 1 || checked.totalBytes !== heldReference.size + manifestReference.size) {
       throw new Error('Synthetic held material readback failed')
     }
     const sequenceHeld = await verifySequenceHeldCaptures(sequenceReader, sequenceTarget, sequenceFenceVersion, sequenceFenceNonce, journal, journalTarget)
-    if (sequenceHeld.checkedCaptures !== 1 || sequenceHeld.checkedArtifacts !== 1 || sequenceHeld.totalBytes !== heldReference.size ||
+    if (sequenceHeld.checkedCaptures !== 1 || sequenceHeld.checkedArtifacts !== 1 || sequenceHeld.totalBytes !== heldReference.size + manifestReference.size ||
         sequenceHeld.incompletePlacements !== 0 || sequenceHeld.reviewOperations !== 1 || sequenceHeld.unmatchedConfirmations !== 0 ||
         sequenceHeld.coverageVerified !== false || sequenceHeld.authorityVerified !== false) throw new Error('Synthetic sequence held capture failed verification')
   } finally {
