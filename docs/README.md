@@ -67,6 +67,7 @@ details about each platform in these guides:
 | Identity and data | [Firebase](architecture/firebase.md), [PostgreSQL/PostGIS/Drizzle](architecture/postgresql-postgis-drizzle.md), [Neon](architecture/neon.md) |
 | External services | [Resend](architecture/resend.md), [Streetmix](architecture/streetmix.md) |
 | Presentation | [Presentation contracts](architecture/presentation.md): roles, commands, state delivery, and recovery |
+| Navigation | [Navigation recovery model](architecture/navigation-recovery.md): synthetic browse context and transitions |
 
 ## Design
 
