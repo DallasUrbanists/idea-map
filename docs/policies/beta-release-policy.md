@@ -94,7 +94,10 @@ A later release must satisfy its own publication, privacy, accessibility and
 operational requirements before enabling them.
 
 The [proposed participant notice](beta-participant-notice.md) preserves review
-copy for the welcome and submission contexts.
+copy for the welcome and submission contexts. The [proposed beta terms](beta-terms-proposal.md)
+are staged for a future rollout; the [current Terms of Use](terms-of-use-policy.md)
+remain the active runtime consent until a new immutable version and its supporting
+form, API and consent handling are implemented and accepted.
 
 ## Launch acceptance
 

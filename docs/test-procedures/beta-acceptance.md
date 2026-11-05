@@ -119,11 +119,13 @@ Reviewers should verify what users are told before sharing content:
 - [ ] Record the maintainer's decision about independent terms/privacy review
   and any remaining conditions, without publishing privileged advice.
 
-The registered-submission test currently compares retained consent text with both
-`packages/server/terms/initial-terms.md` and `docs/policies/terms-of-use-policy.md`.
-The revised policy text therefore creates a mismatch until the new immutable beta
-terms version, serving, and consent tests are implemented together. The initial
-snapshot and previously recorded consent must remain unchanged.
+The [current Terms of Use](../policies/terms-of-use-policy.md) match the initial
+runtime terms snapshot. The [proposed beta terms](../policies/beta-terms-proposal.md)
+are staged for later rollout and are not active consent. Before beta submissions
+use them, add a new immutable terms version and update the form, API, retained
+consent and tests together. Keep the initial snapshot and previously recorded
+consent unchanged. Planning documentation can be merged before those beta
+activation steps are complete.
 
 ## Record the decision
 
