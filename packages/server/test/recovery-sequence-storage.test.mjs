@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { CRC32C } from '@google-cloud/storage'
 import { encodeRecoveryIntent } from '../dist/recovery-journal-record.js'
 import { encodeRecoverySequenceEntry } from '../dist/recovery-sequence.js'
-import { appendAndVerifyRecoverySequenceVersion, appendRecoverySequenceVersion, readRecoverySequenceVersion, readUnverifiedRecoverySequence } from '../dist/recovery-sequence-storage.js'
+import { appendAndVerifyRecoverySequenceVersion, appendRecoverySequenceVersion, inspectRecoverySequenceVersionOutsideScanLimit, readRecoverySequenceVersion, readUnverifiedRecoverySequence } from '../dist/recovery-sequence-storage.js'
 import { suppressKnownRemovalsFromSequence } from '../dist/recovery-suppression.js'
 
 const target = { environment: 'dev', epochId: '11111111-1111-4111-8111-111111111111',
@@ -95,7 +95,7 @@ test('timeouts abort the request and leave append outcomes uncertain', async () 
   assert.equal(signal.aborted, true)
 })
 
-test('an append beyond the local scan limit remains uncertain and cannot be read by this transport', async () => {
+test('an append beyond the scan limit remains uncertain and requires explicit inspection', async () => {
   const f = fake()
   f.versions.length = 10_000
   await assert.rejects(appendRecoverySequenceVersion(f.transport, target, decision), /outcome is uncertain/)
@@ -105,6 +105,18 @@ test('an append beyond the local scan limit remains uncertain and cannot be read
   await assert.rejects(readRecoverySequenceVersion(f.transport, target, '10001'), /Invalid/)
   await assert.rejects(readUnverifiedRecoverySequence(f.transport, target, '10001', nonce), /Invalid/)
   assert.equal(f.calls.length, calls)
+  const inspected = await inspectRecoverySequenceVersionOutsideScanLimit(f.transport, target, '10001')
+  assert.deepEqual(Buffer.from(inspected.payload), Buffer.from(decision))
+  assert.equal(inspected.coverageVerified, false)
+  await assert.rejects(inspectRecoverySequenceVersionOutsideScanLimit(f.transport, target, '10000'), /Invalid/)
+  await assert.rejects(inspectRecoverySequenceVersionOutsideScanLimit(f.transport, target, '01'), /Invalid/)
+  const longVersion = '90071992547409931234'
+  const exact = { async request(method, path) {
+    assert.equal(method, 'GET')
+    assert.equal(path, `projects/${target.projectNumber}/secrets/${target.secretId}/versions/${longVersion}:access`)
+    return { status: 200, data: { name: path.slice(0, -7), payload: { data: Buffer.from(decision).toString('base64'), dataCrc32c: crc(decision) } } }
+  } }
+  assert.deepEqual(Buffer.from((await inspectRecoverySequenceVersionOutsideScanLimit(exact, target, longVersion)).payload), Buffer.from(decision))
 })
 
 test('separate writer and reader must agree on the exact appended bytes', async () => {

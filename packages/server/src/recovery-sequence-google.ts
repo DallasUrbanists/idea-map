@@ -4,7 +4,7 @@ import type { RecoverySequenceTransport } from './recovery-sequence-storage.js'
 type TokenProvider = Pick<GoogleAuth, 'getAccessToken'>
 const parent = 'projects/[1-9][0-9]{5,19}/secrets/[a-zA-Z0-9_-]{1,255}'
 const appendPath = new RegExp(`^${parent}:addVersion$`)
-const accessPath = new RegExp(`^${parent}/versions/([1-9][0-9]{0,4}):access$`)
+const accessPath = new RegExp(`^${parent}/versions/([1-9][0-9]{0,19}):access$`)
 
 /** Unwired Secret Manager transport; callers must separately review effective IAM. */
 export function createGoogleRecoverySequenceTransport(
@@ -14,7 +14,7 @@ export function createGoogleRecoverySequenceTransport(
   return { async request(method, path, body, signal) {
     const match = accessPath.exec(path)
     if ((method === 'POST' && !appendPath.test(path)) ||
-        (method === 'GET' && (!match || Number(match[1]) > 10_000 || body !== null)) ||
+        (method === 'GET' && (!match || body !== null)) ||
         !['POST', 'GET'].includes(method)) throw new Error('Invalid recovery sequence request')
     let encoded: string | undefined
     if (method === 'POST') {

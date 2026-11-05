@@ -7,6 +7,7 @@ export interface RecoverySequenceTransport {
 }
 const uuid4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const versionPattern = /^[1-9][0-9]{0,4}$/
+const exactVersionPattern = /^[1-9][0-9]{0,19}$/
 
 function targetPath(target: Target): string {
   if (!target || !['dev', 'prod'].includes(target.environment) || typeof target.epochId !== 'string' || !uuid4.test(target.epochId) ||
@@ -61,11 +62,11 @@ export async function appendRecoverySequenceVersion(transport: RecoverySequenceT
   } catch { throw new Error('Recovery sequence append outcome is uncertain') }
 }
 
-/** Read one exact numbered version; never infer absence from an error. */
-export async function readRecoverySequenceVersion(transport: RecoverySequenceTransport, target: Target,
+async function readExactRecoverySequenceVersion(transport: RecoverySequenceTransport, target: Target,
   version: string, timeoutMs = 5000): Promise<Uint8Array> {
   const path = targetPath(target)
-  if (!validVersion(version) || !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 5000) throw new Error('Invalid recovery sequence version')
+  if (typeof version !== 'string' || !exactVersionPattern.test(version) ||
+      !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 5000) throw new Error('Invalid recovery sequence version')
   const environment = target.environment, epochId = target.epochId
   try {
     const name = `${path}/versions/${version}`
@@ -81,6 +82,26 @@ export async function readRecoverySequenceVersion(transport: RecoverySequenceTra
     decodeRecoverySequenceEntry(bytes, environment, epochId)
     return bytes
   } catch { throw new Error('Recovery sequence version could not be verified') }
+}
+
+/** Read one exact numbered version within the scan limit; never infer absence from an error. */
+export async function readRecoverySequenceVersion(transport: RecoverySequenceTransport, target: Target,
+  version: string, timeoutMs = 5000): Promise<Uint8Array> {
+  if (!validVersion(version)) throw new Error('Invalid recovery sequence version')
+  return readExactRecoverySequenceVersion(transport, target, version, timeoutMs)
+}
+
+/**
+ * Inspect one independently identified version beyond the scan limit. This
+ * cannot find an unknown version, establish coverage, or authorize reopening.
+ */
+export async function inspectRecoverySequenceVersionOutsideScanLimit(transport: RecoverySequenceTransport, target: Target,
+  version: string, timeoutMs = 5000): Promise<{ payload: Uint8Array, coverageVerified: false }> {
+  if (typeof version !== 'string' || !exactVersionPattern.test(version) || validVersion(version)) {
+    throw new Error('Invalid recovery sequence version')
+  }
+  const payload = await readExactRecoverySequenceVersion(transport, target, version, timeoutMs)
+  return { payload, coverageVerified: false }
 }
 
 /** Append once and compare its exact version using a separately authorized reader. */

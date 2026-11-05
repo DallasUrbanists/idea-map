@@ -22,11 +22,13 @@ test('transport uses the fixed Secret Manager endpoint and exact version paths',
   assert.equal(calls[0].cache, 'no-store')
   assert.equal(calls[1].body, undefined)
   await assert.rejects(transport.request('GET', `${parent}/versions/latest:access`, null, signal), /Invalid/)
-  await assert.rejects(transport.request('GET', `${parent}/versions/10001:access`, null, signal), /Invalid/)
+  await transport.request('GET', `${parent}/versions/90071992547409931234:access`, null, signal)
+  assert.equal(calls[2].url, `https://secretmanager.googleapis.com/v1/${parent}/versions/90071992547409931234:access`)
+  await assert.rejects(transport.request('GET', `${parent}/versions/100000000000000000000:access`, null, signal), /Invalid/)
   await assert.rejects(transport.request('POST', 'https://untrusted.invalid', {}, signal), /Invalid/)
   await assert.rejects(transport.request('POST', `${parent}:addVersion`, { data: 'x'.repeat(65_536) }, signal), /Invalid/)
   await assert.rejects(transport.request('GET', `${parent}/versions/1:access`, {}, signal), /Invalid/)
-  assert.equal(calls.length, 2)
+  assert.equal(calls.length, 3)
 })
 
 test('transport limits response size and hides provider error bodies', async () => {

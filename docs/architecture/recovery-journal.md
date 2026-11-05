@@ -162,13 +162,15 @@ The numbered sequence is the only decision transport in this branch. It is
 unwired and has not been tested against a live secret. Held material remains
 separately scoped in the existing backup bucket.
 
-The prototype accepts and scans only versions 1 through 10,000. This is an
-application bound, not a Secret Manager limit. It cannot reserve a version
-before appending: an append may create version 10,001 and then return an
-uncertain result that this transport cannot read. Lost responses, retries, and
-recovery fences also consume versions. Do not connect it to live decisions
-until a separately verified rollover and writer-fencing protocol prevents this
-boundary from stranding an authorized removal or hold. That protocol must keep
+The prototype's ordinary reader and scanner accept only versions 1 through
+10,000. This is an application bound, not a Secret Manager limit. It cannot
+reserve a version before appending: an append may create version 10,001 and
+then return an uncertain result. A separate unwired inspection helper can read
+one independently identified version above the limit by exact decimal ID, but
+cannot discover an unknown version or prove sequence coverage. Lost responses,
+retries, and recovery fences also consume versions. Do not connect it to live
+decisions until a separately verified rollover and writer-fencing protocol
+prevents this boundary from stranding an authorized removal or hold. It must keep
 every version needed by retained backups and active holds available and must
 account for concurrent or ambiguous appends.
 
