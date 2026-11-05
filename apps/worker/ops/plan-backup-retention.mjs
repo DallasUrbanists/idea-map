@@ -1,5 +1,22 @@
 const DAY = 86_400_000
 
+function retentionTime(value) {
+  if (typeof value !== 'string') return NaN
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})$/.exec(value)
+  if (!match) return NaN
+  const [, y, m, d, h, min, sec, fraction = '', zone] = match
+  const year = Number(y), month = Number(m), day = Number(d)
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > days[month - 1] ||
+      Number(h) > 23 || Number(min) > 59 || Number(sec) > 59 ||
+      (zone !== 'Z' && (Number(zone.slice(1, 3)) > 23 || Number(zone.slice(4)) > 59))) return NaN
+  const milliseconds = Date.parse(value)
+  // Date.parse truncates finer precision. Round upward so an unexpired
+  // sub-millisecond retention window cannot become a deletion candidate.
+  return milliseconds + (/[1-9]/.test(fraction.slice(3)) ? 1 : 0)
+}
+
 function weekOf(date) {
   const day = new Date(`${date}T00:00:00.000Z`)
   day.setUTCDate(day.getUTCDate() - ((day.getUTCDay() + 6) % 7))
@@ -23,8 +40,10 @@ export function planBackupRetention({ environment, complete, objects, now = new 
     const created = Date.parse(object.timeCreated)
     if (!Number.isFinite(midnight) || new Date(midnight).toISOString().slice(0, 10) !== match[2] ||
         !Number.isFinite(created) || created < midnight || created >= midnight + 2 * DAY || created > now.getTime() ||
-        object.timeDeleted || (object.retentionExpirationTime && !Number.isFinite(Date.parse(object.retentionExpirationTime))) ||
-        (object.retention && !Number.isFinite(Date.parse(object.retention.retainUntilTime))) ||
+        object.timeDeleted || (object.retentionExpirationTime !== undefined &&
+          !Number.isFinite(retentionTime(object.retentionExpirationTime))) ||
+        (object.retention !== undefined && (!object.retention || typeof object.retention !== 'object' || Array.isArray(object.retention) ||
+          !['Locked', 'Unlocked'].includes(object.retention.mode) || !Number.isFinite(retentionTime(object.retention.retainUntilTime)))) ||
         typeof object.eventBasedHold !== 'boolean' || typeof object.temporaryHold !== 'boolean') {
       throw new Error('Backup state is ambiguous')
     }
@@ -51,12 +70,12 @@ export function planBackupRetention({ environment, complete, objects, now = new 
   const candidates = entries.filter(entry => retentionSatisfied && recentDaily && recentWeekly && !keepGroups[entry.kind].has(entry.group) &&
     now.getTime() - entry.created >= (entry.kind === 'daily' ? 15 : 63) * DAY &&
     !entry.eventBasedHold && !entry.temporaryHold &&
-    (!entry.retentionExpirationTime || Date.parse(entry.retentionExpirationTime) <= now.getTime()) &&
-    (!entry.retention || Date.parse(entry.retention.retainUntilTime) <= now.getTime()))
+    (!entry.retentionExpirationTime || retentionTime(entry.retentionExpirationTime) <= now.getTime()) &&
+    (!entry.retention || retentionTime(entry.retention.retainUntilTime) <= now.getTime()))
     .map(({ name, generation, metageneration }) => ({ name, generation, metageneration }))
   const oldOrHeld = entries.filter(entry => now.getTime() - entry.created >= 76 * DAY || entry.eventBasedHold || entry.temporaryHold ||
-    (entry.retentionExpirationTime && Date.parse(entry.retentionExpirationTime) > now.getTime()) ||
-    (entry.retention && Date.parse(entry.retention.retainUntilTime) > now.getTime())).length
+    (entry.retentionExpirationTime && retentionTime(entry.retentionExpirationTime) > now.getTime()) ||
+    (entry.retention && retentionTime(entry.retention.retainUntilTime) > now.getTime())).length
   // Fourteen days for primary deletion and seven for soft delete leave at most
   // 69 days before an archive needs attention. The date in its name gives
   // a conservative earliest start, even if upload completed much later. This

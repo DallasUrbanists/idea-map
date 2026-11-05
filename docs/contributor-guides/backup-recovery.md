@@ -354,11 +354,13 @@ flight; monitor stalled requests and process termination separately. The plan
 retains all copies in the latest
 14 daily dates and eight weekly periods, requires those periods to be consecutive,
 and applies additional
-15-day and 63-day minimum ages, and excludes held objects. It reports old or
-held objects and old soft-deleted objects for investigation. Completion records
-can outlive their live and noncurrent archives: the inventory reports them as
-`orphanCompletions` and never counts them as backups. The archives can still be
-soft-deleted. A record that becomes noncurrent while an associated archive
+15-day and 63-day minimum ages, and excludes held objects. The planner rejects
+ambiguous object retention modes or timestamps and rounds fractional
+milliseconds upward when checking whether a retention period has ended. It
+reports old or held objects and old soft-deleted objects for investigation.
+Completion records can outlive their live and noncurrent archives: the inventory
+reports them as `orphanCompletions` and never counts them as backups. The
+archives can still be soft-deleted. A record that becomes noncurrent while an associated archive
 generation remains, including soft-deleted generations, is an error. Fewer than 14 daily
 dates or eight weeks, or a gap in those recent periods, sets `retentionSatisfied`
 to false, proposes no deletions, and causes the command to exit nonzero. The

@@ -76,6 +76,16 @@ test('inventory reads all pages and separately counts old soft-deleted objects',
   assert.deepEqual(stale.candidates, [])
 })
 
+test('inventory refuses ambiguous retention metadata on an otherwise completed archive', async () => {
+  const oldName = make('daily', 30).name
+  const ambiguous = records.map(item => item.name === oldName
+    ? { ...item, retention: { mode: 'unknown', retainUntilTime: '2020-01-01T00:00:00Z' } } : item)
+  const bucket = { async getMetadata() { return [metadata] }, async getFiles(query) {
+    return query.softDeleted ? [[], null] : [ambiguous.map(item => ({ metadata: item })), null]
+  } }
+  await assert.rejects(inspectBackupRetention(storageFor(bucket), target, now), /Backup state is ambiguous/)
+})
+
 test('inventory rejects changes to the bucket, live objects, or soft-deleted objects during listing', async () => {
   let bucketReads = 0
   const replacedBucket = { async getMetadata() {

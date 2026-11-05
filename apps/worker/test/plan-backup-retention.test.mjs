@@ -81,6 +81,39 @@ test('retention fails closed for insufficient, incomplete, ambiguous, or unexpec
   assert.throws(() => planBackupRetention({ ...baseline, objects: [...baseline.objects, object('daily', 30, { eventBasedHold: undefined })] }))
 })
 
+test('ambiguous object retention cannot produce expiry candidates', () => {
+  for (const retention of [null, '', {}, { mode: 'Unknown', retainUntilTime: '2020-01-01T00:00:00Z' },
+    { mode: 'Locked', retainUntilTime: null }, { mode: 'Unlocked', retainUntilTime: 'invalid' },
+    { mode: 'Locked', retainUntilTime: '2020' }, { mode: 'Locked', retainUntilTime: '2026-02-30T00:00:00Z' }]) {
+    const input = inventory()
+    input.objects.push(object('daily', 30, { retention }))
+    assert.throws(() => planBackupRetention(input), /Backup state is ambiguous/)
+  }
+  for (const retentionExpirationTime of [null, '', 0, 'invalid', '2020', '2026-02-30T00:00:00Z']) {
+    const input = inventory()
+    input.objects.push(object('daily', 30, { retentionExpirationTime }))
+    assert.throws(() => planBackupRetention(input), /Backup state is ambiguous/)
+  }
+  const valid = inventory()
+  const expired = object('daily', 30, { retention: { mode: 'Unlocked', retainUntilTime: '2020-02-29T02:30:00.123456789+02:00' } })
+  valid.objects.push(expired)
+  assert.ok(planBackupRetention(valid).candidates.some(candidate => candidate.name === expired.name))
+})
+
+test('sub-millisecond retention remains protected until the next whole millisecond', () => {
+  const input = inventory()
+  const objectRetention = object('daily', 30, { retention: { mode: 'Locked', retainUntilTime: '2026-11-03T12:00:00.000000001Z' } })
+  const bucketRetention = object('daily', 31, { retentionExpirationTime: '2026-11-03T14:00:00.000000001+02:00' })
+  input.objects.push(objectRetention, bucketRetention)
+  const atDeadline = planBackupRetention(input)
+  assert.equal(atDeadline.oldOrHeld, 2)
+  assert.ok(atDeadline.candidates.every(candidate => ![objectRetention.name, bucketRetention.name].includes(candidate.name)))
+  const afterDeadline = planBackupRetention({ ...input, now: new Date(now.getTime() + 1) })
+  for (const item of [objectRetention, bucketRetention]) {
+    assert.ok(afterDeadline.candidates.some(candidate => candidate.name === item.name))
+  }
+})
+
 test('expiry attention uses the earliest possible backup start, not upload completion', () => {
   const edge = object('daily', 69)
   const midnight = Date.parse(`${edge.name.split('/')[3]}T00:00:00.000Z`)
