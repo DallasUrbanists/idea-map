@@ -25,7 +25,6 @@ export default defineNuxtConfig({
     firebaseProjectId: '',
     authProviderMode: '',
     ownershipClaimsEnabled: false,
-    // Shared caching is restricted to the isolated synthetic staging service.
     public: { siteName: 'Idea Map', firebaseApiKey: '', firebaseAuthDomain: '', firebaseProjectId: '', firebaseAuthEmulator: '', authProviderMode: '' },
   },
 })

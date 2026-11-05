@@ -229,11 +229,11 @@ credential lifetimes, drain or resolve outstanding operations, and read through
 a new fence after the boundary is established. If those steps cannot be verified,
 keep the replacement isolated.
 
-Verify the checkpoint, integrity, and complete coverage through the fence. An
-version timestamp or a backup start time alone cannot identify every concurrent committed transaction: replay the
-verified relevant overlap conservatively, and require authorized reconciliation
-where order or outcome is unclear. If writers cannot be fenced or completeness
-cannot be verified, keep the restored service isolated.
+Verify the checkpoint, integrity, and complete coverage through the fence. A
+version timestamp or a backup start time alone cannot identify every concurrent
+committed transaction. Replay the verified overlap conservatively and require
+authorized reconciliation where order or outcome is unclear. If writers cannot
+be fenced or completeness cannot be verified, keep the restored service isolated.
 
 The current hold-placement function creates the hold ID inside PostgreSQL, but
 the version-one journal confirmation does not record that ID. A later release
