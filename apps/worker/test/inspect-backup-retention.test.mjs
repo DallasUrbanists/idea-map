@@ -86,6 +86,17 @@ test('inventory refuses ambiguous retention metadata on an otherwise completed a
   await assert.rejects(inspectBackupRetention(storageFor(bucket), target, now), /Backup state is ambiguous/)
 })
 
+test('inventory does not treat invalid deletion metadata as a live archive', async () => {
+  for (const timeDeleted of [null, '']) {
+    const oldName = make('daily', 30).name
+    const ambiguous = records.map(item => item.name === oldName ? { ...item, timeDeleted } : item)
+    const bucket = { async getMetadata() { return [metadata] }, async getFiles(query) {
+      return query.softDeleted ? [[], null] : [ambiguous.map(item => ({ metadata: item })), null]
+    } }
+    await assert.rejects(inspectBackupRetention(storageFor(bucket), target, now), /Unexpected noncurrent backup/)
+  }
+})
+
 test('inventory rejects changes to the bucket, live objects, or soft-deleted objects during listing', async () => {
   let bucketReads = 0
   const replacedBucket = { async getMetadata() {
@@ -421,6 +432,29 @@ test('soft-deleted generations with old policy retention or overdue hard deletio
   assert.equal(result.overdueSoftDeletion, 1)
   assert.equal(result.reviewRequired, true)
   object.hardDeleteTime = 'invalid'
+  await assert.rejects(inspectBackupRetention(storageFor(bucket), target, now), /ambiguous/)
+})
+
+test('soft-delete ordering and retention preserve sub-millisecond provider precision', async () => {
+  const object = softDeletedObject(make('daily', 80))
+  const bucket = { async getMetadata() { return [metadata] }, async getFiles(query) {
+    return [(query.softDeleted ? [object] : records).map(item => ({ metadata: item })), null]
+  } }
+  object.softDeleteTime = '2026-10-27T12:00:00.000Z'
+  object.hardDeleteTime = '2026-11-03T12:00:00.000000001Z'
+  let result = await inspectBackupRetention(storageFor(bucket), target, now)
+  assert.equal(result.longSoftDelete, 1)
+  assert.equal(result.overdueSoftDeletion, 0)
+  object.hardDeleteTime = '2026-11-03T12:00:00.000Z'
+  result = await inspectBackupRetention(storageFor(bucket), target, now)
+  assert.equal(result.longSoftDelete, 0)
+  assert.equal(result.overdueSoftDeletion, 1)
+  object.softDeleteTime = '2026-11-03T12:00:00.000000001Z'
+  object.hardDeleteTime = '2026-11-04T12:00:00.000Z'
+  await assert.rejects(inspectBackupRetention(storageFor(bucket), target, now), /ambiguous/)
+  const start = object.timeCreated.slice(0, -5)
+  object.timeCreated = `${start}.000000002Z`
+  object.softDeleteTime = `${start}.000000001Z`
   await assert.rejects(inspectBackupRetention(storageFor(bucket), target, now), /ambiguous/)
 })
 

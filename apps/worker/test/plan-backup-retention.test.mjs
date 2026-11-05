@@ -77,6 +77,9 @@ test('retention fails closed for insufficient, incomplete, ambiguous, or unexpec
   assert.deepEqual(insufficient.candidates, [])
   assert.throws(() => planBackupRetention({ ...baseline, objects: [...baseline.objects, baseline.objects[0]] }))
   assert.throws(() => planBackupRetention({ ...baseline, objects: [...baseline.objects, object('daily', 30, { timeDeleted: now.toISOString() })] }))
+  for (const timeDeleted of [null, '']) {
+    assert.throws(() => planBackupRetention({ ...baseline, objects: [...baseline.objects, object('daily', 30, { timeDeleted })] }), /Backup state is ambiguous/)
+  }
   assert.throws(() => planBackupRetention({ ...baseline, objects: [...baseline.objects, object('daily', 30, { name: 'other/backup' })] }))
   assert.throws(() => planBackupRetention({ ...baseline, objects: [...baseline.objects, object('daily', 30, { eventBasedHold: undefined })] }))
 })

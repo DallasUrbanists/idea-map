@@ -64,7 +64,7 @@ export function confirmCompletedExports(objects, environment, now, bucketIdentit
   const number = value => typeof value === 'string' && /^[1-9][0-9]*$/.test(value)
   const crc = value => typeof value === 'string' && /^[A-Za-z0-9+/]{6}==$/.test(value)
   for (const object of objects) {
-    if (!object.name?.startsWith(prefix) || names.has(object.name) || object.timeDeleted) throw new Error('Backup generations are ambiguous')
+    if (!object.name?.startsWith(prefix) || names.has(object.name) || object.timeDeleted !== undefined) throw new Error('Backup generations are ambiguous')
     names.add(object.name)
     const match = backupObjectPattern.exec(object.name.slice(prefix.length))
     if (!match || (match[1] === 'completion') !== (match[4] === 'complete')) throw new Error('Unexpected backup object')
@@ -161,6 +161,7 @@ export async function inspectBackupRetention(storage, target, now, options = {})
   if (performance.now() >= deadline) throw new Error('Backup inventory timed out')
   now ??= new Date()
   if (!Number.isFinite(now.getTime())) throw new Error('Invalid inventory time')
+  const observedNanoseconds = BigInt(now.getTime()) * 1_000_000n
   const normalized = objects.map(object => {
     if ((object.eventBasedHold !== undefined && typeof object.eventBasedHold !== 'boolean') ||
         (object.temporaryHold !== undefined && typeof object.temporaryHold !== 'boolean')) throw new Error('Backup hold state is ambiguous')
@@ -175,32 +176,34 @@ export async function inspectBackupRetention(storage, target, now, options = {})
     if (names.has(object.name)) throw new Error('Backup generations are ambiguous')
     names.add(object.name)
     if (object.name?.includes('/completion/')) {
-      if (!object.timeDeleted) { completions.push(object); continue }
-      const created = Date.parse(object.timeCreated)
-      const deleted = Date.parse(object.timeDeleted)
-      if (!Number.isFinite(created) || !Number.isFinite(deleted) || deleted < created || deleted > now.getTime()) throw new Error('Completion record state is ambiguous')
+      if (object.timeDeleted === undefined) { completions.push(object); continue }
+      const created = parseBackupProviderTime(object.timeCreated)
+      const deleted = parseBackupProviderTime(object.timeDeleted)
+      if (!created || !deleted || deleted.nanoseconds < created.nanoseconds || deleted.nanoseconds > observedNanoseconds) throw new Error('Completion record state is ambiguous')
       pendingCompletions.push({ ...object, timeDeleted: undefined })
       continue
     }
-    if (!object.timeDeleted) { live.push(object); continue }
-    const age = now.getTime() - Date.parse(object.timeCreated)
-    const deletion = Date.parse(object.timeDeleted)
+    if (object.timeDeleted === undefined) { live.push(object); continue }
+    const created = parseBackupProviderTime(object.timeCreated)
+    const deletion = parseBackupProviderTime(object.timeDeleted)
     const minimum = object.name?.includes('/daily/') ? 15 : object.name?.includes('/weekly/') ? 63 : Infinity
-    if (!Number.isFinite(age) || age < minimum * 86_400_000 || !Number.isFinite(deletion) || deletion < Date.parse(object.timeCreated) || deletion > now.getTime()) throw new Error('Unexpected noncurrent backup')
+    if (!created || !deletion || now.getTime() - created.ceilingMilliseconds < minimum * 86_400_000 ||
+        deletion.nanoseconds < created.nanoseconds || deletion.nanoseconds > observedNanoseconds) throw new Error('Unexpected noncurrent backup')
     pending.push({ ...object, timeDeleted: undefined })
   }
   for (const object of softDeleted) {
     if (!object.name?.startsWith(prefix) || names.has(object.name)) throw new Error('Soft-deleted generations are ambiguous')
     const match = backupObjectPattern.exec(object.name.slice(prefix.length))
     const day = match && Date.parse(`${match[2]}T00:00:00.000Z`)
-    const created = Date.parse(object.timeCreated)
-    const softDeletedAt = Date.parse(object.softDeleteTime)
-    const hardDeleteAt = Date.parse(object.hardDeleteTime)
+    const created = parseBackupProviderTime(object.timeCreated)
+    const softDeletedAt = parseBackupProviderTime(object.softDeleteTime)
+    const hardDeleteAt = parseBackupProviderTime(object.hardDeleteTime)
     if (!match || (match[1] === 'completion') !== (match[4] === 'complete') || !Number.isFinite(day) ||
-        new Date(day).toISOString().slice(0, 10) !== match[2] || !Number.isFinite(created) ||
-        !Number.isFinite(softDeletedAt) || !Number.isFinite(hardDeleteAt) || softDeletedAt < created ||
-        softDeletedAt > now.getTime() || hardDeleteAt <= softDeletedAt ||
-        created < day || created >= day + 2 * 86_400_000 || created > now.getTime() ||
+        new Date(day).toISOString().slice(0, 10) !== match[2] || !created || !softDeletedAt || !hardDeleteAt ||
+        softDeletedAt.nanoseconds < created.nanoseconds || softDeletedAt.nanoseconds > observedNanoseconds ||
+        hardDeleteAt.nanoseconds <= softDeletedAt.nanoseconds ||
+        created.nanoseconds < BigInt(day) * 1_000_000n || created.nanoseconds >= BigInt(day + 2 * 86_400_000) * 1_000_000n ||
+        created.nanoseconds > observedNanoseconds ||
         typeof object.generation !== 'string' || !/^[1-9][0-9]*$/.test(object.generation) ||
         typeof object.metageneration !== 'string' || !/^[1-9][0-9]*$/.test(object.metageneration)) {
       throw new Error('Soft-deleted inventory is ambiguous')
@@ -234,8 +237,10 @@ export async function inspectBackupRetention(storage, target, now, options = {})
     return !object.name.startsWith(`${prefix}completion/`) && now.getTime() - created >= 76 * 86_400_000
   }).length
   const oldPendingArchives = pending.filter(object => now.getTime() - Date.parse(object.timeCreated) >= 76 * 86_400_000).length
-  const longSoftDelete = softDeleted.filter(object => Date.parse(object.hardDeleteTime) - Date.parse(object.softDeleteTime) > 7 * 86_400_000).length
-  const overdueSoftDeletion = softDeleted.filter(object => Date.parse(object.hardDeleteTime) <= evaluatedAt.getTime()).length
+  const longSoftDelete = softDeleted.filter(object => parseBackupProviderTime(object.hardDeleteTime).nanoseconds -
+    parseBackupProviderTime(object.softDeleteTime).nanoseconds > 7n * 86_400_000n * 1_000_000n).length
+  const overdueSoftDeletion = softDeleted.filter(object => parseBackupProviderTime(object.hardDeleteTime).nanoseconds <=
+    BigInt(evaluatedAt.getTime()) * 1_000_000n).length
   // The validated date in an archive name is no later than the backup start.
   // Use it even for soft-deleted copies whose completion record may be gone.
   const earliestStart = object => Date.parse(`${backupObjectPattern.exec(object.name.slice(prefix.length))[2]}T00:00:00.000Z`)
