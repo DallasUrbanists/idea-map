@@ -36,12 +36,18 @@ test('storage client sends create-only archives, completion metadata, and held m
   const errors = []
   let omitStoredEncoding = false
   let changeHoldDuringRead = false
+  let corruptArchiveResponse = false
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, 'http://127.0.0.1')
       requests.push({ method: request.method, path: url.pathname, query: Object.fromEntries(url.searchParams) })
       if (request.headers.authorization) throw new Error('Synthetic endpoint must not receive credentials')
       response.setHeader('content-type', 'application/json')
+      if (request.method === 'DELETE' && corruptArchiveResponse && url.pathname.startsWith(`/storage/v1/b/${target.bucket}/o/`)) {
+        response.statusCode = 403
+        response.end(JSON.stringify({ error: { code: 403, message: 'Synthetic create-only writer' } }))
+        return
+      }
       if (request.method === 'GET' && url.pathname === `/storage/v1/b/${target.bucket}`) {
         response.end(JSON.stringify({ name: target.bucket, projectNumber: target.projectNumber, generation: '11', metageneration: '1',
           iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
@@ -108,7 +114,7 @@ test('storage client sends create-only archives, completion metadata, and held m
         contentType: sentMetadata.contentType, metadata: sentMetadata.metadata, temporaryHold: sentMetadata.temporaryHold }
       objects.set(name, object)
       payloads.set(name, data)
-      response.end(JSON.stringify(object))
+      response.end(JSON.stringify(corruptArchiveResponse && name.endsWith('.pgdump') ? { ...object, crc32c: 'AAAAAA==' } : object))
     } catch (error) {
       errors.push(error.message)
       response.statusCode = 500
@@ -167,6 +173,12 @@ test('storage client sends create-only archives, completion metadata, and held m
     assert.deepEqual(new Set(requests.filter(item => item.path.endsWith('/o') && item.method === 'GET').map(item => item.query.prefix)),
       new Set(['daily', 'weekly', 'completion'].map(kind => `idea-map-v2/dev/${kind}/`)))
     assert.ok(requests.every(item => ['GET', 'POST'].includes(item.method)))
+    corruptArchiveResponse = true
+    await assert.rejects(exportEncryptedBackup(target, { storage, start, now: new Date('2026-11-03T10:00:00.000Z') }))
+    assert.equal(requests.filter(item => item.method === 'DELETE').length, 1)
+    assert.equal([...objects.values()].filter(object => object.name.endsWith('.complete')).length, 1)
+    assert.equal([...objects.values()].filter(object => object.name.includes('/daily/')).length, 2)
+    assert.equal(errors.length, 0)
   } finally {
     await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
     for (const [key, value] of previousEnv) {

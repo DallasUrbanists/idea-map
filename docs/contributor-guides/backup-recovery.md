@@ -213,6 +213,10 @@ inventory process. The inventory refuses archives without a matching record,
 and weekly copies whose size or checksum differs from the daily copy. The record
 confirms the export finished; CRC32C detects accidental corruption, not
 malicious alteration. Only a restore test verifies that an archive is usable.
+On an upload checksum mismatch, the Storage client attempts to delete the object.
+The intended create-only backup writer lacks delete permission, so the attempt
+must fail and the unconfirmed object can remain for separately authorized review
+and cleanup. Verify effective permissions before relying on this boundary.
 Bucket metadata and completion-record requests each have a 15-second wait
 limit. The limit does not cancel an SDK request already in flight; it can still
 finish after the exporter reports failure. Review the outcome before retrying.
