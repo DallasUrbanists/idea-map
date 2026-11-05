@@ -241,6 +241,7 @@ test('a journal outage keeps public content closed across a web restart', async 
         try {
           await db.query("SET LOCAL session_replication_role = 'replica'")
           await db.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id=$1', [operationId])
+          await db.query("DELETE FROM public.public_access_closures WHERE kind='removal' AND cause_id=$1", [operationId])
           await db.query('DELETE FROM public.moderator_assignments WHERE user_id=$1', [actor])
           await db.query('DELETE FROM public.identities WHERE user_id=$1', [actor])
           await db.query('DELETE FROM public.users WHERE id=$1', [actor])
