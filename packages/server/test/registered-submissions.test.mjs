@@ -6,6 +6,7 @@ import pg from 'pg'
 import { requireLocalTestDatabase } from '../../../scripts/local-test-database.mjs'
 import { allocateRegisteredDraftMedia, createRegisteredDraft, finalizeRegisteredDraftMedia, freezeRegisteredDraft, registeredSubmissionTermsVersion, reviseRegisteredDraft, submitRegisteredDraft } from '../dist/registered-drafts.js'
 import { claimVerifiedOwnership } from '../dist/verified-ownership.js'
+import { readPublishedIdea } from '../dist/published-ideas.js'
 
 const url = requireLocalTestDatabase(process.env.TEST_DATABASE_URL)
 const verifier = (uid, provider = 'password') => ({
@@ -32,6 +33,13 @@ test('frozen registered draft becomes one private revision with retained consent
     assert.equal((await submitRegisteredDraft(other, input, good)).state, 'forbidden')
     assert.equal((await submitRegisteredDraft(context('guest', 'anonymous'), input, good)).state, 'unauthenticated')
     await assert.rejects(submitRegisteredDraft(owner, { ...input, agreement: false }, good), /Invalid submission request/)
+    const { agreement: _agreement, ...withoutAgreement } = input
+    await assert.rejects(submitRegisteredDraft(owner, withoutAgreement, good), /Invalid submission request/)
+    const betaTerms = await readFile(new URL('../terms/beta-terms.md', import.meta.url))
+    const betaVersion = `sha256:${createHash('sha256').update(betaTerms).digest('hex')}`
+    assert.notEqual(betaVersion, registeredSubmissionTermsVersion)
+    await assert.rejects(submitRegisteredDraft(owner, { ...input, termsVersion: betaVersion }, good), /Invalid submission terms/)
+    assert.equal((await pool.query('SELECT count(*)::int n FROM registered_submissions WHERE draft_id=$1', [draft.id])).rows[0].n, 0)
     await assert.rejects(submitRegisteredDraft(owner, { ...input, termsVersion: 'wrong' }, good), /Invalid submission terms/)
     await assert.rejects(submitRegisteredDraft(owner, { ...input, latitude: 91 }, good), /Invalid submission request/)
     const [a, b] = await Promise.all([submitRegisteredDraft(owner, input, good), submitRegisteredDraft(owner, input, good)])
@@ -40,6 +48,7 @@ test('frozen registered draft becomes one private revision with retained consent
       c.normalized_email,c.verified_at,r.content,r.review_state FROM registered_submissions s JOIN ideas i ON i.id=s.idea_id
       JOIN contacts c ON c.id=i.author_contact_id JOIN idea_revisions r ON r.id=s.revision_id WHERE s.draft_id=$1`, [draft.id])).rows[0]
     assert.equal(row.publication_state, 'private'); assert.equal(row.review_state, 'waiting')
+    assert.equal(await readPublishedIdea(url, a.value.ideaId), null)
     assert.equal(row.lat, input.latitude); assert.equal(row.lon, input.longitude)
     assert.equal(row.normalized_email, 'submit-owner@example.invalid'); assert.equal(row.verified_at, null)
     assert.equal(row.terms_version, input.termsVersion); assert.equal(row.accepted_at.toISOString(), a.value.acceptedAt.toISOString())
@@ -50,6 +59,7 @@ test('frozen registered draft becomes one private revision with retained consent
     assert.equal((await pool.query('SELECT count(*)::int n FROM identities WHERE user_id=$1 AND subject=$2', [row.owner_id, 'submit-owner'])).rows[0].n, 1)
     for (const table of ['revision_assessments', 'jobs', 'approved_revisions']) assert.equal((await pool.query(`SELECT count(*)::int n FROM ${table} WHERE ${table === 'approved_revisions' ? 'idea_id' : 'revision_id'}=$1`, [table === 'approved_revisions' ? a.value.ideaId : a.value.revisionId])).rows[0].n, 0)
     assert.deepEqual(await submitRegisteredDraft(owner, input, async () => { throw new Error('replay must not access storage') }), a)
+    await assert.rejects(submitRegisteredDraft(owner, { ...input, termsVersion: betaVersion }, good), /conflicts/)
     let replayChecks = 0
     owner.verifier.getUser = async uid => ({ uid, email: `${uid}@example.invalid`, emailVerified: true, disabled: ++replayChecks > 1 })
     await assert.rejects(submitRegisteredDraft(owner, input, good), /Identity changed during submission/)
