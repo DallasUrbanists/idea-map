@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { compareUnverifiedRecoverySequence, decodeRecoverySequenceEntry, encodeRecoverySequenceEntry } from '../dist/recovery-sequence.js'
+import { compareUnverifiedSequenceRollover, unverifiedRolloverCheckpoint } from '../dist/recovery-sequence-rollover.js'
 import { encodeRecoveryConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
 
 const epochId = '11111111-1111-4111-8111-111111111111'
@@ -62,4 +63,49 @@ test('entries reject noncanonical data, wrong environments, and malformed refere
   const unmatched = compareUnverifiedRecoverySequence(frames([checkpoint, confirmation, fence]), 'dev', epochId, '3', nonce)
   assert.deepEqual(unmatched.summary.reviewOperations, [operationId])
   assert.equal(unmatched.summary.unmatchedConfirmations, 1)
+})
+
+test('a linked rollover combines exact epoch records without asserting writer coverage', () => {
+  const previous = { ...base, projectNumber: '123456789', secretId: 'synthetic-old', fenceVersion: '3', fenceNonce: nonce }
+  const oldFrames = frames([checkpoint, record, fence])
+  const link = unverifiedRolloverCheckpoint(previous, oldFrames)
+  assert.equal(link.coverageVerified, false)
+  const nextEpoch = '77777777-7777-4777-8777-777777777777'
+  const nextNonce = '88888888-8888-4888-8888-888888888888'
+  const next = { ...previous, epochId: nextEpoch, secretId: 'synthetic-next', fenceNonce: nextNonce, fenceVersion: '4' }
+  const nextBase = { environment: 'dev', epochId: nextEpoch }
+  const confirmation = { ...nextBase, kind: 'decision', recordId: recoveryConfirmationRecordId(operationId),
+    data: Buffer.from(encodeRecoveryConfirmation(operationId, 'dev', '2026-11-03T12:01:00.000Z')).toString('base64') }
+  const nextFrames = frames([{ ...nextBase, kind: 'baseline', checkpointDigest: link.checkpointDigest },
+    { ...record, ...nextBase }, confirmation, { ...nextBase, kind: 'fence', nonce: nextNonce }])
+  const result = compareUnverifiedSequenceRollover(previous, oldFrames, next, nextFrames)
+  assert.equal(result.coverageVerified, false)
+  assert.equal(result.earlierEpochsIncluded, false)
+  assert.equal(result.records.length, 2)
+  assert.deepEqual(result.summary.removals, [input.ideaId])
+  assert.deepEqual(result.summary.reviewOperations, [])
+  assert.throws(() => compareUnverifiedSequenceRollover({ ...previous, secretId: 'wrong-secret' }, oldFrames, next, nextFrames), /could not be verified/)
+  assert.throws(() => compareUnverifiedSequenceRollover(previous, oldFrames, { ...next, secretId: previous.secretId }, nextFrames), /could not be verified/)
+  assert.throws(() => compareUnverifiedSequenceRollover(previous, oldFrames.slice(1), next, nextFrames), /could not be verified/)
+  const changed = { ...record, ...nextBase, data: Buffer.from(encodeRecoveryIntent({ ...input,
+    decision: { ...input.decision, reason: 'changed synthetic reason' } })).toString('base64') }
+  const changedOld = frames([checkpoint, { ...changed, ...base }, fence])
+  assert.throws(() => compareUnverifiedSequenceRollover(previous, changedOld, next, nextFrames), /could not be verified/)
+  const conflicted = frames([{ ...nextBase, kind: 'baseline', checkpointDigest: link.checkpointDigest }, changed,
+    confirmation, { ...nextBase, kind: 'fence', nonce: nextNonce }])
+  assert.throws(() => compareUnverifiedSequenceRollover(previous, oldFrames, next, conflicted), /could not be verified/)
+})
+
+test('a rollover rejects an earlier confirmation followed by its first intent', () => {
+  const previous = { ...base, projectNumber: '123456789', secretId: 'synthetic-old', fenceVersion: '3', fenceNonce: nonce }
+  const confirmation = { ...base, kind: 'decision', recordId: recoveryConfirmationRecordId(operationId),
+    data: Buffer.from(encodeRecoveryConfirmation(operationId, 'dev', '2026-11-03T12:01:00.000Z')).toString('base64') }
+  const oldFrames = frames([checkpoint, confirmation, fence])
+  const link = unverifiedRolloverCheckpoint(previous, oldFrames)
+  const nextBase = { environment: 'dev', epochId: '77777777-7777-4777-8777-777777777777' }
+  const next = { ...previous, epochId: nextBase.epochId, secretId: 'synthetic-next', fenceVersion: '3',
+    fenceNonce: '88888888-8888-4888-8888-888888888888' }
+  const nextFrames = frames([{ ...nextBase, kind: 'baseline', checkpointDigest: link.checkpointDigest },
+    { ...record, ...nextBase }, { ...nextBase, kind: 'fence', nonce: next.fenceNonce }])
+  assert.throws(() => compareUnverifiedSequenceRollover(previous, oldFrames, next, nextFrames), /could not be verified/)
 })

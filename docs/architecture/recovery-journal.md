@@ -176,6 +176,18 @@ prevents this boundary from stranding an authorized removal or hold. It must kee
 every version needed by retained backups and active holds available and must
 account for concurrent or ambiguous appends.
 
+An unwired rollover comparison can bind one supplied, explicitly numbered
+sequence and fence to the next epoch's baseline with a SHA-256 checkpoint. It
+binds the previous environment, project, secret, epoch, fence and exact framed
+payloads; it rejects missing versions, conflicting duplicates, different projects,
+reused secret or epoch IDs, and a confirmation that precedes its first intent
+across the boundary. Each supplied epoch is limited to 32 MiB of framed data.
+The result remains unverified: matching checkpoints do not establish source
+identity, find unknown versions or forks, drain writers, prove coverage, or permit
+deleting prior versions. Its result includes records from only those two epochs;
+earlier epochs still need separate verified recovery handling. This comparison
+does not perform rollover or solve the 10,000-version boundary by itself.
+
 Review the expected number of enabled and disabled Secret Manager versions,
 retries, service quotas, retention and safe rollover before provisioning. Do not
 destroy versions needed by a retained backup or an active hold.
