@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import { randomUUID } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
 import pg from 'pg'
 import { CRC32C } from '@google-cloud/storage'
@@ -129,6 +130,31 @@ test('authorized pending removal closes the gate atomically and retries without 
     assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, true)
     assert.equal((await pool.query('SELECT count(*)::int AS count FROM public.public_access_pending_decisions')).rows[0].count, 0)
     assert.equal((await pool.query('SELECT count(*)::int AS count FROM public.public_access_closures WHERE cause_id=$1', [input.operationId])).rows[0].count, 0)
+    // Recreate the migration within a rolled-back transaction to exercise an
+    // upgrade with an existing decision, without changing this test database.
+    const legacyId = randomUUID()
+    const migration = await readFile(new URL('../migrations/0043_dark_master_mold.sql', import.meta.url), 'utf8')
+    const upgrade = await pool.connect()
+    try {
+      await upgrade.query('BEGIN')
+      await upgrade.query('DROP TRIGGER pending_removal_closure ON public.public_access_pending_decisions')
+      await upgrade.query('DROP FUNCTION public.record_pending_removal_closure()')
+      await upgrade.query('DROP TABLE public.public_access_closures')
+      await upgrade.query(`INSERT INTO public.public_access_pending_decisions
+        (operation_id,record_id,idea_id,actor_id,approved_revision_id,removal_reason,intent)
+        VALUES ($1,$2,$3,$4,$5,'synthetic','{}')`, [legacyId, randomUUID(), idea, actor, revision])
+      await upgrade.query(migration)
+      assert.deepEqual((await upgrade.query('SELECT kind, cause_id FROM public.public_access_closures WHERE cause_id=$1', [legacyId])).rows,
+        [{ kind: 'removal', cause_id: legacyId }])
+      assert.equal((await upgrade.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
+      await upgrade.query('ROLLBACK')
+      await upgrade.query('BEGIN')
+      await upgrade.query('DROP TRIGGER pending_removal_closure ON public.public_access_pending_decisions')
+      await upgrade.query('DROP FUNCTION public.record_pending_removal_closure()')
+      await upgrade.query('DROP TABLE public.public_access_closures')
+      await upgrade.query('DELETE FROM public.public_access_gate WHERE singleton=true')
+      await assert.rejects(upgrade.query(migration), /Public access unavailable/)
+    } finally { await upgrade.query('ROLLBACK').catch(() => {}); upgrade.release() }
     const rolledBackId = randomUUID()
     const closureTransaction = await pool.connect()
     try {
