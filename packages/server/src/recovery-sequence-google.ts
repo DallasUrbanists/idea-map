@@ -29,6 +29,10 @@ export function createGoogleRecoverySequenceTransport(
       const response = await fetcher(`https://secretmanager.googleapis.com/v1/${path}`, { method, signal,
         redirect: 'error', cache: 'no-store', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
         ...(encoded === undefined ? {} : { body: encoded }) })
+      if (signal.aborted) {
+        if (response.body) void response.body.cancel().catch(() => {})
+        throw new Error('Request aborted')
+      }
       if (!response.ok) {
         if (response.body) void response.body.cancel().catch(() => {})
         return { status: response.status, data: null }
@@ -40,6 +44,7 @@ export function createGoogleRecoverySequenceTransport(
       try {
         while (true) {
           const part = await reader.read()
+          if (signal.aborted) throw new Error('Request aborted')
           if (part.done) break
           total += part.value.byteLength
           if (total > 65_536) throw new Error('Response too large')
@@ -50,6 +55,7 @@ export function createGoogleRecoverySequenceTransport(
         throw error
       } finally { reader.releaseLock() }
       const data: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)))
+      if (signal.aborted) throw new Error('Request aborted')
       return { status: response.status, data }
     } catch { throw new Error('Recovery sequence transport unavailable') }
   } }

@@ -57,3 +57,25 @@ test('late credentials cannot start a request after cancellation', async () => {
   await assert.rejects(pending, /transport unavailable/)
   assert.equal(calls, 0)
 })
+
+test('late response and body cannot confirm a cancelled request', async () => {
+  let finishFetch
+  const lateResponse = createGoogleRecoverySequenceTransport(auth, () => new Promise(resolve => { finishFetch = resolve }))
+  const first = new AbortController()
+  const pendingResponse = lateResponse.request('POST', `${parent}:addVersion`, { payload: { data: 'c3ludGhldGlj' } }, first.signal)
+  await new Promise(resolve => setImmediate(resolve))
+  first.abort()
+  finishFetch(new Response('{"name":"synthetic"}', { status: 200 }))
+  await assert.rejects(pendingResponse, /transport unavailable/)
+
+  let sendBody
+  const body = new ReadableStream({ start(controller) { sendBody = controller } })
+  const lateBody = createGoogleRecoverySequenceTransport(auth, async () => new Response(body, { status: 200 }))
+  const second = new AbortController()
+  const pendingBody = lateBody.request('GET', `${parent}/versions/1:access`, null, second.signal)
+  await new Promise(resolve => setImmediate(resolve))
+  second.abort()
+  sendBody.enqueue(new TextEncoder().encode('{"name":"synthetic"}'))
+  sendBody.close()
+  await assert.rejects(pendingBody, /transport unavailable/)
+})

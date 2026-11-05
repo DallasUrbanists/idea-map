@@ -152,7 +152,9 @@ numbered versions through a selected fence. It limits concurrency and elapsed
 waiting, rejects missing or altered versions, and treats failed appends as
 uncertain. A separate-reader helper compares the exact newly appended bytes but
 does not prove effective identity separation. A timed-out request can still finish
-if the injected transport ignores cancellation. Its returned sequence remains
+if the injected transport ignores cancellation. The Google transport rejects a
+late response or body after cancellation, but that does not undo an append that
+reached the service. Its returned sequence remains
 unverified: callers must establish the actual secret's identity, authenticated
 baseline, writer fence and coverage. An unwired Google transport targets only
 the Secret Manager API and uses short-lived application credentials; local tests
