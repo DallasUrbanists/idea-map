@@ -150,7 +150,7 @@ update-ca-certificates >/dev/null 2>&1`)
     const file = { createWriteStream(options) {
     if (options.preconditionOpts.ifGenerationMatch !== 0 || options.validation !== 'crc32c') throw new Error('Synthetic upload safeguards missing')
     const stream = createWriteStream(archive, { flags: 'wx', mode: 0o600 })
-    stream.once('finish', () => { file.metadata = { name, generation: '123', metageneration: '1', size: String(stream.bytesWritten), crc32c: 'AAAAAA==' } })
+    stream.once('finish', () => { file.metadata = { name, bucket: 'synthetic-private-backups', generation: '123', metageneration: '1', size: String(stream.bytesWritten), crc32c: 'AAAAAA==' } })
     return stream
   } }
     return file

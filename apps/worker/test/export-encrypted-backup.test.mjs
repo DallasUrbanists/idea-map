@@ -65,7 +65,7 @@ test('a dump warning fails the export without exposing diagnostic contents', asy
   await assert.rejects(result.done, error => error.message === 'Database export failed or reported a warning' && !error.message.includes('synthetic'))
 })
 
-function provider(bucketMetadata = metadata, failWeekly = false, failCompletion = false, mismatchedWeekly = false, ambiguousCompletion = false, stallUpload = false) {
+function provider(bucketMetadata = metadata, failWeekly = false, failCompletion = false, mismatchedWeekly = false, ambiguousCompletion = false, stallUpload = false, archiveBucket = env.BACKUP_BUCKET) {
   const states = []
   const manifests = []
   const bucket = { async getMetadata() { return [bucketMetadata] }, file(name) {
@@ -87,7 +87,7 @@ function provider(bucketMetadata = metadata, failWeekly = false, failCompletion 
         write(chunk, encoding, callback) { state.bytes += chunk.toString(); callback(failWeekly && name.includes('/weekly/') ? new Error('synthetic upload failure') : undefined) },
         final(callback) {
           if (stallUpload) return
-          state.finalized = true; file.metadata = { name, generation: '123', metageneration: '1', size: String(Buffer.byteLength(state.bytes) + (mismatchedWeekly && name.includes('/weekly/') ? 1 : 0)), crc32c: 'AAAAAA==' }; callback()
+          state.finalized = true; file.metadata = { name, bucket: archiveBucket, generation: '123', metageneration: '1', size: String(Buffer.byteLength(state.bytes) + (mismatchedWeekly && name.includes('/weekly/') ? 1 : 0)), crc32c: 'AAAAAA==' }; callback()
         },
         destroy(error, callback) { state.destroyed = true; callback(error) },
       })
@@ -147,6 +147,32 @@ test('a failed dump destroys the unfinalized upload', async () => {
   assert.equal(states.length, 2)
   assert.ok(states.every(state => !state.finalized && state.destroyed))
   assert.equal(manifests.length, 0)
+})
+
+test('export retains its selected target, database, and time across storage waits', async () => {
+  const fake = provider()
+  const configuration = backupConfiguration(env)
+  const selectedTime = new Date('2026-11-02T10:00:00Z')
+  const options = { storage: fake.storage, now: selectedTime, start: () => source() }
+  const result = exportEncryptedBackup(configuration, options)
+  configuration.environment = 'prod'
+  configuration.bucket = 'synthetic-wrong-bucket'
+  configuration.projectNumber = '987654321'
+  configuration.databaseUrl = 'postgres://other.invalid/db?sslmode=disable'
+  selectedTime.setUTCFullYear(2040)
+  options.start = () => { throw new Error('Changed source must not run') }
+  const exported = await result
+  assert.equal(exported.startedAt, '2026-11-02T10:00:00.000Z')
+  assert.ok(exported.objects.every(name => name.startsWith('idea-map-v2/dev/')))
+  assert.equal(fake.manifests[0].options.metadata.metadata.backup_started_at, exported.startedAt)
+})
+
+test('an archive response without the selected bucket prevents completion', async () => {
+  for (const archiveBucket of ['synthetic-wrong-bucket', null]) {
+    const fake = provider(metadata, false, false, false, false, false, archiveBucket)
+    await assert.rejects(exportEncryptedBackup(backupConfiguration(env), { storage: fake.storage, start: () => source() }))
+    assert.equal(fake.manifests.length, 0)
+  }
 })
 
 test('a missed weekly copy can be recreated from one new snapshot', async () => {

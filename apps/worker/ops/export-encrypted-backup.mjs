@@ -91,24 +91,30 @@ async function withinProviderTimeout(action, timeoutMs) {
 
 /** Stream one dump to a daily object and a matching weekly object when requested. */
 export async function exportEncryptedBackup(config, options = {}) {
+  const destination = { environment: config?.environment, bucket: config?.bucket,
+    projectNumber: config?.projectNumber, databaseUrl: config?.databaseUrl }
+  backupTarget({ BACKUP_ENVIRONMENT: destination.environment, BACKUP_BUCKET: destination.bucket,
+    BACKUP_PROJECT_NUMBER: destination.projectNumber })
   // The database client does not need the storage credentials or other job secrets.
   const env = Object.fromEntries(['PATH', 'SystemRoot', 'WINDIR']
     .filter(key => process.env[key] !== undefined).map(key => [key, process.env[key]]))
-  const now = options.now ?? new Date()
-  if (!Number.isFinite(now.getTime())) throw new Error('Invalid backup time')
+  const selectedTime = options.now ?? new Date()
+  if (!(selectedTime instanceof Date) || !Number.isFinite(selectedTime.getTime())) throw new Error('Invalid backup time')
+  const now = new Date(selectedTime.getTime())
+  const start = options.start ?? startDump
   const providerTimeoutMs = options.providerTimeoutMs ?? 15_000
   if (!Number.isInteger(providerTimeoutMs) || providerTimeoutMs < 1 || providerTimeoutMs > 15_000) throw new Error('Invalid backup timeout')
   const transferTimeoutMs = options.transferTimeoutMs ?? 30 * 60 * 1000
   if (!Number.isInteger(transferTimeoutMs) || transferTimeoutMs < 1 || transferTimeoutMs > 30 * 60 * 1000) throw new Error('Invalid backup timeout')
-  const connection = backupConnectionEnvironment(config.databaseUrl)
+  const connection = backupConnectionEnvironment(destination.databaseUrl)
   const date = now.toISOString().slice(0, 10)
   const id = randomUUID()
   const kinds = now.getUTCDay() === 1 || options.forceWeekly === true ? ['daily', 'weekly'] : ['daily']
-  const paths = kinds.map(kind => `idea-map-v2/${config.environment}/${kind}/${date}/${id}.pgdump`)
-  const bucket = options.storage.bucket(config.bucket)
+  const paths = kinds.map(kind => `idea-map-v2/${destination.environment}/${kind}/${date}/${id}.pgdump`)
+  const bucket = options.storage.bucket(destination.bucket)
   const [metadata] = await withinProviderTimeout(() => bucket.getMetadata(), providerTimeoutMs)
-  verifyBackupBucket(metadata, config)
-  const dump = (options.start ?? startDump)({ ...env, ...connection, PGCONNECT_TIMEOUT: '10' })
+  verifyBackupBucket(metadata, destination)
+  const dump = start({ ...env, ...connection, PGCONNECT_TIMEOUT: '10' })
   const uploads = []
   const files = []
   try {
@@ -144,7 +150,8 @@ export async function exportEncryptedBackup(config, options = {}) {
     if (failed) throw failed.error
     const generations = files.map((file, index) => {
       const saved = file.metadata
-      if (saved?.name !== paths[index] || typeof saved.generation !== 'string' || !/^[1-9][0-9]*$/.test(saved.generation) ||
+      if (saved?.name !== paths[index] || saved.bucket !== destination.bucket ||
+          typeof saved.generation !== 'string' || !/^[1-9][0-9]*$/.test(saved.generation) ||
           typeof saved.metageneration !== 'string' || !/^[1-9][0-9]*$/.test(saved.metageneration) ||
           typeof saved.size !== 'string' || !/^[1-9][0-9]*$/.test(saved.size) || !/^[A-Za-z0-9+/]{6}==$/.test(saved.crc32c ?? '')) {
         throw new Error('Uploaded backup metadata is incomplete')
@@ -158,12 +165,12 @@ export async function exportEncryptedBackup(config, options = {}) {
     for (let index = 0; index < kinds.length; index++) {
       for (const key of ['generation', 'size', 'crc32c']) completion[`${kinds[index]}_${key}`] = generations[index][key]
     }
-    const completionPath = `idea-map-v2/${config.environment}/completion/${date}/${id}.complete`
+    const completionPath = `idea-map-v2/${destination.environment}/completion/${date}/${id}.complete`
     const marker = bucket.file(completionPath)
     await withinProviderTimeout(() => marker.save('', { resumable: false, validation: 'crc32c',
       preconditionOpts: { ifGenerationMatch: 0 }, metadata: { metadata: completion } }), providerTimeoutMs)
     const saved = marker.metadata
-    if (saved?.name !== completionPath || saved.bucket !== config.bucket ||
+    if (saved?.name !== completionPath || saved.bucket !== destination.bucket ||
         typeof saved.generation !== 'string' || !/^[1-9][0-9]*$/.test(saved.generation) ||
         typeof saved.metageneration !== 'string' || !/^[1-9][0-9]*$/.test(saved.metageneration) ||
         saved.size !== '0' || saved.crc32c !== 'AAAAAA==' || !saved.metadata ||

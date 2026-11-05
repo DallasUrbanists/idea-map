@@ -203,8 +203,9 @@ contain sensitive information. Investigate warnings through an authorized
 private procedure. If either Monday upload fails, the run
 fails; a completed copy may remain and must be investigated rather than assumed
 to make the other copy complete. Treat an ambiguous upload as unverified.
-After all required objects pass their upload checks, the exporter creates one
-zero-byte completion record with the archive generations, sizes, and checksums.
+After all required objects pass their upload checks, including the returned
+bucket and object identity, the exporter creates one zero-byte completion record
+with the archive generations, sizes, and checksums.
 The record uses a create-only precondition and requires no update to existing
 objects. The exporter checks the returned marker identity, empty-object checksum,
 and exact completion metadata before reporting success. A failed or ambiguous
