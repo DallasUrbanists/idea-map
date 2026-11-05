@@ -164,6 +164,35 @@ test('independent closures serialize with opening and cannot be bypassed', async
   }
 })
 
+test('a live lease aborts when an inconsistent open gate has a closure', async () => {
+  const pool = new pg.Pool({ connectionString: url.toString(), max: 4, connectionTimeoutMillis: 2000 })
+  const cause = randomUUID()
+  let lease, writer, triggerDisabled = false
+  try {
+    // Model a restored inconsistent snapshot only in this disposable database.
+    await pool.query('ALTER TABLE public.public_access_gate DISABLE TRIGGER reject_open_gate_with_closures')
+    triggerDisabled = true
+    await pool.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true')
+    lease = await acquirePublicAccessLease(pool)
+    writer = await pool.connect()
+    await writer.query('BEGIN')
+    await writer.query("INSERT INTO public.public_access_closures(kind,cause_id) VALUES ('recovery',$1)", [cause])
+    await writer.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true')
+    await writer.query('COMMIT')
+    assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, true)
+    await waitForAborts(lease.signal)
+    await assert.rejects(lease.release(), /Public access unavailable/)
+    await assert.rejects(acquirePublicAccessLease(pool), /Public access unavailable/)
+  } finally {
+    await lease?.release().catch(() => {})
+    if (writer) { await writer.query('ROLLBACK').catch(() => {}); writer.release() }
+    await pool.query('UPDATE public.public_access_gate SET is_open=false WHERE singleton=true')
+    if (triggerDisabled) await pool.query('ALTER TABLE public.public_access_gate ENABLE TRIGGER reject_open_gate_with_closures')
+    await pool.query("DELETE FROM public.public_access_closures WHERE kind='recovery' AND cause_id=$1", [cause])
+    await pool.end()
+  }
+})
+
 test('authorized pending removal closes the gate atomically and retries without duplicating the decision', async () => {
   const pool = new pg.Pool({ connectionString: url.toString(), max: 6, connectionTimeoutMillis: 2000 })
   let reader, otherReader, pendingOperationId, secondOperationId, restrictedUrl, restrictedPool, roleCreated = false
