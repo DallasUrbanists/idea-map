@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build web image
         run: docker build -f Dockerfile -t idea-map-web:smoke .
       - name: Run isolated smoke checks
