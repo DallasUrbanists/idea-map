@@ -425,11 +425,17 @@ revision are approved before the page shows the title and description. It also
 checks the default and staging HTML no-store headers, credential-bearing
 requests, concurrent page renders, closed-gate responses, an in-flight synthetic
 media fetch aborted by a waiting gate closure, and the origin response after a
-synthetic withdrawal. The [Hosting cache guide](../architecture/hosting-cache.md)
-describes provider checks and their limitations.
+synthetic withdrawal. A fake journal outage also exercises the removal
+coordinator and confirms the closed gate survives a web-process restart. This
+does not establish live journal coverage or hosted delivery. The
+[Hosting cache guide](../architecture/hosting-cache.md) describes provider
+checks and their limitations.
 
 The check temporarily changes the synthetic gate and restores its original state,
-and restores the synthetic idea after its withdrawal assertion. If interrupted
+and restores the synthetic idea after its withdrawal assertion. It creates a
+synthetic moderator and temporarily disables triggers within a cleanup transaction
+to remove that test's otherwise immutable audit record; use an isolated database
+with a local test administrator. If interrupted
 before cleanup, inspect and restore both in the disposable test database before
 reusing it. These checks do not prove bounded delivery or hosted pooler behavior.
 

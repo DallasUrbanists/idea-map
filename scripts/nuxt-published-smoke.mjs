@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { once } from 'node:events'
 import { createServer } from 'node:net'
 import { createServer as createHttpServer, get as httpGet } from 'node:http'
 import { randomUUID } from 'node:crypto'
@@ -6,6 +7,8 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
+import { coordinateSequenceRemoval } from '../packages/server/dist/pending-removal.js'
+import { pendingRemovalDatabasePool } from '../packages/server/dist/runtime-database.js'
 
 const require = createRequire(new URL('../packages/server/package.json', import.meta.url))
 const { Client } = require('pg')
@@ -69,6 +72,13 @@ async function startServer(overrides) {
     throw new Error('server did not start')
   }
   return { base, server }
+}
+
+async function stopServer(server) {
+  if (server.exitCode !== null || server.signalCode !== null) return
+  const stopped = once(server, 'exit')
+  server.kill()
+  await stopped
 }
 
 test('guarded idea HTML is never shared, including in the isolated staging service', async () => {
@@ -174,6 +184,73 @@ test('closed gate blocks idea pages, APIs, and media while health remains availa
     await db.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true')
     await db.end()
     server.kill()
+  }
+})
+
+test('a journal outage keeps public content closed across a web restart', async () => {
+  const db = new Client({ connectionString: databaseUrl })
+  const actor = randomUUID(), operationId = randomUUID(), recordId = randomUUID()
+  const subject = `synthetic-${randomUUID()}`
+  const session = { uid: subject, email: 'moderator@example.invalid', email_verified: true,
+    firebase: { sign_in_provider: 'password' } }
+  const verifier = { async verifySessionCookie() { return session }, async getUser() {
+    return { uid: subject, email: session.email, emailVerified: true, disabled: false }
+  } }
+  const unavailable = { async request() { throw new Error('synthetic journal outage') } }
+  const target = { environment: 'dev', projectNumber: '123456789', secretId: 'synthetic-journal', epochId: randomUUID() }
+  let server, poolUsed = false, setup = false
+  await db.connect()
+  try {
+    await db.query('BEGIN')
+    await db.query('INSERT INTO public.users(id) VALUES ($1)', [actor])
+    await db.query("INSERT INTO public.identities(user_id,provider,subject) VALUES ($1,'firebase:demo-idea-map',$2)", [actor, subject])
+    await db.query("INSERT INTO public.moderator_assignments(user_id,granted_by,grant_reason) VALUES ($1,$1,'synthetic authority')", [actor])
+    await db.query('COMMIT')
+    setup = true
+    const first = await startServer(stagingEnvironment)
+    server = first.server
+    assert.equal((await fetch(`${first.base}/suggestion/${approved}`)).status, 200)
+    poolUsed = true
+    const outcome = await coordinateSequenceRemoval(databaseUrl, databaseUrl, 'demo-idea-map', 'synthetic-cookie',
+      verifier, target, unavailable, unavailable, { operationId, recordId, ideaId: approved,
+        approvedRevisionId: 'aaaaaaaa-1111-4111-8111-111111111111', classification: 'other', reason: 'synthetic removal' })
+    assert.deepEqual(outcome, { state: 'authorized', value: 'journal_uncertain' })
+    assert.equal((await db.query('SELECT is_open FROM public.public_access_gate WHERE singleton=true')).rows[0].is_open, false)
+    assert.equal((await db.query('SELECT publication_state FROM public.ideas WHERE id=$1', [approved])).rows[0].publication_state, 'approved')
+    const blocked = await fetch(`${first.base}/suggestion/${approved}`)
+    assert.equal(blocked.status, 503)
+    assert.match(blocked.headers.get('cache-control'), /no-store/)
+    await stopServer(server)
+    server = undefined
+    const restarted = await startServer(stagingEnvironment)
+    server = restarted.server
+    for (const path of [`/suggestion/${approved}`, `/api/ideas/${approved}`, `/api/media/${approved}`]) {
+      const response = await fetch(restarted.base + path)
+      assert.equal(response.status, 503, path)
+      assert.match(response.headers.get('cache-control'), /no-store/)
+    }
+  } finally {
+    try {
+      if (server) await stopServer(server)
+      if (poolUsed) await pendingRemovalDatabasePool(databaseUrl).end()
+      if (setup) {
+        // The disposable test database protects audit records from deletion.
+        // Disable triggers only inside this cleanup transaction, for this test's
+        // synthetic IDs, and restore normal behavior when it commits or rolls back.
+        await db.query('BEGIN')
+        try {
+          await db.query("SET LOCAL session_replication_role = 'replica'")
+          await db.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id=$1', [operationId])
+          await db.query('DELETE FROM public.moderator_assignments WHERE user_id=$1', [actor])
+          await db.query('DELETE FROM public.identities WHERE user_id=$1', [actor])
+          await db.query('DELETE FROM public.users WHERE id=$1', [actor])
+          await db.query('COMMIT')
+        } catch (error) { await db.query('ROLLBACK'); throw error }
+      } else await db.query('ROLLBACK').catch(() => {})
+    } finally {
+      try { await db.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true') }
+      finally { await db.end() }
+    }
   }
 })
 
