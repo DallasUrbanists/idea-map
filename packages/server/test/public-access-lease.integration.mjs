@@ -547,6 +547,14 @@ test('a limited read role detects a waiting closer without permission to update 
     await admin.query(`GRANT EXECUTE ON FUNCTION public.public_access_allowed() TO "${role}"`)
     await assert.rejects(restricted.query('SELECT * FROM public.public_access_closures'), { code: '42501' })
     lease = await acquirePublicAccessLease(restricted)
+    // A previously authorized active response must stop if its restricted
+    // reader loses the ability to verify the combined access decision.
+    await admin.query(`REVOKE EXECUTE ON FUNCTION public.public_access_allowed() FROM "${role}"`)
+    await waitForAborts(lease.signal)
+    await assert.rejects(lease.release(), /Public access unavailable/)
+    await assert.rejects(acquirePublicAccessLease(restricted), /Public access unavailable/)
+    await admin.query(`GRANT EXECUTE ON FUNCTION public.public_access_allowed() TO "${role}"`)
+    lease = await acquirePublicAccessLease(restricted)
     writer = await admin.connect()
     await writer.query('BEGIN')
     await writer.query("SET LOCAL lock_timeout = '5s'")

@@ -255,6 +255,8 @@ authorization, retry, and rollback of a pending removal.
 It also models an inconsistent restored gate with a recorded closure and checks
 that an active lease aborts and a new lease is denied. The test temporarily
 disables a trigger only in its disposable database and restores it afterward.
+It revokes the synthetic reader's function grant while a lease is active and
+checks that both the active lease and a subsequent lease fail closed.
 It also uses fake journal writer and reader interfaces to check that a completed
 write, an ambiguous write, a rejected retry, and a matching read leave the gate
 closed. A synthetic coordinator role tests a verified pending removal, reader
