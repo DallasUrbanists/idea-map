@@ -240,9 +240,9 @@ uniquely named test role.
 For encrypted database export and restore, run the [synthetic recovery rehearsal](backup-recovery.md#rehearse-with-synthetic-data).
 The worker tests also exercise the Cloud Storage client against a credential-free
 loopback fake; they do not verify provider encryption or hosted permissions.
-The local recovery rehearsal also checks suppression of known removals from two
-linked fake journal epochs. It does not establish earlier-epoch coverage or a
-hosted writer fence.
+The local recovery rehearsal also checks suppression of known removals and
+selected held-artifact readback from two linked fake journal epochs. It does not
+establish hold scope, earlier-epoch coverage, or a hosted writer fence.
 Run `pnpm --filter @idea-map/server test:recovery-journal` for the unwired
 journal record encoding, decoding, numbered transport, and conservative
 summary. This does not test live decision coverage,

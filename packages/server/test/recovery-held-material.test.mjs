@@ -7,7 +7,8 @@ import { readUnverifiedHeldMaterial, writeUnverifiedHeldMaterial } from '../dist
 import { encodeUnverifiedHeldManifest } from '../dist/recovery-held-manifest.js'
 import { encodeRecoveryHoldManifestConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
 import { encodeRecoverySequenceEntry } from '../dist/recovery-sequence.js'
-import { verifySequenceHeldCaptures, verifyUnverifiedHeldCapture } from '../dist/recovery-held-verification.js'
+import { unverifiedRolloverCheckpoint } from '../dist/recovery-sequence-rollover.js'
+import { verifyRolloverHeldCaptures, verifySequenceHeldCaptures, verifyUnverifiedHeldCapture } from '../dist/recovery-held-verification.js'
 
 const target = { environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789' }
 const artifact = '11111111-1111-4111-8111-111111111111'
@@ -205,6 +206,33 @@ test('verification reads every selected generation but never asserts hold covera
       reviewOperations: 1, unmatchedConfirmations: 0, coverageVerified: false, authorityVerified: false })
   entries.splice(2, 0, confirmationFrame)
   await assert.rejects(verifySequenceHeldCaptures(sequenceReader, sequenceTarget, '4', nonce, storage, { ...target, environment: 'prod' }), /Invalid/)
+  const previous = { ...sequenceTarget, fenceVersion: '3', fenceNonce: nonce }
+  const previousEntries = [entries[0], entries[1], entries[3]]
+  const checkpoint = unverifiedRolloverCheckpoint(previous, previousEntries.map((payload, index) => ({ version: String(index + 1), payload })))
+  const next = { ...previous, secretId: 'synthetic-next', epochId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    fenceNonce: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' }
+  const nextBase = { environment: 'dev', epochId: next.epochId }
+  const nextEntries = [encodeRecoverySequenceEntry({ ...nextBase, kind: 'baseline', checkpointDigest: checkpoint.checkpointDigest }),
+    encodeRecoverySequenceEntry({ ...nextBase, kind: 'decision', recordId: recoveryConfirmationRecordId(operationId), data: Buffer.from(confirmation).toString('base64') }),
+    encodeRecoverySequenceEntry({ ...nextBase, kind: 'fence', nonce: next.fenceNonce })]
+  const readerFor = (descriptor, source) => ({ async request(method, path) {
+    const sourceParent = `projects/${descriptor.projectNumber}/secrets/${descriptor.secretId}`
+    const match = new RegExp(`^${sourceParent}/versions/([1-9][0-9]*):access$`).exec(path)
+    assert.equal(method, 'GET'); assert.ok(match)
+    const bytes = source[Number(match[1]) - 1]
+    if (!bytes) return { status: 404, data: null }
+    const crc = new CRC32C(); crc.update(Buffer.from(bytes))
+    return { status: 200, data: { name: `${sourceParent}/versions/${match[1]}`,
+      payload: { data: Buffer.from(bytes).toString('base64'), dataCrc32c: String(Buffer.from(crc.toString(), 'base64').readUInt32BE(0)) } } }
+  } })
+  const previousReader = readerFor(previous, previousEntries), nextReader = readerFor(next, nextEntries)
+  assert.deepEqual(await verifyRolloverHeldCaptures(previousReader, previous, nextReader, next, storage, target),
+    { checkedCaptures: 1, checkedArtifacts: 2, totalBytes: manifest.length + contents.length + secondBytes.length, incompletePlacements: 0,
+      reviewOperations: 1, unmatchedConfirmations: 0, coverageVerified: false, authorityVerified: false, earlierEpochsIncluded: false })
+  const beforeMissing = reads()
+  nextEntries[1] = undefined
+  await assert.rejects(verifyRolloverHeldCaptures(previousReader, previous, nextReader, next, storage, target), /could not be verified/)
+  assert.equal(reads(), beforeMissing)
   const mediaPath = `idea-map-v2/dev/held-material/${secondId}.bin`
   objects.get(mediaPath).body = Buffer.alloc(secondBytes.length, 1)
   await assert.rejects(verifyUnverifiedHeldCapture(storage, target, intent, confirmation), /could not be verified/)

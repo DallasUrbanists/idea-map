@@ -13,7 +13,7 @@ import { decodeRecoveryRecord, encodeRecoveryHoldManifestConfirmation, encodeRec
 import { encodeRecoverySequenceEntry } from '../packages/server/dist/recovery-sequence.js'
 import { unverifiedRolloverCheckpoint } from '../packages/server/dist/recovery-sequence-rollover.js'
 import { encodeUnverifiedHeldManifest } from '../packages/server/dist/recovery-held-manifest.js'
-import { verifySequenceHeldCaptures, verifyUnverifiedHeldCapture } from '../packages/server/dist/recovery-held-verification.js'
+import { verifyRolloverHeldCaptures, verifySequenceHeldCaptures, verifyUnverifiedHeldCapture } from '../packages/server/dist/recovery-held-verification.js'
 import { suppressKnownRemovalsFromRollover, suppressKnownRemovalsFromSequence, suppressUnverifiedRestoredRemovals } from '../packages/server/dist/recovery-suppression.js'
 import { appendAndVerifyRecoverySequenceVersion, readUnverifiedRecoverySequence } from '../packages/server/dist/recovery-sequence-storage.js'
 import { writeUnverifiedHeldMaterial } from '../packages/server/dist/recovery-held-storage.js'
@@ -505,6 +505,12 @@ update-ca-certificates >/dev/null 2>&1`)
       if (JSON.stringify(rollover) !== JSON.stringify({ matched: 1, absent: 1, reviewOperations: 2,
         coverageVerified: false, earlierEpochsIncluded: false }) || (await sql(target, visibleQuery)) !== '0') {
         throw new Error('Synthetic rollover did not suppress known removals')
+      }
+      const heldRollover = await verifyRolloverHeldCaptures(sequenceReader, previous, nextReader, next, journal, journalTarget)
+      if (JSON.stringify(heldRollover) !== JSON.stringify({ checkedCaptures: 1, checkedArtifacts: 1,
+        totalBytes: heldReference.size + manifestReference.size, incompletePlacements: 0, reviewOperations: 2,
+        unmatchedConfirmations: 0, coverageVerified: false, authorityVerified: false, earlierEpochsIncluded: false })) {
+        throw new Error('Synthetic rollover held-material readback failed')
       }
       await sql(target, `UPDATE ideas SET publication_state='approved' WHERE id='${ideaId}'; UPDATE media_previews SET published=true WHERE id='${previewId}'`)
       const coordinated = await suppressKnownRemovalsFromSequence(sequenceReader, sequenceTarget, sequenceFenceVersion, sequenceFenceNonce, recoveryPool)

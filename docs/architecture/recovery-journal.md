@@ -195,6 +195,10 @@ the existing suppression function on an independently isolated restore. Its
 result still excludes earlier epochs and does not restore held material or prove
 coverage. The read deadline does not bound the database connection or transaction;
 the latter has separate database lock and statement timeouts.
+Another unwired verifier can check selected held artifacts named by those two
+epochs, including an intent and confirmation split across the boundary. It still
+reports authority and coverage as unverified and excludes earlier epochs; a
+missing version or held artifact rejects the check.
 
 Review the expected number of enabled and disabled Secret Manager versions,
 retries, service quotas, retention and safe rollover before provisioning. Do not
