@@ -93,6 +93,35 @@ try {
   const port = /^127\.0\.0\.1:(\d+)$/.exec(address)?.[1]
   if (!port) throw new Error('Synthetic database did not bind loopback')
   const databaseUrl = `postgres://idea_map:synthetic-local-only@127.0.0.1:${port}/${source}`
+  // The certificate and trust store exist only inside this disposable fixture.
+  await docker('exec', '-u', '0', container, 'bash', '-c', `set -eu
+cd "$PGDATA"
+openssl req -x509 -newkey rsa:2048 -nodes -keyout server.key -out server.crt -days 1 -subj '/CN=issue32-synthetic' -addext 'subjectAltName=IP:127.0.0.1' -addext 'basicConstraints=critical,CA:TRUE' >/dev/null 2>&1
+chown postgres:postgres server.key server.crt
+chmod 600 server.key
+cp server.crt /usr/local/share/ca-certificates/issue32-test.crt
+update-ca-certificates >/dev/null 2>&1`)
+  await sql(source, "ALTER SYSTEM SET ssl = 'on'")
+  await sql(source, 'SELECT pg_reload_conf()')
+  const tlsEnvironment = ['-e', 'PGHOST=127.0.0.1', '-e', 'PGPORT=5432', '-e', 'PGUSER=idea_map',
+    '-e', 'PGPASSWORD=synthetic-local-only', '-e', `PGDATABASE=${source}`, '-e', 'PGSSLMODE=verify-full',
+    '-e', 'PGSSLROOTCERT=system', '-e', 'PGGSSENCMODE=disable', '-e', 'PGCONNECT_TIMEOUT=5']
+  const tlsQuery = ['psql', '-X', '-qAt', '-v', 'ON_ERROR_STOP=1', '-c',
+    'SELECT ssl FROM pg_catalog.pg_stat_ssl WHERE pid=pg_catalog.pg_backend_pid()']
+  let tlsReady = false
+  for (let attempt = 0; attempt < 30 && !tlsReady; attempt++) {
+    try { tlsReady = (await docker('exec', ...tlsEnvironment, container, ...tlsQuery)) === 't' }
+    catch { await delay(200) }
+  }
+  if (!tlsReady) throw new Error('Synthetic verified TLS did not start')
+  for (const override of [
+    ['-e', 'PGHOST=wrong.synthetic.invalid', '-e', 'PGHOSTADDR=127.0.0.1'],
+    ['-e', 'PGSSLROOTCERT=/dev/null'],
+  ]) {
+    let rejected = false
+    try { await docker('exec', ...tlsEnvironment, ...override, container, ...tlsQuery) } catch { rejected = true }
+    if (!rejected) throw new Error('Synthetic TLS accepted an invalid certificate configuration')
+  }
   const packageManager = process.platform === 'win32' ? 'cmd.exe' : 'pnpm'
   const migrateArgs = process.platform === 'win32'
     ? ['/d', '/s', '/c', 'pnpm --filter @idea-map/server db:migrate']
@@ -130,12 +159,11 @@ try {
     if (childEnv.PGDATABASE !== source || childEnv.PGHOST !== '127.0.0.1' || childEnv.PGPORT !== port ||
         childEnv.PGUSER !== 'idea_map' || childEnv.PGPASSWORD !== 'synthetic-local-only' ||
         childEnv.PGSSLMODE !== 'verify-full' || childEnv.PGSSLROOTCERT !== 'system') throw new Error('Unexpected synthetic source')
-    // The synthetic database is local to this disposable container and has no
-    // TLS setup. Use the parsed connection fields, overriding only its port and
-    // TLS mode for this local fixture; hosted exports still require verified TLS.
+    // The only connection override is the port inside the disposable container.
     const process = start('docker', ['exec', '-e', `PGHOST=${childEnv.PGHOST}`, '-e', 'PGPORT=5432',
       '-e', `PGUSER=${childEnv.PGUSER}`, '-e', `PGPASSWORD=${childEnv.PGPASSWORD}`,
-      '-e', `PGDATABASE=${childEnv.PGDATABASE}`, '-e', 'PGSSLMODE=disable', '-e', 'PGGSSENCMODE=disable',
+      '-e', `PGDATABASE=${childEnv.PGDATABASE}`, '-e', `PGSSLMODE=${childEnv.PGSSLMODE}`,
+      '-e', `PGSSLROOTCERT=${childEnv.PGSSLROOTCERT}`, '-e', `PGGSSENCMODE=${childEnv.PGGSSENCMODE}`,
       container, 'pg_dump', ...dumpArguments])
     process.child.stdin.end()
     return process

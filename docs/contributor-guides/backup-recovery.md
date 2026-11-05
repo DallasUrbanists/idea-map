@@ -30,8 +30,9 @@ pnpm test:recovery-rehearsal
 
 The rehearsal creates a uniquely named PostGIS container, binds an automatically
 assigned loopback port, and migrates a synthetic database. It uses the parsed
-libpq connection fields for its local dump, with TLS disabled only for that
-disposable fixture; it does not test the hosted TLS connection. It streams one
+libpq connection fields and a synthetic certificate for its local dump, and checks
+that an incorrect hostname and an untrusted certificate are rejected. It does not
+test the hosted TLS connection. It streams one
 archive through the export pipeline to a local storage fake, then restores it
 into a separate empty database. It verifies the synthetic idea, PostGIS, migrations,
 and the absence of a record inserted after the snapshot. It also withdraws a
