@@ -58,6 +58,13 @@ The `pnpm changeset version` command consumes changeset files and must not run
 automatically on every pull request. Versioning, merging, publishing, and
 deployment remain separate authorized operations.
 
+Before promoting an open MVP beta, maintainers should record the
+[beta acceptance decision](../test-procedures/beta-acceptance.md#record-the-decision)
+for the exact candidate. Beta publication must use the
+[beta Terms of Use](beta-terms-of-use-policy.md) through a matching immutable
+terms version, form, API and consent record. A notice does not replace the
+required privacy, authorization, removal and recovery evidence.
+
 Maintainers should prepare application release notes around an immutable
 reviewed commit or image, following the writing standards. Versioning an app
 does not deploy it.

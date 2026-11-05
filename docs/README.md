@@ -39,6 +39,7 @@ Use these procedures to reproduce focused evaluations and review their evidence:
 
 | Procedure | Purpose |
 | --- | --- |
+| [Open MVP beta acceptance](test-procedures/beta-acceptance.md) | Verify the scoped public journey, privacy, abuse response and recovery before launch |
 | [Compliance-scoring evaluation](test-procedures/compliance-scoring-evaluation.md) | Reproduce the offline scoring experiment and review its limits |
 | [Task-delivery staging](test-procedures/task-delivery-staging.md) | Review synthetic evidence in an isolated delivery environment |
 
@@ -82,6 +83,9 @@ and how maintainers operate services and release changes:
 
 | Document | Purpose |
 | --- | --- |
+| [Open MVP beta release policy](policies/beta-release-policy.md) | Define beta scope, immediate posting, retained safeguards and later work |
+| [Beta Terms of Use](policies/beta-terms-of-use-policy.md) | Terms for beta-mode submissions and versioned consent |
+| [Beta participant notice policy](policies/beta-participant-notice-policy.md) | Public posting, submission and rights notices for beta participants |
 | [API policy](policies/api-policy.md) | Authorization, validation, privacy, consent enforcement, pagination, and retries |
 | [Moderation policy](policies/moderation-policy.md) | Content rules, approval timing, intervention, publication, and appeals |
 | [Privacy Policy](policies/privacy-policy.md) | Personal-data handling, providers, retention, deletion, and requests |
