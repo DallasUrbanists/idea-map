@@ -48,7 +48,7 @@ test('queue snapshot rejects malformed provider timestamps and accepts supported
   const one = (createTime, scheduleTime) => ({ async request() {
     return { status: 200, data: { tasks: [{ createTime, scheduleTime }] } }
   } })
-  for (const invalid of ['2026-02-30T10:00:00Z', '2026-11-03 10:00:00Z',
+  for (const invalid of ['0000-01-01T00:00:00Z', '2026-02-30T10:00:00Z', '2026-11-03 10:00:00Z',
     '2026-11-03T10:00:00.1Z', '2026-11-03T10:00:00+00:00']) {
     await assert.rejects(readQueueSnapshot(one(invalid, '2026-11-03T11:00:00Z'), queue, now))
     await assert.rejects(readQueueSnapshot(one('2026-11-03T10:00:00Z', invalid), queue, now))
@@ -59,6 +59,17 @@ test('queue snapshot rejects malformed provider timestamps and accepts supported
     assert.equal(result.oldest_seconds, 7200)
     assert.equal(result.oldest_due_seconds, 3600)
   }
+})
+
+test('queue snapshot preserves sub-millisecond observation boundaries', async () => {
+  const one = (createTime, scheduleTime) => ({ async request() {
+    return { status: 200, data: { tasks: [{ createTime, scheduleTime }] } }
+  } })
+  await assert.rejects(readQueueSnapshot(one('2026-11-03T12:00:00.000000001Z', '2026-11-03T12:00:00Z'), queue, now))
+  const result = await readQueueSnapshot(one('2026-11-03T11:59:59.000000001Z', '2026-11-03T12:00:00.000000001Z'), queue, now)
+  assert.equal(result.oldest_seconds, 1)
+  assert.equal(result.due, 0)
+  assert.equal(result.oldest_due_seconds, null)
 })
 
 test('queue snapshot times out even when the transport ignores its abort signal', async () => {

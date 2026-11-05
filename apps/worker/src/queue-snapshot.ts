@@ -3,15 +3,18 @@ import type { TaskTransport } from '@idea-map/server'
 // Cloud Tasks returns Z-normalized RFC 3339 timestamps with 0, 3, 6, or 9
 // fractional digits. Date.parse alone accepts non-provider formats and silently
 // normalizes invalid calendar dates, which could make an invalid page look healthy.
-function providerTimestamp(value: unknown): number {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.(?:\d{3}|\d{6}|\d{9}))?Z$/.test(value)) {
+function providerTimestamp(value: unknown): { floor: number, ceiling: number } {
+  if (typeof value !== 'string') throw new Error('Queue timestamps are invalid')
+  const match = /^(\d{4})-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.(\d{3}|\d{6}|\d{9}))?Z$/.exec(value)
+  if (!match || match[1] === '0000') {
     throw new Error('Queue timestamps are invalid')
   }
   const parsed = Date.parse(value)
   if (!Number.isFinite(parsed) || new Date(parsed).toISOString().slice(0, 19) !== value.slice(0, 19)) {
     throw new Error('Queue timestamps are invalid')
   }
-  return parsed
+  const submillisecond = (match[2] ?? '').padEnd(9, '0').slice(3)
+  return { floor: parsed, ceiling: parsed + (Number(submillisecond) > 0 ? 1 : 0) }
 }
 
 /** Estimate queue age without requesting or returning task bodies or identifiers. */
@@ -24,7 +27,7 @@ export async function readQueueSnapshot(transport: TaskTransport, queue: string,
   let count = 0
   let oldestCreated: number | null = null
   let latestCreated: number | null = null
-  const schedules: number[] = []
+  const schedules: { floor: number, ceiling: number }[] = []
   const controller = new AbortController()
   const deadline = performance.now() + timeoutMs
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -47,8 +50,8 @@ export async function readQueueSnapshot(transport: TaskTransport, queue: string,
         const scheduled = providerTimestamp(item.scheduleTime)
         count++
         if (count > 100_000) throw new Error('Queue listing is too large')
-        oldestCreated = oldestCreated === null ? created : Math.min(oldestCreated, created)
-        latestCreated = latestCreated === null ? created : Math.max(latestCreated, created)
+        oldestCreated = oldestCreated === null ? created.floor : Math.min(oldestCreated, created.floor)
+        latestCreated = latestCreated === null ? created.ceiling : Math.max(latestCreated, created.ceiling)
         schedules.push(scheduled)
       }
       if (page.nextPageToken !== undefined && (typeof page.nextPageToken !== 'string' || !page.nextPageToken || tokens.has(page.nextPageToken))) {
@@ -64,8 +67,8 @@ export async function readQueueSnapshot(transport: TaskTransport, queue: string,
   }
   const observed = now ?? new Date()
   if (latestCreated !== null && latestCreated > observed.getTime()) throw new Error('Queue timestamps are invalid')
-  const dueSchedules = schedules.filter(scheduled => scheduled <= observed.getTime())
-  const oldestDue = dueSchedules.reduce<number | null>((oldest, scheduled) => oldest === null ? scheduled : Math.min(oldest, scheduled), null)
+  const dueSchedules = schedules.filter(scheduled => scheduled.ceiling <= observed.getTime())
+  const oldestDue = dueSchedules.reduce<number | null>((oldest, scheduled) => oldest === null ? scheduled.floor : Math.min(oldest, scheduled.floor), null)
   return { observed_at: observed.toISOString(), count, oldest_seconds: oldestCreated === null ? null : (observed.getTime() - oldestCreated) / 1000,
     due: dueSchedules.length, oldest_due_seconds: oldestDue === null ? null : (observed.getTime() - oldestDue) / 1000 }
 }
