@@ -19,7 +19,7 @@ after(() => {
   else process.env.STORAGE_EMULATOR_HOST = originalEmulator
 })
 
-function fake({ wrongChecksum = false, missingHeader = false, failWrite = false } = {}) {
+function fake({ wrongChecksum = false, missingHeader = false, failWrite = false, missingHold = false } = {}) {
   const objects = new Map()
   let reads = 0
   const storage = { bucket(name) { return {
@@ -31,6 +31,7 @@ function fake({ wrongChecksum = false, missingHeader = false, failWrite = false 
         assert.equal(options.preconditionOpts.ifGenerationMatch, 0)
         assert.equal(options.validation, 'crc32c')
         assert.equal(options.metadata.cacheControl, 'private, no-store')
+        assert.equal(options.metadata.temporaryHold, true)
         const chunks = []
         return new Writable({ write(chunk, _encoding, callback) { chunks.push(Buffer.from(chunk)); callback() },
           final(callback) {
@@ -38,7 +39,7 @@ function fake({ wrongChecksum = false, missingHeader = false, failWrite = false 
             const body = Buffer.concat(chunks), crc = new CRC32C()
             crc.update(body)
             file.metadata = { name: path, generation: '90071992547409931234', size: String(body.length),
-              crc32c: wrongChecksum ? 'AAAAAA==' : crc.toString() }
+              crc32c: wrongChecksum ? 'AAAAAA==' : crc.toString(), temporaryHold: !missingHold }
             objects.set(path, { body, metadata: file.metadata })
             callback()
           } })
@@ -76,6 +77,7 @@ test('ambiguous writes, missing checksums, and invalid inputs fail closed withou
   await assert.rejects(writeUnverifiedHeldMaterial(fake({ wrongChecksum: true }).storage, target, artifact, contents),
     error => error.message === 'Held material write outcome is uncertain' && !error.message.includes('private'))
   await assert.rejects(writeUnverifiedHeldMaterial(fake({ failWrite: true }).storage, target, artifact, contents), /outcome is uncertain/)
+  await assert.rejects(writeUnverifiedHeldMaterial(fake({ missingHold: true }).storage, target, artifact, contents), /outcome is uncertain/)
   const { storage } = fake({ missingHeader: true })
   const saved = await writeUnverifiedHeldMaterial(storage, target, artifact, contents)
   await assert.rejects(readUnverifiedHeldMaterial(storage, target, artifact, saved), /could not be verified/)

@@ -94,7 +94,7 @@ test('storage client sends create-only archives, completion metadata, and held m
       }
       const object = { name, bucket: target.bucket, generation: String(objects.size + 100), metageneration: '1',
         timeCreated: created, size: String(data.length), crc32c: crc32c(data),
-        contentType: sentMetadata.contentType, metadata: sentMetadata.metadata }
+        contentType: sentMetadata.contentType, metadata: sentMetadata.metadata, temporaryHold: sentMetadata.temporaryHold }
       objects.set(name, object)
       payloads.set(name, data)
       response.end(JSON.stringify(object))
@@ -115,10 +115,14 @@ test('storage client sends create-only archives, completion metadata, and held m
     }
     const exported = await exportEncryptedBackup(target, { storage, start, now: new Date('2026-11-02T10:00:00.000Z') })
     assert.equal(exported.objects.length, 2)
-    for (const name of exported.objects) assert.equal(payloads.get(name).toString(), 'synthetic database bytes')
+    for (const name of exported.objects) {
+      assert.equal(payloads.get(name).toString(), 'synthetic database bytes')
+      assert.equal(objects.get(name).temporaryHold, undefined)
+    }
     const markers = [...objects.values()].filter(object => object.name.endsWith('.complete'))
     assert.equal(markers.length, 1)
     assert.equal(markers[0].size, '0')
+    assert.equal(markers[0].temporaryHold, undefined)
     assert.equal(markers[0].metadata.daily_generation, objects.get(exported.objects[0]).generation)
     assert.equal(markers[0].metadata.weekly_generation, objects.get(exported.objects[1]).generation)
     objects.set('idea-map-v2/dev/held-material/synthetic', { name: 'idea-map-v2/dev/held-material/synthetic' })
@@ -141,6 +145,7 @@ test('storage client sends create-only archives, completion metadata, and held m
     await assert.rejects(writeUnverifiedHeldMaterial(storage, target, heldId, heldBytes), /outcome is uncertain/)
     const heldName = `idea-map-v2/dev/held-material/${heldId}.bin`
     assert.equal(objects.get(heldName).metadata, undefined)
+    assert.equal(objects.get(heldName).temporaryHold, true)
     assert.equal(errors.length, 0)
     assert.equal(requests.filter(item => item.method === 'POST').length, 5)
     assert.deepEqual(new Set(requests.filter(item => item.path.endsWith('/o') && item.method === 'GET').map(item => item.query.prefix)),

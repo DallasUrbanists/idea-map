@@ -44,7 +44,9 @@ verify hosted grants or complete journal coverage. It reads each version
 through a selected fence, rejects a deliberately missing version, identifies the
 synthetic idea for hold review, and uses the suppression primitive
 for the known removal in the isolated restore. It also stores and reads back one
-synthetic title from the later revision as a bounded held-material artifact. A
+synthetic title from the later revision as a bounded held-material artifact. Its
+fake upload checks the temporary-hold request and response; it does not prove
+that a hosted hold persists or can be released safely. A
 synthetic manifest links that artifact to the hold and is itself referenced by a
 version-three confirmation; the rehearsal verifies the selected exact generation
 and digest. That single value is not a complete hold scope or a
@@ -153,9 +155,13 @@ their identity.
 
 The exporter checks the bucket's project number, enforced public-access
 prevention, uniform access, versioning, Google-managed default encryption, and a
-soft-delete period of at most seven days. It refuses a customer-managed default
-key, lifecycle rules that delete objects, or actions it
-cannot identify, because age-based deletion cannot protect the required counts.
+soft-delete period of at most seven days. It refuses a bucket-wide default hold
+or retention policy, hierarchical namespace, a customer-managed default key,
+lifecycle rules that delete objects, or actions it cannot identify. A default
+hold or retention policy could retain unrelated people's data too long, and
+hierarchical namespace does not support the separately scoped object holds.
+Age-based deletion cannot protect the
+required backup counts.
 It does not verify inherited IAM permissions, bucket ownership by
 another Terraform state, past lifecycle rules, legal holds, or the effective
 deletion deadline. [Cloud Storage can continue applying a previous lifecycle

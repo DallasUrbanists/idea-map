@@ -514,8 +514,12 @@ an explicit hold on deletion and authorized follow-up. Do not place raw content
 in decision records or extend a hold to unrelated material by default.
 An unwired storage primitive can write one already-scoped private artifact to the
 existing backup bucket under a caller-supplied UUIDv4, then read its exact generation
-and check its size and SHA-256 digest. It uses a create-only write and returns
-uncertain on a failed response; a failed write can still leave an object behind.
+and check its size and SHA-256 digest. It requests a temporary object hold in the
+create-only upload and requires the returned metadata to confirm it. A failed or
+ambiguous response can still leave a held object behind; reconcile and dispose
+of orphaned artifacts through the separately authorized retention process. The
+readback does not check that a hold remains in effect, and the upload response
+does not prove effective permissions or future protection.
 Each artifact must contain between one byte and 16 MiB, so empty or larger
 material cannot be captured by this primitive. The caller must generate a random,
 opaque ID and keep IDs, references, hashes, and bytes private. The caller
@@ -532,7 +536,7 @@ minutes. Missing, altered, oversized, or unavailable artifacts fail
 verification. A revision entry can represent only
 part of a revision, and the manifest does not establish what the authorized
 scope requires or guarantee future availability. The primitives do not
-authenticate the scope, capture all evidence, implement retention, legal-hold
+authenticate the scope, capture all evidence, implement complete retention, legal-hold
 release or disposition, or establish complete recovery. Do not use them to
 authorize deletion or enable a live hold workflow. Review permissions for the
 separate `held-material` prefix before any live integration.

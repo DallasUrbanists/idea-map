@@ -147,7 +147,7 @@ try {
     file(name) {
       if (!name.startsWith('idea-map-v2/dev/held-material/')) throw new Error('Unexpected synthetic held material')
       const file = { interceptors: [], createWriteStream(options) {
-        if (options.preconditionOpts.ifGenerationMatch !== 0 || options.validation !== 'crc32c') throw new Error('Synthetic journal safeguards missing')
+        if (options.preconditionOpts.ifGenerationMatch !== 0 || options.validation !== 'crc32c' || options.metadata?.temporaryHold !== true) throw new Error('Synthetic journal safeguards missing')
         const chunks = []
         return new Writable({ write(chunk, _encoding, callback) { chunks.push(Buffer.from(chunk)); callback() },
           final(callback) {
@@ -156,7 +156,7 @@ try {
             const checksum = new CRC32C()
             checksum.update(body)
             file.metadata = { name, bucket, generation: String(90071992547409931234n + BigInt(entries.size)),
-              metageneration: '1', size: String(body.length), contentType: options.metadata?.contentType ?? 'application/json', crc32c: checksum.toString() }
+              metageneration: '1', size: String(body.length), contentType: options.metadata?.contentType ?? 'application/json', crc32c: checksum.toString(), temporaryHold: true }
             entries.set(name, { body, metadata: file.metadata })
             callback()
           } })

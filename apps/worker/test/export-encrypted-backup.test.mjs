@@ -156,10 +156,16 @@ test('different archive metadata prevents a completion record', async () => {
 
 test('an unverified or public bucket prevents the dump from starting', async () => {
   assert.doesNotThrow(() => verifyBackupBucket({ ...metadata, lifecycle: { rule: [{ action: { type: 'SetStorageClass' } }] } }, backupConfiguration(env)))
+  assert.doesNotThrow(() => verifyBackupBucket({ ...metadata, defaultEventBasedHold: false, hierarchicalNamespace: { enabled: false } }, backupConfiguration(env)))
   for (const bucket of [
     { ...metadata, projectNumber: '987654321' },
     { ...metadata, iamConfiguration: { ...metadata.iamConfiguration, publicAccessPrevention: 'inherited' } },
     { ...metadata, versioning: { enabled: false } },
+    { ...metadata, defaultEventBasedHold: true },
+    { ...metadata, defaultEventBasedHold: 'false' },
+    { ...metadata, hierarchicalNamespace: { enabled: true } },
+    { ...metadata, hierarchicalNamespace: {} },
+    { ...metadata, retentionPolicy: { retentionPeriod: '7776000' } },
     { ...metadata, encryption: { defaultKmsKeyName: 'projects/synthetic/locations/global/keyRings/test/cryptoKeys/key' } },
     { ...metadata, softDeletePolicy: { retentionDurationSeconds: '2592000' } },
     { ...metadata, softDeletePolicy: undefined },

@@ -6,6 +6,9 @@ export function verifyBackupBucket(bucket: BucketMetadata, config: { bucket: str
       bucket.name !== config.bucket || typeof bucket.projectNumber !== 'string' || bucket.projectNumber !== config.projectNumber ||
       bucket.iamConfiguration?.publicAccessPrevention !== 'enforced' ||
       bucket.iamConfiguration?.uniformBucketLevelAccess?.enabled !== true || bucket.versioning?.enabled !== true ||
+      (bucket.defaultEventBasedHold !== undefined && bucket.defaultEventBasedHold !== false) ||
+      (bucket.hierarchicalNamespace !== undefined && bucket.hierarchicalNamespace?.enabled !== false) ||
+      bucket.retentionPolicy !== undefined ||
       Boolean(bucket.encryption?.defaultKmsKeyName) ||
       !/^(0|[1-9][0-9]*)$/.test(String(bucket.softDeletePolicy?.retentionDurationSeconds)) ||
       Number(bucket.softDeletePolicy?.retentionDurationSeconds) > 604800 ||

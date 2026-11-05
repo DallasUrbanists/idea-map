@@ -42,8 +42,9 @@ function hasStoredChecksum(response: { toJSON: () => { headers: Record<string, s
 
 /**
  * Preserve one already-authorized, already-scoped piece of held material in
- * the existing private backup bucket. This unwired primitive does not identify
- * the scope, take source locks, authenticate a hold, prove complete capture,
+ * the existing private backup bucket with a requested temporary object hold.
+ * The returned metadata confirms only the observed upload response. This unwired
+ * primitive does not identify the scope, take source locks, authenticate a hold, prove complete capture,
  * manage release or expiry, or permit deletion of its source or an archive.
  * Its caller must protect the returned reference and digest as private data.
  */
@@ -65,7 +66,7 @@ export async function writeUnverifiedHeldMaterial(storage: Storage, target: Targ
     const file = bucket.file(path)
     const remaining = remainingTime(deadline)
     const stream = file.createWriteStream({ resumable: false, validation: 'crc32c', timeout: remaining,
-      preconditionOpts: { ifGenerationMatch: 0 }, metadata: { contentType: 'application/octet-stream', cacheControl: 'private, no-store' } })
+      preconditionOpts: { ifGenerationMatch: 0 }, metadata: { contentType: 'application/octet-stream', cacheControl: 'private, no-store', temporaryHold: true } })
     const done = finished(stream)
     timer = setTimeout(() => stream.destroy(new Error('Held material write timed out')), remaining)
     stream.end(bytes)
@@ -73,7 +74,9 @@ export async function writeUnverifiedHeldMaterial(storage: Storage, target: Targ
     remainingTime(deadline)
     const saved = file.metadata
     if (saved?.name !== path || typeof saved.generation !== 'string' || !/^[1-9][0-9]{0,19}$/.test(saved.generation) ||
-        saved.size !== String(bytes.length) || saved.crc32c !== checksum.toString()) throw new Error('Held material metadata is ambiguous')
+        saved.size !== String(bytes.length) || saved.crc32c !== checksum.toString() || saved.temporaryHold !== true) {
+      throw new Error('Held material metadata is ambiguous')
+    }
     return { generation: saved.generation, size: bytes.length, sha256, coverageVerified: false }
   } catch {
     // A failed response can still leave a private object at the provider.
