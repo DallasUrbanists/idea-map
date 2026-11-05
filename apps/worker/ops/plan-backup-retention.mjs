@@ -1,6 +1,6 @@
 const DAY = 86_400_000
 
-function retentionTime(value) {
+function providerTimeCeiling(value) {
   if (typeof value !== 'string') return NaN
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})$/.exec(value)
   if (!match) return NaN
@@ -13,7 +13,7 @@ function retentionTime(value) {
       (zone !== 'Z' && (Number(zone.slice(1, 3)) > 23 || Number(zone.slice(4)) > 59))) return NaN
   const milliseconds = Date.parse(value)
   // Date.parse truncates finer precision. Round upward so an unexpired
-  // sub-millisecond retention window cannot become a deletion candidate.
+  // sub-millisecond time cannot prematurely become a deletion candidate.
   return milliseconds + (/[1-9]/.test(fraction.slice(3)) ? 1 : 0)
 }
 
@@ -37,17 +37,18 @@ export function planBackupRetention({ environment, complete, objects, now = new 
         typeof object.metageneration !== 'string' || !/^[1-9][0-9]*$/.test(object.metageneration) || seen.has(object.name)) throw new Error('Ambiguous backup generation')
     seen.add(object.name)
     const midnight = Date.parse(`${match[2]}T00:00:00.000Z`)
-    const created = Date.parse(object.timeCreated)
+    const created = providerTimeCeiling(object.timeCreated)
     if (!Number.isFinite(midnight) || new Date(midnight).toISOString().slice(0, 10) !== match[2] ||
         !Number.isFinite(created) || created < midnight || created >= midnight + 2 * DAY || created > now.getTime() ||
         object.timeDeleted || (object.retentionExpirationTime !== undefined &&
-          !Number.isFinite(retentionTime(object.retentionExpirationTime))) ||
+          !Number.isFinite(providerTimeCeiling(object.retentionExpirationTime))) ||
         (object.retention !== undefined && (!object.retention || typeof object.retention !== 'object' || Array.isArray(object.retention) ||
-          !['Locked', 'Unlocked'].includes(object.retention.mode) || !Number.isFinite(retentionTime(object.retention.retainUntilTime)))) ||
+          !['Locked', 'Unlocked'].includes(object.retention.mode) || !Number.isFinite(providerTimeCeiling(object.retention.retainUntilTime)))) ||
         typeof object.eventBasedHold !== 'boolean' || typeof object.temporaryHold !== 'boolean') {
       throw new Error('Backup state is ambiguous')
     }
-    return { ...object, kind: match[1], date: match[2], created, earliestStart: midnight, group: match[1] === 'daily' ? match[2] : weekOf(match[2]) }
+    return { ...object, kind: match[1], date: match[2], created, earliestCreation: Date.parse(object.timeCreated),
+      earliestStart: midnight, group: match[1] === 'daily' ? match[2] : weekOf(match[2]) }
   })
   const keepGroups = {}
   const groupCounts = {}
@@ -65,17 +66,17 @@ export function planBackupRetention({ environment, complete, objects, now = new 
   }
   // Upload completion time is only a necessary freshness check: the caller
   // must separately verify the actual backup start and completion record.
-  const recentDaily = entries.some(entry => entry.kind === 'daily' && now.getTime() - entry.created <= DAY)
-  const recentWeekly = entries.some(entry => entry.kind === 'weekly' && now.getTime() - entry.created <= 7 * DAY)
+  const recentDaily = entries.some(entry => entry.kind === 'daily' && now.getTime() - entry.earliestCreation <= DAY)
+  const recentWeekly = entries.some(entry => entry.kind === 'weekly' && now.getTime() - entry.earliestCreation <= 7 * DAY)
   const candidates = entries.filter(entry => retentionSatisfied && recentDaily && recentWeekly && !keepGroups[entry.kind].has(entry.group) &&
     now.getTime() - entry.created >= (entry.kind === 'daily' ? 15 : 63) * DAY &&
     !entry.eventBasedHold && !entry.temporaryHold &&
-    (!entry.retentionExpirationTime || retentionTime(entry.retentionExpirationTime) <= now.getTime()) &&
-    (!entry.retention || retentionTime(entry.retention.retainUntilTime) <= now.getTime()))
+    (!entry.retentionExpirationTime || providerTimeCeiling(entry.retentionExpirationTime) <= now.getTime()) &&
+    (!entry.retention || providerTimeCeiling(entry.retention.retainUntilTime) <= now.getTime()))
     .map(({ name, generation, metageneration }) => ({ name, generation, metageneration }))
   const oldOrHeld = entries.filter(entry => now.getTime() - entry.created >= 76 * DAY || entry.eventBasedHold || entry.temporaryHold ||
-    (entry.retentionExpirationTime && retentionTime(entry.retentionExpirationTime) > now.getTime()) ||
-    (entry.retention && retentionTime(entry.retention.retainUntilTime) > now.getTime())).length
+    (entry.retentionExpirationTime && providerTimeCeiling(entry.retentionExpirationTime) > now.getTime()) ||
+    (entry.retention && providerTimeCeiling(entry.retention.retainUntilTime) > now.getTime())).length
   // Fourteen days for primary deletion and seven for soft delete leave at most
   // 69 days before an archive needs attention. The date in its name gives
   // a conservative earliest start, even if upload completed much later. This

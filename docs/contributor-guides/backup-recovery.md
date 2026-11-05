@@ -356,7 +356,8 @@ retains all copies in the latest
 and applies additional
 15-day and 63-day minimum ages, and excludes held objects. The planner rejects
 ambiguous object retention modes or timestamps and rounds fractional
-milliseconds upward when checking whether a retention period has ended. It
+milliseconds upward for retention expiry and minimum archive age. Its upload
+freshness check rounds creation time in the conservative opposite direction. It
 reports old or held objects and old soft-deleted objects for investigation.
 Completion records can outlive their live and noncurrent archives: the inventory
 reports them as `orphanCompletions` and never counts them as backups. The

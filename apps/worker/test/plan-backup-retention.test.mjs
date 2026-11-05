@@ -114,6 +114,24 @@ test('sub-millisecond retention remains protected until the next whole milliseco
   }
 })
 
+test('sub-millisecond creation time cannot satisfy the minimum age early', () => {
+  const input = inventory()
+  const name = object('daily', 15).name
+  input.objects = input.objects.map(item => item.name === name
+    ? { ...item, timeCreated: '2026-10-19T12:00:00.000000001Z' } : item)
+  assert.ok(!planBackupRetention(input).candidates.some(candidate => candidate.name === name))
+  assert.ok(planBackupRetention({ ...input, now: new Date(now.getTime() + 1) }).candidates.some(candidate => candidate.name === name))
+})
+
+test('sub-millisecond upload time cannot make stale backups appear fresh', () => {
+  const input = inventory()
+  const name = object('daily', 1).name
+  input.objects = input.objects.filter(item => item.name !== object('daily', 0).name).map(item => item.name === name
+    ? { ...item, timeCreated: '2026-11-02T12:00:00.000000001Z' } : item)
+  assert.ok(planBackupRetention(input).candidates.length > 0)
+  assert.deepEqual(planBackupRetention({ ...input, now: new Date(now.getTime() + 1) }).candidates, [])
+})
+
 test('expiry attention uses the earliest possible backup start, not upload completion', () => {
   const edge = object('daily', 69)
   const midnight = Date.parse(`${edge.name.split('/')[3]}T00:00:00.000Z`)
