@@ -114,7 +114,7 @@ For details about a platform, you can start with these guides:
 | Area | Guides |
 | --- | --- |
 | Runtime and workspace | [Node.js/TypeScript](nodejs-typescript.md), [pnpm](pnpm.md), [Vue/Nuxt](vue-nuxt.md) |
-| User interface and verification | [Reka](reka.md), [Storybook](storybook.md), [Playwright](playwright.md), [design system](../design/design-system.md) |
+| User interface and verification | [Reka](reka.md), [Storybook design system](storybook.md), [Playwright](playwright.md) |
 | Local and hosted infrastructure | [Docker](docker.md), [Google Cloud](google-cloud.md), [Terraform](terraform.md) |
 | Identity and storage | [Firebase](firebase.md), [PostgreSQL with PostGIS/Drizzle](postgresql-postgis-drizzle.md), [Neon](neon.md) |
 | External services | [Resend](resend.md), [Streetmix](streetmix.md) |

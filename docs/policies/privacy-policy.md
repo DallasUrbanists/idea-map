@@ -28,10 +28,15 @@ clears that browser's session and leaves your other devices signed in.
 
 ## Public and private information
 
-Approved ideas and permitted media are public and can be viewed or copied by
-other people. Pending submissions and edits stay private until approved. If you
-edit a published idea, the approved version stays visible until the edit is
-approved.
+Published ideas and permitted media are public and can be viewed or copied by
+other people. During the open MVP beta, an explicitly submitted idea or edit
+publishes immediately without pre-publication review; saved drafts and
+incomplete uploads remain private.
+
+In reviewed-publication mode, pending submissions and edits stay private until
+approved, and the previously approved version stays visible while an edit is
+reviewed. The publication notice and Terms identify which behavior applies when
+you submit.
 
 Contact information, ownership evidence, private media, moderation notes, and
 restricted review records remain private. Staff can access information only when
@@ -40,9 +45,11 @@ details in public attribution.
 
 ## Service providers
 
-Dallas Urbanists uses service providers for hosting, authentication, database
-and media storage, transactional email, maps, and content assessment. Providers
-receive only the information needed for the service they perform on its behalf;
+Enabled features use service providers for hosting, authentication, database
+and media storage, transactional email and maps. Automated moderation and
+content assessment are disabled during the open MVP beta; any optional
+content-processing feature has a separate review before it is enabled.
+Providers receive only the information needed for the service they perform;
 public display does not grant providers independent reuse rights in submissions.
 
 Map and content-assessment features can involve external processing of selected

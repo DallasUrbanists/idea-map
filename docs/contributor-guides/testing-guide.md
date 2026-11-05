@@ -13,6 +13,7 @@ covers wording changes; code changes need the checks relevant to their behavior.
 The following contents links navigate within this guide:
 
 - [Everyday checks](#everyday-checks)
+- [Open MVP beta acceptance](#open-mvp-beta-acceptance)
 - [CI and contribution gates](#ci-and-contribution-gates)
 - [Offline provider fixtures](#offline-provider-fixtures)
 - [Package tests](#package-tests)
@@ -58,6 +59,19 @@ synthetic outbox, moderation, approval-history, and worker checks on pull
 requests, including forks. It uses a disposable PostGIS service and requires no
 hosted credentials. It does not test real moderation authorization or enable
 automatic publication.
+
+## Open MVP beta acceptance
+
+Reviewers should use the [beta acceptance procedure](../test-procedures/beta-acceptance.md)
+for the actual public browse-and-submit journey, privacy boundaries, technical
+abuse controls, reactive removal and recovery. Beta acceptance does not require
+the later score-based review system or every contributor-platform and catalogue
+feature.
+
+Contributors should retain reviewed-publication tests for that separate mode
+and add beta-specific cases without treating a missing assessment as a valid
+score. The release record should distinguish foundation tests, application
+integration and authorized hosted evidence.
 
 ## CI and contribution gates
 
@@ -279,6 +293,21 @@ The test enables the endpoint only for its synthetic server and uses a restricte
 test database role. It does not authorize live claims or validate hosted
 permissions.
 
+For registered private submissions, start a local Firebase Auth emulator with
+the `demo-idea-map` project and migrate a separate disposable PostGIS test
+database. Set `FIREBASE_AUTH_EMULATOR_HOST` to the emulator's loopback host and
+port, set `TEST_DATABASE_URL` to the test database, and build the packages. Run:
+
+```sh
+pnpm test:registered-submission-auth
+```
+
+The test uses synthetic emulator accounts and a storage fake. It checks the
+application's Firebase verifier, session revocation and private database records,
+then deletes its emulator accounts. It does not validate a hosted provider,
+enable a submission endpoint or accept an assessment. The moderation foundation
+workflow runs this test with a disposable Auth emulator and its own database.
+
 For the server-only moderator hold primitive and publication races, run
 `pnpm --filter @idea-map/server test:moderator-holds` with `TEST_DATABASE_URL`
 set to a fresh disposable PostGIS database. The test uses synthetic moderator
@@ -408,9 +437,24 @@ You should include screenshots when they help a reviewer understand the result.
 If a visual test changes, investigate the difference and get the intended design
 reviewed before updating its baseline.
 
-You should use the [design system](../design/design-system.md) for component and
+You should use the [Storybook design system](../architecture/storybook.md) for component and
 accessibility guidance. The catalog shows what each component does; its stories
 and user journeys show the behavior you can check.
+
+For foundational controls, run `pnpm --filter @idea-map/web test:controls` after
+installing Playwright Chromium or setting `CHROME_PATH` to an installed Chromium
+browser. The isolated harness checks server-side rendering, keyboard interaction,
+recovery, progress semantics, accessibility, and responsive layouts; it needs no
+database or Firebase services. Review screen-reader and touch-device behavior separately.
+
+To capture control specimens, set `CAPTURE_SPECIMENS=1` when running that command.
+In PowerShell, set `$env:CAPTURE_SPECIMENS = '1'` first; in Bash, prefix the command
+with `CAPTURE_SPECIMENS=1`. Playwright writes the PNGs under the test output
+directory. These images are review evidence, not approved visual baselines.
+
+For Storybook documentation, run `pnpm --filter @idea-map/web test:storybook-docs`
+to check foundation pages in both themes and at narrow widths. The test starts
+and stops its own Storybook server and needs no database or Firebase services.
 
 ## Dialog checks
 

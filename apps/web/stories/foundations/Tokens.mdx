@@ -1,0 +1,72 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+import { getMotionValue, getTokenGroups } from "./token-reference.js";
+import "./token-tables.css";
+
+<Meta title="Foundations/Tokens" />
+
+export const groups = getTokenGroups();
+
+export const ColorValue = ({ value, span }) => (
+  <td className={CSS.supports("color", value) ? "solid-color" : "gradient-color"} colSpan={span} style={{ background: value }}><code>{value.replace(/\s+/g, " ").trim()}</code></td>
+);
+
+export const ColorRows = () => groups.colors.map(({ name, light, dark }) => (
+  <tr key={name}>
+    <th scope="row"><code>{name}</code></th>
+    {light === dark ? <ColorValue value={light} span={2} /> : <><ColorValue value={light} /><ColorValue value={dark} /></>}
+  </tr>
+));
+
+export const MotionRows = () => groups.motion.map(({ name, standard, reduced }) => (
+  <tr key={name}>
+    <th scope="row"><code>{name}</code></th>
+    <td><code>{standard}</code></td>
+    <td><code>{reduced}</code></td>
+  </tr>
+));
+
+export const GlobalRows = () => groups.globals.map(({ name, value }) => (
+  <tr key={name}>
+    <th scope="row"><code>{name}</code></th>
+    <td><code>{value}</code></td>
+  </tr>
+));
+
+# Tokens
+
+This catalog lists every custom property in the shared token stylesheet. Color
+and motion values resolve their aliases for each mode. Global values show the
+shared declaration, including any aliases.
+
+## Colors
+
+The light and dark columns show each color or page gradient. A cell spanning
+both columns has the same value in both themes.
+
+<table className="token-reference token-colors" tabIndex={0} aria-label="Color tokens">
+  <thead><tr><th scope="col">Token</th><th scope="col">Light</th><th scope="col">Dark</th></tr></thead>
+  <tbody><ColorRows /></tbody>
+</table>
+
+## Motion
+
+Use motion to explain a change of state, following [Signal's motion guidance](https://signal.chitransit.app/foundations/motion). Page transitions use {getMotionValue("--motion-page")}; control states use {getMotionValue("--motion-control")}; detail transitions use {getMotionValue("--motion-detail")}; and sheet movement uses {getMotionValue("--motion-sheet")}.
+
+Respect reduced-motion preferences. Avoid relying on animation to convey a result.
+
+Standard values and reduced-motion values show the resolved timing or setting
+for each token.
+
+<table className="token-reference" tabIndex={0} aria-label="Motion tokens">
+  <thead><tr><th scope="col">Token</th><th scope="col">Standard value</th><th scope="col">Reduced motion</th></tr></thead>
+  <tbody><MotionRows /></tbody>
+</table>
+
+## Globals
+
+These tokens have one shared value in both themes and motion modes.
+
+<table className="token-reference" tabIndex={0} aria-label="Global tokens">
+  <thead><tr><th scope="col">Token</th><th scope="col">Value</th></tr></thead>
+  <tbody><GlobalRows /></tbody>
+</table>

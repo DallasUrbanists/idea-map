@@ -1,0 +1,61 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './Status.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Status usage
+
+You can show a status word with color as reinforcement. A visible symbol adds a
+second cue. Status uses the Foundation text ramp and semantic status colors;
+it does not use map category colors or communicate meaning through color alone.
+
+## Status word
+
+You should choose text for a compact value in a row. The words describe the
+state; success, warning, and error select the matching semantic treatment.
+
+```html
+<Status variant="text" tone="success">Saved</Status>
+<Status variant="text" tone="warning">Needs review</Status>
+<Status variant="text">Scheduled</Status>
+```
+
+<Canvas of={Stories.UsageDefault} sourceState="none" />
+
+## Pill
+
+You can use pill to give a short value a filled background. Each fill uses its
+paired foreground token in both themes.
+
+```html
+<Status variant="pill" tone="success">Saved</Status>
+<Status variant="pill" tone="warning">Needs review</Status>
+<Status variant="pill" tone="error">Update failed</Status>
+```
+
+<Canvas of={Stories.UsagePill} sourceState="none" />
+
+## Longer message
+
+You can use the default banner for a longer explanation. A failed request with
+retry and freshness details belongs in ErrorState.
+
+```html
+<Status>Your draft is visible only to you.</Status>
+```
+
+<Canvas of={Stories.UsageBanner} sourceState="none" />
+
+## Component contract
+
+The optional tone is info (default), success, warning, or error. The optional
+variant is banner (default), text, or pill. The default slot supplies the message.
+Status has no events. The optional live prop is off (default), polite, or
+assertive. You should mount an empty live region before changing its message,
+use polite for routine feedback, and reserve assertive for urgent interruptions.
+
+The text and pill patterns are informed by
+[Signal's status reference](https://signal.chitransit.app/components/status).
+Idea Map's [color](/docs/foundations-color--docs),
+[typography](/docs/foundations-typography--docs), and
+[containers](/docs/foundations-containers--docs) define their appearance.

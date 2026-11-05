@@ -1,0 +1,17 @@
+body {
+  margin: 0;
+  background: var(--color-page);
+  background-image: var(--page-background);
+  color: var(--color-text);
+  font: var(--font-body) / var(--line-body) var(--font-family-body);
+  text-wrap: pretty;
+}
+
+.sbdocs table th,
+.sbdocs table td {
+  text-align: left;
+}
+
+@media (forced-colors: active) {
+  body { background-image: none; }
+}

@@ -22,6 +22,13 @@ Do not use v1 projects or data. Existing synthetic staging roots are separate
 from the foundation's `idea-map-*-dev` services; do not make two Terraform
 roots manage the same service.
 
+For a new development-only release rehearsal that does not need media, set
+`manage_media_buckets = false` and leave `enable_media_access` off. The
+foundation then leaves existing staging media buckets under their current root
+and creates no backup bucket. This does not configure media access or backup
+recovery; review those separately before using those features. Do not use this
+setting to remove buckets already managed by the foundation.
+
 Before enabling either workflow, an authorized administrator should create
 GitHub environments named `staging` and `production`, restrict them to
 `main`, and require independent reviewers for production. The administrator
@@ -61,10 +68,33 @@ and destination write access.
 
 Terraform creates the services using bootstrap image digests, their runtime
 identities, configuration, scaling, and ingress. After creation, the release
-workflow owns image and traffic changes; Terraform ignores those fields to
-avoid silently reverting a release. Operators should review a real Terraform
-plan before every separately authorized apply, and check which revision and
-traffic will remain active when other service configuration changes.
+workflow owns image, traffic, and client attribution. Terraform ignores those
+fields to avoid silently reverting a release. Operators should review a real
+Terraform plan before every separately authorized apply, and check which
+revision and traffic will remain active when other service configuration changes.
+
+Preparation uses Cloud Run's generated revision name and records the returned
+name in the receipt. Do not add a revision suffix or traffic tag to preparation:
+an explicit template revision can cause Terraform to plan another revision,
+while ignoring that field can prevent later configuration updates. Preparation
+stops if Cloud Run returns the currently serving revision instead of a distinct
+candidate; inspect the image and service before deciding whether another release
+is needed.
+
+If the worker's generated URI is not yet known, the
+[Terraform guide](../architecture/terraform.md#resource-definitions) describes
+an opt-in, dev-only bootstrap process that returns 503. Replace it with the
+configured worker through a separately reviewed Terraform plan before using
+the release workflow. A bootstrap revision is not a recovery target: the
+workflow rejects worker revisions with overridden commands or arguments.
+
+Before a Neon-backed web service is created, prepare a web-only pooled TLS
+database credential and existing Secret Manager version outside Terraform. Set
+both `web_database_secret_id` and the numeric `web_database_secret_version` in
+the reviewed environment configuration. Review the web role, secret access,
+and connection budget separately from the worker's credential. A database
+reference alone does not prove that the service can authenticate or that its
+schema and permissions are correct; verify those in the isolated environment.
 
 The workflow operates on `idea-map-web-dev` and `idea-map-worker-dev` in
 staging and the corresponding `-prod` services in production. It requires one
@@ -82,7 +112,10 @@ successful staging **promote** run ID and attempt for the same service and
 digest; the workflow verifies both records before requesting deployment access.
 
 The release workflow checks the revision's `Ready` condition, reconciled
-generation, and resolved image digest. These are provider metadata, not proof
+generation, and resolved image digest. For an image index, it verifies the
+registry manifest against the checked index digest and matches the revision to
+its single Linux amd64 image. The deployer needs read access to the image
+repository for this check. These are provider metadata, not proof
 that a database, task delivery, public routing, or the application works.
 Operators should retain the release summaries, artifact references, test
 evidence, compatibility decision, and recovery owner beyond artifact expiry.
@@ -154,7 +187,9 @@ its immutable image, database compatibility, retained secrets and provider
 configuration. Select `rollback`, the environment and service, the previous
 revision and image, and the revision currently receiving all traffic. Rollback
 does not depend on an unexpired build artifact, but the protected environment
-still requires its configured approval.
+still requires its configured approval. If the registry is unavailable, an
+operator can supply the exact immutable image digest reported by the previous
+revision; the workflow verifies it against that revision before routing.
 
 Cloud Run does not repeat its deployment health check during a traffic rollback.
 The workflow verifies recorded revision metadata before routing and the traffic

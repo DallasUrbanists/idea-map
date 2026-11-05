@@ -1,0 +1,55 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './Menu.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Menu usage
+
+You can put secondary actions behind a menu trigger. Primary navigation stays visible. Menu uses Reka for keyboard navigation, dismissal, viewport collision handling, and focus return.
+
+## Actions
+
+You should give each item a unique value and a visible label. Disabled items remain unavailable; the select event reports an enabled action's value.
+
+```html
+<Menu label="Draft tools"
+  :items="[{ value: 'preview', label: 'Preview draft' }, { value: 'copy', label: 'Copy draft link' }]"
+  @select="handleAction" />
+```
+
+<Canvas of={Stories.UsageDefault} sourceState="none" story={{ inline: false, height: '220px' }} />
+
+## Items in place
+
+You can set inline to show the actions in a labeled group of buttons. Each button keeps its own touch target and normal Tab behavior.
+
+```html
+<Menu inline label="Draft tools" :items="items" @select="handleAction" />
+```
+
+<Canvas of={Stories.UsageInline} sourceState="none" />
+
+## Checked items
+
+You can provide checked for toggled visibility settings. The check event returns the value and Boolean state; the parent updates the item. Checked menu items stay open for multiple changes.
+
+```html
+<Menu label="Visible layers" :items="layers"
+  @check="setLayerVisibility" />
+```
+
+<Canvas of={Stories.UsageChecks} sourceState="none" story={{ inline: false, height: '220px' }} />
+
+## Component contract
+
+Required props are `label` and `items` (unique `value`, `label`, optional `disabled` and `checked`). Optional Boolean `inline` defaults to false; `side` defaults to `bottom` and also accepts `left`, `right`, or `top`. Events are `select(value)` and `check(value, checked)`. The optional `trigger` slot supplies one focusable Button. Arrow keys, Home, End, typing an item's prefix, Enter, Escape, and outside interaction follow the menu primitive. Essential explanations should remain visible outside the menu.
+
+## Foundations and reference
+
+The examples follow Idea Map's [color](/docs/foundations-color--docs),
+[typography](/docs/foundations-typography--docs),
+[size and space](/docs/foundations-size-and-space--docs), and
+[container](/docs/foundations-containers--docs) requirements.
+The component pattern is informed by [Signal's menu reference](https://signal.chitransit.app/components/menu);
+Idea Map's Foundation tokens and interaction requirements determine this implementation.
+

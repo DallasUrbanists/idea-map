@@ -1,0 +1,42 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './Skeleton.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Skeleton usage
+
+You can reserve the shape of a list while its first results load. Skeleton rows stay static in every motion preference. The labeled group exposes busy state, while decorative rows stay hidden from assistive technology.
+
+## Initial results and completion
+
+You should replace the skeleton with results, an empty state, or an actionable error when the request finishes. A persistent page status region can announce the outcome.
+
+```html
+<Skeleton v-if="loading" label="Loading community ideas" :rows="3" />
+```
+
+<Canvas of={Stories.UsageDefault} sourceState="none" />
+
+## Rows without a leading mark
+
+You can omit the decorative lead when the coming list has no icon. During refresh, you should keep trustworthy existing content rather than replace it with skeletons.
+
+```html
+<Skeleton label="Loading saved ideas" :rows="2" :lead="false" />
+```
+
+<Canvas of={Stories.UsageWithoutLead} sourceState="none" />
+
+## Component contract
+
+Optional props are `label` (default `Loading ideas`), `rows` (default 3, clamped to 1–20 whole rows; nonfinite values use 3), and `lead` (default true). Skeleton has no events or slots. It does not time requests or fetch data.
+
+## Foundations and reference
+
+The examples follow Idea Map's [color](/docs/foundations-color--docs),
+[typography](/docs/foundations-typography--docs),
+[size and space](/docs/foundations-size-and-space--docs), and
+[container](/docs/foundations-containers--docs) requirements.
+The component pattern is informed by [Signal's skeleton reference](https://signal.chitransit.app/components/skeleton);
+Idea Map's Foundation tokens and interaction requirements determine this implementation.
+

@@ -14,16 +14,17 @@
     "@google-cloud/storage": "^8.4.0",
     "drizzle-orm": "^0.45.4",
     "google-auth-library": "11.3.2",
-    "pg": "8.16.3",
+    "pg": "8.23.1",
     "resend": "^6.37.0"
   },
   "devDependencies": {
-    "@types/pg": "8.15.6",
+    "@types/pg": "8.23.1",
     "drizzle-kit": "^0.31.11"
   },
   "scripts": {
     "db:migrate": "drizzle-kit migrate",
     "db:generate": "drizzle-kit generate",
+    "test:registered-drafts": "tsc --build && node --test test/registered-drafts.test.mjs test/registered-submissions.test.mjs",
     "test:resend": "tsc --build && node --test test/resend.test.mjs",
     "test:media": "tsc --build && node --test test/media-upload.test.mjs",
     "test:outbox": "tsc --build && node --test test/outbox.test.mjs",
@@ -42,6 +43,8 @@
     "test:moderator-authorization": "tsc --build && node --test test/moderator-authorization.test.mjs",
     "test:approval-history": "tsc --build && node --test test/approval-history.test.mjs",
     "test:cloud-tasks": "tsc --build && node --test test/cloud-tasks.test.mjs",
+    "test:worker-staging-grants": "tsc --build && node --test test/worker-staging-grants.test.mjs",
+    "test:staging-web-grants": "tsc --build && node --test test/staging-web-grants.test.mjs",
     "test:database": "node --test test/database.test.mjs"
   }
 }

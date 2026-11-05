@@ -294,7 +294,12 @@ From the repository root, the operator should build the worker with
 `pnpm exec tsc --build`, configure `WORKER_PROVIDER_MODE=provider`,
 `WORKER_DATABASE_URL`, and `CLOUD_TASKS_QUEUE`
 through the approved environment, and use short-lived application-default
-credentials with queue inspection access. The operator should then run:
+credentials with queue inspection access. The database credential must have
+the reviewed access needed to read the job and outbox and update the outbox
+generation, dispatch, publication, and lease fields. The staging worker's
+restricted reconciliation role cannot update the delivery generation; use a
+separately authorized operator connection rather than widening that runtime
+role. The operator should then run:
 
 ```sh
 node apps/worker/dist/recover-cli.js --queue REVIEWED_QUEUE --job JOB_UUID --generation GENERATION --confirm-reviewed-recovery
@@ -327,6 +332,15 @@ Each accepted submission must retain its terms version and server-recorded
 acceptance timestamp. The record must survive retries and guest-to-account
 claims; an ownership update must not create or replace consent. Referenced terms
 versions must remain available for review.
+
+The registered-only draft submission transaction saves the exact frozen draft
+and location as a private idea revision, with the agreement and original result.
+The version identifies the retained terms bytes by SHA-256. The server accepts
+only its current bundled version for a new submission and preserves those bytes
+with each consent record. A replay returns the original result even if storage
+is unavailable. Maintainers must retain old terms and update the bundled version
+and its checks when adopting new terms. This server-only transaction has no
+public route, does not accept an assessment, and does not publish an idea.
 
 Deletion must honor authorized removal deadlines, legal holds, and backup
 expiry. Restore workflows must preserve removal records so deleted content does

@@ -1,0 +1,43 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './NavigationRail.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Navigation rail usage
+
+You can expose the main destinations in a labeled navigation rail. Native links support normal browser navigation, while aria-current identifies the current page. Local content choices belong in SegmentedControl.
+
+## Main destinations
+
+You should keep the destination order stable and pair decorative icons with visible labels. A neutral pill behind the icon and an accent-colored label mark the current page. The rail uses a single edge divider, and keyboard focus has its own outline. Navigation labels omit underlines because the grouped icons and labels identify the links.
+
+```html
+<NavigationRail current="nearby"
+  :items="[{ value: 'nearby', label: 'Nearby', href: '/nearby' }, { value: 'saved', label: 'Saved', href: '/saved' }, { value: 'settings', label: 'Settings', href: '/settings' }]" />
+```
+
+<Canvas of={Stories.UsageDefault} sourceState="none" story={{ inline: false, height: '420px' }} />
+
+## Compact presentation
+
+You can use capsule for a floating horizontal arrangement with a rounded border and shadow. The current page has a pill behind both its icon and label. The default rail also flows horizontally at phone widths. The container remains in normal layout flow so the application can position it without covering content.
+
+```html
+<NavigationRail capsule :current="page" :items="destinations" />
+```
+
+<Canvas of={Stories.UsageCapsule} sourceState="none" story={{ inline: false, height: '220px' }} />
+
+## Component contract
+
+Required props are string `current` and `items` (unique `value`, visible `label`, and `href`). Optional `label` defaults to `Main navigation`; Boolean `capsule` defaults to false. The optional `icon` slot receives `{ item }` and is decorative. The component has no events and uses native links; the router or page owns navigation and current state. You should provide trusted destinations and unique labels.
+
+## Foundations and reference
+
+The examples follow Idea Map's [color](/docs/foundations-color--docs),
+[typography](/docs/foundations-typography--docs),
+[size and space](/docs/foundations-size-and-space--docs), and
+[container](/docs/foundations-containers--docs) requirements.
+The component pattern is informed by [Signal's navigation rail reference](https://signal.chitransit.app/components/nav-rail);
+Idea Map's Foundation tokens and interaction requirements determine this implementation.
+
