@@ -34,6 +34,8 @@ test('invalid or missing snapshots and capture values are safe', () => {
   for (const value of [undefined, null, [], 'bad', 4, { view: 'unknown' }, { view: 'submit', submitStep: 'bad' }]) {
     assert.deepEqual(restoreNavigation(value), empty)
   }
+  assert.deepEqual(restoreNavigation({ view: 'detail', submitStep: 'bad' }),
+    { view: 'detail', browse: null, submitStep: null })
   const valid = context()
   const invalid = [null, {}, { ...valid, viewport: null },
     { ...valid, listOffset: -1 }, { ...valid, listOffset: Infinity },

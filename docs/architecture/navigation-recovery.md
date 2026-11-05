@@ -23,7 +23,8 @@ limits or a default map location.
 
 `restoreNavigation` accepts an unknown history-like snapshot and returns a new
 state. Missing or invalid browse context becomes null, an unrecognized view or
-invalid submit step falls back to Browse, and unknown fields are discarded.
+a Submit view with an invalid step falls back to Browse, and unknown fields are
+discarded. Steps on other views are reset to null.
 Consumers should handle a null browse context without assuming a previous
 viewport exists. The model stores no idea identifier, text, identity, credentials,
 or private draft content.
