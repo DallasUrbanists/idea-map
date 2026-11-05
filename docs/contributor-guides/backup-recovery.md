@@ -344,6 +344,10 @@ generation again, failing if the observed inventory changes.
 Matching listings do not prove that no objects were missed, stop writers or
 lifecycle actions, or make a later deletion safe. Independently fence those
 changes and revalidate any generation immediately before an authorized action.
+Although [Cloud Storage object listing is strongly consistent](https://cloud.google.com/storage/docs/consistency),
+a [page token resumes after the last listed object](https://cloud.google.com/storage/docs/json_api/v1/objects/list):
+an object created behind the cursor can be absent from the remaining pages.
+Two scans can therefore match while a concurrent write is missed by both.
 Bucket verification and all listings share a 60-second deadline.
 The deadline stops waiting but does not cancel a storage SDK request already in
 flight; monitor stalled requests and process termination separately. The plan
