@@ -19,7 +19,7 @@ after(() => {
   else process.env.STORAGE_EMULATOR_HOST = originalEmulator
 })
 
-function fake({ wrongChecksum = false, missingHeader = false, failWrite = false, missingHold = false } = {}) {
+function fake({ wrongChecksum = false, missingHeader = false, failWrite = false, missingHold = false, changeHoldDuringRead = false, stallMetadata = false } = {}) {
   const objects = new Map()
   let reads = 0
   const storage = { bucket(name) { return {
@@ -38,11 +38,19 @@ function fake({ wrongChecksum = false, missingHeader = false, failWrite = false,
             if (failWrite || objects.has(path)) return callback(new Error('synthetic private provider failure'))
             const body = Buffer.concat(chunks), crc = new CRC32C()
             crc.update(body)
-            file.metadata = { name: path, generation: '90071992547409931234', size: String(body.length),
+            file.metadata = { name: path, bucket: name, generation: '90071992547409931234', metageneration: '1', size: String(body.length),
               crc32c: wrongChecksum ? 'AAAAAA==' : crc.toString(), temporaryHold: !missingHold }
             objects.set(path, { body, metadata: file.metadata })
             callback()
           } })
+      }, async getMetadata() {
+        if (stallMetadata) return new Promise(() => {})
+        const object = objects.get(path)
+        const request = file.interceptors[0].request({ uri: '/synthetic', qs: {} })
+        if (!object || request.qs.generation !== object.metadata.generation || request.qs.ifGenerationMatch !== object.metadata.generation) {
+          throw new Error('synthetic private generation failure')
+        }
+        return [{ ...object.metadata }]
       }, createReadStream() {
         reads++
         const object = objects.get(path)
@@ -51,6 +59,7 @@ function fake({ wrongChecksum = false, missingHeader = false, failWrite = false,
           throw new Error('synthetic private generation failure')
         }
         const stream = Readable.from([object.body])
+        if (changeHoldDuringRead) stream.once('end', () => { object.metadata.metageneration = '2' })
         process.nextTick(() => stream.emit('response', { toJSON: () => ({ headers: missingHeader ? {} : {
           'x-goog-stored-content-encoding': 'identity', 'x-goog-hash': `crc32c=${object.metadata.crc32c}`,
         } }) }))
@@ -84,6 +93,16 @@ test('ambiguous writes, missing checksums, and invalid inputs fail closed withou
   await assert.rejects(writeUnverifiedHeldMaterial(storage, target, artifact, Buffer.alloc(0)), /Invalid/)
   await assert.rejects(writeUnverifiedHeldMaterial(storage, target, artifact, Buffer.alloc(16 * 1024 * 1024 + 1)), /Invalid/)
   await assert.rejects(readUnverifiedHeldMaterial(storage, target, artifact, { ...saved, size: 0 }), /Invalid/)
+  const changing = fake({ changeHoldDuringRead: true })
+  const changingSaved = await writeUnverifiedHeldMaterial(changing.storage, target, artifact, contents)
+  await assert.rejects(readUnverifiedHeldMaterial(changing.storage, target, artifact, changingSaved), /could not be verified/)
+  const missing = fake()
+  const missingSaved = await writeUnverifiedHeldMaterial(missing.storage, target, artifact, contents)
+  missing.objects.get(`idea-map-v2/dev/held-material/${artifact}.bin`).metadata.temporaryHold = false
+  await assert.rejects(readUnverifiedHeldMaterial(missing.storage, target, artifact, missingSaved), /could not be verified/)
+  const stalled = fake({ stallMetadata: true })
+  const stalledSaved = await writeUnverifiedHeldMaterial(stalled.storage, target, artifact, contents)
+  await assert.rejects(readUnverifiedHeldMaterial(stalled.storage, target, artifact, stalledSaved, 20), /could not be verified/)
 })
 
 test('the selected bytes and reference cannot change while storage is pending', async () => {

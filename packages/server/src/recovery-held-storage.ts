@@ -44,8 +44,9 @@ function hasStoredChecksum(response: { toJSON: () => { headers: Record<string, s
  * Preserve one already-authorized, already-scoped piece of held material in
  * the existing private backup bucket with a requested temporary object hold.
  * The returned metadata confirms only the observed upload response. This unwired
- * primitive does not identify the scope, take source locks, authenticate a hold, prove complete capture,
- * manage release or expiry, or permit deletion of its source or an archive.
+ * primitive does not identify the scope, take source locks, authenticate a hold,
+ * prove complete capture, manage release or expiry, or permit deletion of its
+ * source or an archive.
  * Its caller must protect the returned reference and digest as private data.
  */
 export async function writeUnverifiedHeldMaterial(storage: Storage, target: Target, artifactId: string,
@@ -84,7 +85,7 @@ export async function writeUnverifiedHeldMaterial(storage: Storage, target: Targ
   } finally { if (timer) clearTimeout(timer) }
 }
 
-/** Read a known private artifact exactly; this does not prove scope or coverage. */
+/** Read a known private artifact and observe its hold; this does not prove scope or coverage. */
 export async function readUnverifiedHeldMaterial(storage: Storage, target: Target, artifactId: string,
   reference: { generation: string, size: number, sha256: string }, timeoutMs = 5000): Promise<Uint8Array> {
   if (!validTarget(target) || typeof artifactId !== 'string' || !recordIdPattern.test(artifactId) || artifactId[14] !== '4' ||
@@ -100,6 +101,22 @@ export async function readUnverifiedHeldMaterial(storage: Storage, target: Targe
     await verifiedBucket(storage, destination, remainingTime(deadline))
     const path = `idea-map-v2/${destination.environment}/held-material/${artifactId}.bin`
     const file = exactGenerationFile(storage, destination.bucket, path, expected.generation)
+    const heldMetadata = async () => {
+      let metadataTimer: ReturnType<typeof setTimeout> | undefined
+      try {
+        const [metadata] = await Promise.race([
+          file.getMetadata(),
+          new Promise<never>((_, reject) => { metadataTimer = setTimeout(() => reject(new Error('Held metadata timed out')), remainingTime(deadline)) }),
+        ])
+        if (metadata.name !== path || metadata.bucket !== destination.bucket || metadata.generation !== expected.generation ||
+            metadata.size !== String(expected.size) || metadata.temporaryHold !== true ||
+            typeof metadata.metageneration !== 'string' || !/^[1-9][0-9]*$/.test(metadata.metageneration)) {
+          throw new Error('Held metadata is ambiguous')
+        }
+        return metadata.metageneration
+      } finally { if (metadataTimer) clearTimeout(metadataTimer) }
+    }
+    const metageneration = await heldMetadata()
     const stream = file.createReadStream({ validation: 'crc32c', decompress: false })
     let checksumAvailable = false
     stream.on('response', (response: { toJSON: () => { headers: Record<string, string> } }) => {
@@ -119,6 +136,8 @@ export async function readUnverifiedHeldMaterial(storage: Storage, target: Targe
     if (!checksumAvailable || size !== expected.size || hash.digest('hex') !== expected.sha256) {
       throw new Error('Held material differs')
     }
+    if (timer) { clearTimeout(timer); timer = undefined }
+    if (await heldMetadata() !== metageneration) throw new Error('Held metadata changed')
     remainingTime(deadline)
     return Buffer.concat(chunks)
   } catch {

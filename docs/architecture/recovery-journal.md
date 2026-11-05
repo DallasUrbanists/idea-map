@@ -517,9 +517,12 @@ existing backup bucket under a caller-supplied UUIDv4, then read its exact gener
 and check its size and SHA-256 digest. It requests a temporary object hold in the
 create-only upload and requires the returned metadata to confirm it. A failed or
 ambiguous response can still leave a held object behind; reconcile and dispose
-of orphaned artifacts through the separately authorized retention process. The
-readback does not check that a hold remains in effect, and the upload response
-does not prove effective permissions or future protection.
+of orphaned artifacts through the separately authorized retention process. A
+read checks the exact generation's temporary hold and metageneration before and
+after downloading; a missing hold or changed metadata fails verification. These
+observations do not prove effective permissions or future protection. The
+deadline stops waiting for metadata but does not cancel an SDK request already
+in flight.
 Each artifact must contain between one byte and 16 MiB, so empty or larger
 material cannot be captured by this primitive. The caller must generate a random,
 opaque ID and keep IDs, references, hashes, and bytes private. The caller

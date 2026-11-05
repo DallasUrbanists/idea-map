@@ -160,6 +160,13 @@ try {
             entries.set(name, { body, metadata: file.metadata })
             callback()
           } })
+      }, async getMetadata() {
+        const entry = entries.get(name)
+        const request = file.interceptors[0]?.request({ uri: '/synthetic', qs: {} })
+        if (!entry || request?.qs?.generation !== entry.metadata.generation || request.qs.ifGenerationMatch !== entry.metadata.generation) {
+          throw new Error('Unexpected synthetic held metadata')
+        }
+        return [{ ...entry.metadata }]
       }, createReadStream(options) {
         const entry = entries.get(name)
         const request = file.interceptors[0]?.request({ uri: '/synthetic', qs: {} })

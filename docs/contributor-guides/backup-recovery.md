@@ -45,8 +45,9 @@ through a selected fence, rejects a deliberately missing version, identifies the
 synthetic idea for hold review, and uses the suppression primitive
 for the known removal in the isolated restore. It also stores and reads back one
 synthetic title from the later revision as a bounded held-material artifact. Its
-fake upload checks the temporary-hold request and response; it does not prove
-that a hosted hold persists or can be released safely. A
+fake upload checks the temporary-hold request and response, and readback checks
+the synthetic hold before and after download. It does not prove that a hosted
+hold persists or can be released safely. A
 synthetic manifest links that artifact to the hold and is itself referenced by a
 version-three confirmation; the rehearsal verifies the selected exact generation
 and digest. That single value is not a complete hold scope or a

@@ -34,6 +34,7 @@ test('storage client sends create-only archives, completion metadata, and held m
   const payloads = new Map()
   const errors = []
   let omitStoredEncoding = false
+  let changeHoldDuringRead = false
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, 'http://127.0.0.1')
@@ -61,13 +62,15 @@ test('storage client sends create-only archives, completion metadata, and held m
         response.setHeader('content-length', data.length)
         if (!omitStoredEncoding) response.setHeader('x-goog-stored-content-encoding', 'identity')
         response.setHeader('x-goog-hash', `crc32c=${object.crc32c}`)
+        if (changeHoldDuringRead) { object.temporaryHold = false; object.metageneration = '2' }
         response.end(data)
         return
       }
       if (request.method === 'GET' && url.pathname.startsWith(`/storage/v1/b/${target.bucket}/o/`)) {
         const name = decodeURIComponent(url.pathname.slice(`/storage/v1/b/${target.bucket}/o/`.length))
         const object = objects.get(name)
-        if (!object) throw new Error('Missing synthetic object')
+        if (!object || url.searchParams.get('generation') !== object.generation ||
+            url.searchParams.get('ifGenerationMatch') !== object.generation) throw new Error('Missing synthetic object')
         response.end(JSON.stringify(object))
         return
       }
@@ -137,13 +140,17 @@ test('storage client sends create-only archives, completion metadata, and held m
     const heldId = '77777777-7777-4777-8777-777777777777'
     const heldBytes = Buffer.from('synthetic held material')
     const held = await writeUnverifiedHeldMaterial(storage, target, heldId, heldBytes)
+    const heldName = `idea-map-v2/dev/held-material/${heldId}.bin`
     assert.equal(held.coverageVerified, false)
     assert.deepEqual(Buffer.from(await readUnverifiedHeldMaterial(storage, target, heldId, held)), heldBytes)
+    changeHoldDuringRead = true
+    await assert.rejects(readUnverifiedHeldMaterial(storage, target, heldId, held), /could not be verified/)
+    changeHoldDuringRead = false
+    objects.get(heldName).temporaryHold = true
     omitStoredEncoding = true
     await assert.rejects(readUnverifiedHeldMaterial(storage, target, heldId, held), /could not be verified/)
     omitStoredEncoding = false
     await assert.rejects(writeUnverifiedHeldMaterial(storage, target, heldId, heldBytes), /outcome is uncertain/)
-    const heldName = `idea-map-v2/dev/held-material/${heldId}.bin`
     assert.equal(objects.get(heldName).metadata, undefined)
     assert.equal(objects.get(heldName).temporaryHold, true)
     assert.equal(errors.length, 0)
