@@ -151,7 +151,7 @@ credentials, authorization, and provider data handling.
 Tests can call `fixture.controls.failNextTaskDispatches(count)` or
 `fixture.controls.failNextEmailSends(count)` on an instance returned by
 `createOfflineProviderFixtures()`. Each control replaces the remaining failure
-count with an integer from 0 through 100; zero restores success immediately.
+count with an integer from 0 through 100; zero restores default behavior immediately.
 Each selected task POST returns 503 before storing or checking its name, and
 each selected email send returns a 503 error. After the selected attempts, the
 adapters resume their default behavior. The email boundary classifies this
