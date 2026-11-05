@@ -113,6 +113,16 @@ async function settleFailedTransfer(dump, pending, timeoutMs) {
   }
 }
 
+async function verifiedBucketIdentity(bucket, destination, timeoutMs) {
+  const [metadata] = await withinProviderTimeout(() => bucket.getMetadata(), timeoutMs)
+  verifyBackupBucket(metadata, destination)
+  if (typeof metadata.generation !== 'string' || !/^[1-9][0-9]*$/.test(metadata.generation) ||
+      typeof metadata.metageneration !== 'string' || !/^[1-9][0-9]*$/.test(metadata.metageneration)) {
+    throw new Error('Backup bucket identity is ambiguous')
+  }
+  return { generation: metadata.generation, metageneration: metadata.metageneration }
+}
+
 /** Stream one dump to a daily object and a matching weekly object when requested. */
 export async function exportEncryptedBackup(config, options = {}) {
   const destination = { environment: config?.environment, bucket: config?.bucket,
@@ -138,8 +148,13 @@ export async function exportEncryptedBackup(config, options = {}) {
   const kinds = now.getUTCDay() === 1 || options.forceWeekly === true ? ['daily', 'weekly'] : ['daily']
   const paths = kinds.map(kind => `idea-map-v2/${destination.environment}/${kind}/${date}/${id}.pgdump`)
   const bucket = options.storage.bucket(destination.bucket)
-  const [metadata] = await withinProviderTimeout(() => bucket.getMetadata(), providerTimeoutMs)
-  verifyBackupBucket(metadata, destination)
+  const initialBucket = await verifiedBucketIdentity(bucket, destination, providerTimeoutMs)
+  const checkBucket = async () => {
+    const observed = await verifiedBucketIdentity(bucket, destination, providerTimeoutMs)
+    if (observed.generation !== initialBucket.generation || observed.metageneration !== initialBucket.metageneration) {
+      throw new Error('Backup bucket changed')
+    }
+  }
   const dump = start({ ...env, ...connection, PGCONNECT_TIMEOUT: '10' })
   const uploads = []
   const files = []
@@ -190,6 +205,7 @@ export async function exportEncryptedBackup(config, options = {}) {
     if (generations.length === 2 && (generations[0].size !== generations[1].size || generations[0].crc32c !== generations[1].crc32c)) {
       throw new Error('Uploaded backup copies differ')
     }
+    await checkBucket()
     const completion = { backup_version: '2', backup_started_at: now.toISOString() }
     for (let index = 0; index < kinds.length; index++) {
       for (const key of ['generation', 'size', 'crc32c']) completion[`${kinds[index]}_${key}`] = generations[index][key]
@@ -208,6 +224,7 @@ export async function exportEncryptedBackup(config, options = {}) {
         !Object.entries(completion).every(([key, value]) => Object.hasOwn(saved.metadata, key) && saved.metadata[key] === value)) {
       throw new Error('Backup completion metadata is ambiguous')
     }
+    await checkBucket()
     return { startedAt: now.toISOString(), objects: paths }
   } catch (error) {
     if (transferTimer) { clearTimeout(transferTimer); transferTimer = undefined }

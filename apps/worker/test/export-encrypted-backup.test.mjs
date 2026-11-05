@@ -7,7 +7,7 @@ import { backupConfiguration, backupConnectionEnvironment, exportEncryptedBackup
 
 const env = { BACKUP_ENVIRONMENT: 'dev', BACKUP_BUCKET: 'synthetic-private-backups', BACKUP_PROJECT_NUMBER: '123456789',
   BACKUP_DATABASE_URL: 'postgres://test:secret@example.invalid/db?sslmode=verify-full&sslrootcert=system' }
-const metadata = { name: env.BACKUP_BUCKET, projectNumber: env.BACKUP_PROJECT_NUMBER,
+const metadata = { name: env.BACKUP_BUCKET, projectNumber: env.BACKUP_PROJECT_NUMBER, generation: '11', metageneration: '1',
   iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
   versioning: { enabled: true }, softDeletePolicy: { retentionDurationSeconds: '604800' } }
 
@@ -185,6 +185,22 @@ test('an archive response without the selected bucket prevents completion', asyn
     await assert.rejects(exportEncryptedBackup(backupConfiguration(env), { storage: fake.storage, start: () => source() }))
     assert.equal(fake.manifests.length, 0)
   }
+})
+
+test('a changed bucket prevents a verified export', async () => {
+  for (const changeAt of [2, 3]) {
+    for (const field of ['generation', 'metageneration']) {
+      const fake = provider()
+      const bucket = fake.storage.bucket()
+      let reads = 0
+      bucket.getMetadata = async () => [{ ...metadata, [field]: ++reads >= changeAt ? '999' : metadata[field] }]
+      await assert.rejects(exportEncryptedBackup(backupConfiguration(env), { storage: { bucket: () => bucket }, start: () => source() }), /bucket changed/)
+      assert.equal(fake.manifests.length, changeAt === 3 ? 1 : 0) // A saved marker can outlive an uncertain response.
+    }
+  }
+  const fake = provider({ ...metadata, generation: undefined })
+  await assert.rejects(exportEncryptedBackup(backupConfiguration(env), { storage: fake.storage, start: () => source() }), /bucket identity is ambiguous/)
+  assert.equal(fake.states.length, 0)
 })
 
 test('a missed weekly copy can be recreated from one new snapshot', async () => {

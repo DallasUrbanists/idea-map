@@ -209,12 +209,16 @@ bucket and object identity, the exporter creates one zero-byte completion record
 with the archive generations, sizes, and checksums.
 The record uses a create-only precondition and requires no update to existing
 objects. The exporter checks the returned marker identity, empty-object checksum,
-and exact completion metadata before reporting success. A failed or ambiguous
-response can still leave a marker behind; review it through the authorized
+and exact completion metadata before reporting success. It also compares the
+bucket generation and metageneration before the dump, before writing the marker,
+and after the marker response. This does not verify effective IAM permissions.
+A failed or ambiguous response, including a change detected after the marker
+was written, can still leave a marker behind; review it through the authorized
 inventory process. The inventory refuses archives without a matching record,
 and weekly copies whose size or checksum differs from the daily copy. The record
-confirms the export finished; CRC32C detects accidental corruption, not
-malicious alteration. Only a restore test verifies that an archive is usable.
+records the completed uploads; it does not by itself prove that all exporter
+checks passed. CRC32C detects accidental corruption, not malicious alteration.
+Only a restore test verifies that an archive is usable.
 On an upload checksum mismatch, the Storage client attempts to delete the object.
 The intended create-only backup writer lacks delete permission, so the attempt
 must fail and the unconfirmed object can remain for separately authorized review

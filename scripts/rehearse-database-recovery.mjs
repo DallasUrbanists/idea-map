@@ -135,7 +135,7 @@ update-ca-certificates >/dev/null 2>&1`)
   await sql(source, `CREATE ROLE ${reader} NOLOGIN; CREATE ROLE ${runtime} LOGIN PASSWORD 'synthetic-runtime-only'; GRANT EXECUTE ON FUNCTION public.place_legal_hold_outcome(text,text,uuid,text,text) TO ${reader}; UPDATE public_access_gate SET is_open=true WHERE singleton=true`)
   const captured = await sql(source, `SELECT extract(epoch FROM recorded_at) * 1000 FROM synthetic_recovery_marker WHERE id='${marker}-before'`)
   const dumpStarted = Date.now()
-  const storage = { bucket: () => ({ async getMetadata() { return [{ name: 'synthetic-private-backups', projectNumber: '123456789',
+  const storage = { bucket: () => ({ async getMetadata() { return [{ name: 'synthetic-private-backups', projectNumber: '123456789', generation: '100', metageneration: '1',
     iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
     versioning: { enabled: true }, softDeletePolicy: { retentionDurationSeconds: '604800' } }] },
   file(name) {
