@@ -328,9 +328,11 @@ scheme is a design for further implementation and testing. The schema records a
 removal closure with its pending decision, but no reviewed recovery or operator
 closure workflow exists. Inserting a closure locks and closes the gate, and a
 database guard refuses to open it while any closure remains or under stronger
-transaction isolation. The read gate does not independently evaluate closure
-records, and nothing automatically reopens it. An empty ledger does not establish
-the required journal coverage or authorize access.
+transaction isolation. The read lease also checks both the gate and closure
+ledger through a restricted boolean function. Its execution privilege requires
+separate review and grant to the reader identity; absent that grant, access
+fails closed. Nothing automatically reopens the gate. An empty ledger does not
+establish the required journal coverage or authorize access.
 
 This boundary must coordinate requests already in flight, including responses
 that have read content but have not finished delivery. An unreadable or missing
@@ -344,7 +346,8 @@ independent fail-closed fence must remain in place until authorized reconciliati
 The database schema creates one `public_access_gate` row in the closed state and
 revokes table access from `PUBLIC`. The server package has a read-lease
 primitive that holds a shared transaction-scoped advisory lock and refuses a
-missing, closed, or unreadable gate. It reports a lost database connection through
+missing, closed, or unreadable gate or any recorded closure. It reports a lost
+database connection through
 an abort signal. The caller must hold the lease through delivery and stop the
 response when the signal aborts. The in-progress web guard uses this primitive for
 current idea, suggestion, and media routes. A reader periodically checks the gate

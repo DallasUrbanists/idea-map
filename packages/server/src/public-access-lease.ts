@@ -4,7 +4,7 @@ import { runtimeDatabasePool } from './runtime-database.js'
 // Transaction-scoped locks work with transaction pooling. Every guarded reader
 // and removal writer must use this same namespace before this can be relied on.
 const sharedLock = 'SELECT pg_catalog.pg_advisory_xact_lock_shared(726421, 391)'
-const accessStillValid = `SELECT (SELECT is_open FROM public.public_access_gate WHERE singleton = true) AS is_open, EXISTS (
+const accessStillValid = `SELECT public.public_access_allowed() AS is_open, EXISTS (
   SELECT 1 FROM pg_catalog.pg_locks
   WHERE locktype = 'advisory' AND database = (SELECT oid FROM pg_catalog.pg_database WHERE datname = pg_catalog.current_database())
     AND classid = 726421::oid AND objid = 391::oid AND objsubid = 2 AND mode = 'ExclusiveLock' AND NOT granted
@@ -49,7 +49,7 @@ export async function acquirePublicAccessLease(pool: pg.Pool): Promise<PublicAcc
     await client.query("SET LOCAL lock_timeout = '5s'")
     await client.query("SET LOCAL statement_timeout = '10s'")
     await client.query(sharedLock)
-    const result = await client.query<{ is_open: boolean }>('SELECT is_open FROM public.public_access_gate WHERE singleton = true')
+    const result = await client.query<{ is_open: boolean }>('SELECT public.public_access_allowed() AS is_open')
     if (controller.signal.aborted || result.rows.length !== 1 || result.rows[0]?.is_open !== true) throw new Error('Public access unavailable')
     let checking = false
     const timer = setInterval(() => {

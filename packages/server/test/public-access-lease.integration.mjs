@@ -139,6 +139,13 @@ test('independent closures serialize with opening and cannot be bypassed', async
     await assert.rejects(opening, /Public access unavailable/)
     await opener.query('ROLLBACK')
     assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
+    // Simulate a restored or otherwise inconsistent gate without leaving the
+    // synthetic database in that state after this transaction rolls back.
+    await opener.query('BEGIN')
+    await opener.query('ALTER TABLE public.public_access_gate DISABLE TRIGGER reject_open_gate_with_closures')
+    await opener.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true')
+    assert.equal((await opener.query('SELECT public.public_access_allowed() AS allowed')).rows[0].allowed, false)
+    await opener.query('ROLLBACK')
     await pool.query("INSERT INTO public.public_access_closures(kind,cause_id) VALUES ('operator',$1)", [operator])
     await pool.query("DELETE FROM public.public_access_closures WHERE kind='recovery' AND cause_id=$1", [recovery])
     await assert.rejects(pool.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true'), /Public access unavailable/)
@@ -501,13 +508,15 @@ test('a limited read role detects a waiting closer without permission to update 
     await admin.query(`CREATE ROLE "${role}" LOGIN PASSWORD 'synthetic-only'`)
     roleCreated = true
     await admin.query(`GRANT USAGE ON SCHEMA public TO "${role}"`)
-    await admin.query(`GRANT SELECT (singleton, is_open) ON public.public_access_gate TO "${role}"`)
     await admin.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true')
     const restrictedUrl = new URL(url)
     restrictedUrl.username = role
     restrictedUrl.password = 'synthetic-only'
     restricted = new pg.Pool({ connectionString: restrictedUrl.toString(), max: 1 })
     await assert.rejects(restricted.query('UPDATE public.public_access_gate SET is_open=false'), { code: '42501' })
+    await assert.rejects(acquirePublicAccessLease(restricted), /Public access unavailable/)
+    await admin.query(`GRANT EXECUTE ON FUNCTION public.public_access_allowed() TO "${role}"`)
+    await assert.rejects(restricted.query('SELECT * FROM public.public_access_closures'), { code: '42501' })
     lease = await acquirePublicAccessLease(restricted)
     writer = await admin.connect()
     await writer.query('BEGIN')
@@ -526,7 +535,7 @@ test('a limited read role detects a waiting closer without permission to update 
     if (restricted) await restricted.end()
     await admin.query('UPDATE public.public_access_gate SET is_open=false WHERE singleton=true')
     if (roleCreated) {
-      await admin.query(`REVOKE SELECT (singleton, is_open) ON public.public_access_gate FROM "${role}"`)
+      await admin.query(`REVOKE EXECUTE ON FUNCTION public.public_access_allowed() FROM "${role}"`)
       await admin.query(`REVOKE USAGE ON SCHEMA public FROM "${role}"`)
       await admin.query(`DROP ROLE "${role}"`)
     }

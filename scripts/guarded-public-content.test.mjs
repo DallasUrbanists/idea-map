@@ -7,7 +7,7 @@ import { acquirePublicAccessLease } from '../packages/server/dist/public-access-
 function fakePool() {
   const client = new EventEmitter()
   client.query = async sql => {
-    if (sql.includes('SELECT is_open FROM public.public_access_gate')) return { rows: [{ is_open: true }] }
+    if (sql.includes('public.public_access_allowed()')) return { rows: [{ is_open: true, closing: false }] }
     if (sql.includes('FROM ideas AS idea')) return { rows: [{ title: 'Synthetic title', description: 'Synthetic description' }] }
     return { rows: [] }
   }
