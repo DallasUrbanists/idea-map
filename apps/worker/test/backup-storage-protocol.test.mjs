@@ -81,14 +81,21 @@ test('storage client sends create-only archives, completion metadata, and held m
       if (!boundary) throw new Error('Missing multipart boundary')
       const chunks = []
       for await (const chunk of request) chunks.push(chunk)
-      const parts = Buffer.concat(chunks).toString('utf8').split(`--${boundary}`)
-      const section = part => {
-        const offset = part.indexOf('\r\n\r\n')
-        if (offset < 0 || !part.endsWith('\r\n')) throw new Error('Invalid multipart section')
-        return part.slice(offset + 4, -2)
+      const body = Buffer.concat(chunks)
+      const delimiter = Buffer.from(`--${boundary}`)
+      const separator = Buffer.from('\r\n\r\n')
+      const section = start => {
+        const next = body.indexOf(delimiter, start + delimiter.length)
+        const headersEnd = body.indexOf(separator, start + delimiter.length)
+        if (next < 0 || headersEnd < 0 || headersEnd >= next ||
+            body.subarray(next - 2, next).toString('ascii') !== '\r\n') throw new Error('Invalid multipart section')
+        return { data: body.subarray(headersEnd + separator.length, next - 2), next }
       }
-      const sentMetadata = JSON.parse(section(parts[1]))
-      const data = Buffer.from(section(parts[2]))
+      if (body.indexOf(delimiter) !== 0) throw new Error('Invalid multipart boundary')
+      const metadataPart = section(0)
+      const dataPart = section(metadataPart.next)
+      const sentMetadata = JSON.parse(metadataPart.data.toString('utf8'))
+      const data = dataPart.data
       const name = url.searchParams.get('name')
       if (!name) throw new Error('Unexpected object name')
       if (objects.has(name)) {
@@ -113,14 +120,15 @@ test('storage client sends create-only archives, completion metadata, and held m
   try {
     const port = server.address().port
     const storage = new Storage({ projectId: 'synthetic', apiEndpoint: `http://127.0.0.1:${port}`, useAuthWithCustomEndpoint: false, retryOptions: { autoRetry: false } })
+    const syntheticArchive = Buffer.from([0x50, 0x47, 0x44, 0x4d, 0x50, 0x00, 0x80, 0xff, 0x0d, 0x0a, 0xc3, 0x28])
     const start = () => {
-      const stdout = Readable.from(['synthetic database bytes'])
+      const stdout = Readable.from([syntheticArchive])
       return { child: { stdout, kill() {} }, done: once(stdout, 'end') }
     }
     const exported = await exportEncryptedBackup(target, { storage, start, now: new Date('2026-11-02T10:00:00.000Z') })
     assert.equal(exported.objects.length, 2)
     for (const name of exported.objects) {
-      assert.equal(payloads.get(name).toString(), 'synthetic database bytes')
+      assert.deepEqual(payloads.get(name), syntheticArchive)
       assert.equal(objects.get(name).temporaryHold, undefined)
     }
     const markers = [...objects.values()].filter(object => object.name.endsWith('.complete'))
