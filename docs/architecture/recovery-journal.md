@@ -534,8 +534,10 @@ Storage client attempts to delete the upload. A local fake denies that request
 and retains the requested hold; it does not establish actual provider permissions
 or hold enforcement. A
 read checks the exact generation's temporary hold and metageneration before and
-after downloading; a missing hold or changed metadata fails verification. These
-observations do not prove effective permissions or future protection. The
+after downloading; a missing hold or changed metadata fails verification. The
+primitive also compares the bucket generation and metageneration before and
+after each upload or read. These observations do not prove effective permissions,
+unchanged IAM policy, or future protection. The
 deadline stops waiting for metadata but does not cancel an SDK request already
 in flight.
 Each artifact must contain between one byte and 16 MiB, so empty or larger

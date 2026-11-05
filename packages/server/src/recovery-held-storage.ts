@@ -28,6 +28,10 @@ async function verifiedBucket(storage: Storage, target: Target, timeoutMs: numbe
       new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Bucket verification timed out')), timeoutMs) }),
     ])
     verifyBackupBucket(metadata, target)
+    if (typeof metadata.generation !== 'string' || !/^[1-9][0-9]*$/.test(metadata.generation) ||
+        typeof metadata.metageneration !== 'string' || !/^[1-9][0-9]*$/.test(metadata.metageneration)) {
+      throw new Error('Held material bucket identity is ambiguous')
+    }
     return { bucket, metadata }
   } finally { if (timer) clearTimeout(timer) }
 }
@@ -62,7 +66,8 @@ export async function writeUnverifiedHeldMaterial(storage: Storage, target: Targ
   const deadline = performance.now() + timeoutMs
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
-    const { bucket } = await verifiedBucket(storage, destination, remainingTime(deadline))
+    const { bucket, metadata: initialBucket } = await verifiedBucket(storage, destination, remainingTime(deadline))
+    const bucketIdentity = { generation: initialBucket.generation, metageneration: initialBucket.metageneration }
     const path = `idea-map-v2/${destination.environment}/held-material/${artifactId}.bin`
     const file = bucket.file(path)
     const remaining = remainingTime(deadline)
@@ -80,6 +85,12 @@ export async function writeUnverifiedHeldMaterial(storage: Storage, target: Targ
         saved.size !== String(bytes.length) || saved.crc32c !== checksum.toString() || saved.temporaryHold !== true) {
       throw new Error('Held material metadata is ambiguous')
     }
+    if (timer) { clearTimeout(timer); timer = undefined }
+    const { metadata: finalBucket } = await verifiedBucket(storage, destination, remainingTime(deadline))
+    if (finalBucket.generation !== bucketIdentity.generation || finalBucket.metageneration !== bucketIdentity.metageneration) {
+      throw new Error('Held material bucket changed')
+    }
+    remainingTime(deadline)
     return { generation: saved.generation, size: bytes.length, sha256, coverageVerified: false }
   } catch {
     // A failed response can still leave a private object at the provider.
@@ -100,7 +111,8 @@ export async function readUnverifiedHeldMaterial(storage: Storage, target: Targe
   const deadline = performance.now() + timeoutMs
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
-    await verifiedBucket(storage, destination, remainingTime(deadline))
+    const { metadata: initialBucket } = await verifiedBucket(storage, destination, remainingTime(deadline))
+    const bucketIdentity = { generation: initialBucket.generation, metageneration: initialBucket.metageneration }
     const path = `idea-map-v2/${destination.environment}/held-material/${artifactId}.bin`
     const file = exactGenerationFile(storage, destination.bucket, path, expected.generation)
     const heldMetadata = async () => {
@@ -141,6 +153,10 @@ export async function readUnverifiedHeldMaterial(storage: Storage, target: Targe
     }
     if (timer) { clearTimeout(timer); timer = undefined }
     if (await heldMetadata() !== metageneration) throw new Error('Held metadata changed')
+    const { metadata: finalBucket } = await verifiedBucket(storage, destination, remainingTime(deadline))
+    if (finalBucket.generation !== bucketIdentity.generation || finalBucket.metageneration !== bucketIdentity.metageneration) {
+      throw new Error('Held material bucket changed')
+    }
     remainingTime(deadline)
     return Buffer.concat(chunks)
   } catch {

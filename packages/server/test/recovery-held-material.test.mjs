@@ -19,12 +19,15 @@ after(() => {
   else process.env.STORAGE_EMULATOR_HOST = originalEmulator
 })
 
-function fake({ wrongChecksum = false, wrongBucket = false, missingMetageneration = false, missingHeader = false, failWrite = false, missingHold = false, changeHoldDuringRead = false, stallMetadata = false, delayStreamEnd = false, softDelete = '604800' } = {}) {
+function fake({ wrongChecksum = false, wrongBucket = false, missingMetageneration = false, missingHeader = false, failWrite = false, missingHold = false, changeHoldDuringRead = false, stallMetadata = false, delayStreamEnd = false, changeBucketAt = 0, changeBucketGeneration = false, missingBucketGeneration = false, softDelete = '604800' } = {}) {
   const objects = new Map()
   let reads = 0
   let metadataReads = 0
+  let bucketReads = 0
   const storage = { bucket(name) { return {
-    async getMetadata() { return [{ name, projectNumber: target.projectNumber,
+    async getMetadata() { bucketReads++; return [{ name, projectNumber: target.projectNumber,
+      generation: missingBucketGeneration ? undefined : changeBucketGeneration && changeBucketAt && bucketReads >= changeBucketAt ? '12' : '11',
+      metageneration: !changeBucketGeneration && changeBucketAt && bucketReads >= changeBucketAt ? '2' : '1',
       iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
       versioning: { enabled: true }, softDeletePolicy: { retentionDurationSeconds: softDelete } }] },
     file(path) {
@@ -91,6 +94,15 @@ test('ambiguous writes, missing checksums, and invalid inputs fail closed withou
     error => error.message === 'Held material write outcome is uncertain' && !error.message.includes('private'))
   await assert.rejects(writeUnverifiedHeldMaterial(fake({ wrongBucket: true }).storage, target, artifact, contents), /outcome is uncertain/)
   await assert.rejects(writeUnverifiedHeldMaterial(fake({ missingMetageneration: true }).storage, target, artifact, contents), /outcome is uncertain/)
+  const missingBucket = fake({ missingBucketGeneration: true })
+  await assert.rejects(writeUnverifiedHeldMaterial(missingBucket.storage, target, artifact, contents), /outcome is uncertain/)
+  assert.equal(missingBucket.objects.size, 0)
+  for (const changeBucketGeneration of [false, true]) {
+    const changedAfterWrite = fake({ changeBucketAt: 2, changeBucketGeneration })
+    await assert.rejects(writeUnverifiedHeldMaterial(changedAfterWrite.storage, target, artifact, contents), /outcome is uncertain/)
+    assert.equal(changedAfterWrite.objects.size, 1) // The held object can exist despite the uncertain result.
+    assert.equal([...changedAfterWrite.objects.values()][0].metadata.temporaryHold, true)
+  }
   await assert.rejects(writeUnverifiedHeldMaterial(fake({ failWrite: true }).storage, target, artifact, contents), /outcome is uncertain/)
   await assert.rejects(writeUnverifiedHeldMaterial(fake({ missingHold: true }).storage, target, artifact, contents), /outcome is uncertain/)
   const disabled = fake({ softDelete: '0' })
@@ -109,6 +121,11 @@ test('ambiguous writes, missing checksums, and invalid inputs fail closed withou
   const missingSaved = await writeUnverifiedHeldMaterial(missing.storage, target, artifact, contents)
   missing.objects.get(`idea-map-v2/dev/held-material/${artifact}.bin`).metadata.temporaryHold = false
   await assert.rejects(readUnverifiedHeldMaterial(missing.storage, target, artifact, missingSaved), /could not be verified/)
+  for (const changeBucketGeneration of [false, true]) {
+    const changedDuringRead = fake({ changeBucketAt: 4, changeBucketGeneration })
+    const changedSaved = await writeUnverifiedHeldMaterial(changedDuringRead.storage, target, artifact, contents)
+    await assert.rejects(readUnverifiedHeldMaterial(changedDuringRead.storage, target, artifact, changedSaved), /could not be verified/)
+  }
   const stalled = fake({ stallMetadata: true })
   const stalledSaved = await writeUnverifiedHeldMaterial(stalled.storage, target, artifact, contents)
   await assert.rejects(readUnverifiedHeldMaterial(stalled.storage, target, artifact, stalledSaved, 20), /could not be verified/)
