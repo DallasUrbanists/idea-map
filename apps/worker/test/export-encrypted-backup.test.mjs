@@ -240,6 +240,35 @@ test('a stalled archive upload is destroyed and never creates a completion marke
   assert.equal(fake.manifests.length, 0)
 })
 
+test('a stuck dump cannot prevent a transfer timeout from completing', { timeout: 2000 }, async () => {
+  for (const stdout of [new Readable({ read() {} }), Readable.from(['synthetic partial dump'])]) {
+    const fake = provider()
+    const signals = []
+    let unreferenced = false
+    const dump = { child: { stdout, kill(signal) { signals.push(signal) }, unref() { unreferenced = true } },
+      done: new Promise(() => {}) }
+    await assert.rejects(exportEncryptedBackup(backupConfiguration(env), { storage: fake.storage,
+      transferTimeoutMs: 20, cleanupTimeoutMs: 20, start: () => dump }), /transfer timed out/)
+    assert.ok(signals.includes('SIGTERM'))
+    assert.equal(signals.at(-1), 'SIGKILL')
+    assert.equal(unreferenced, true)
+    assert.equal(stdout.destroyed, true)
+    assert.ok(fake.states.every(state => state.destroyed && !state.finalized))
+    assert.equal(fake.manifests.length, 0)
+  }
+})
+
+test('a stuck dump cannot prevent cleanup after upload setup fails', { timeout: 2000 }, async () => {
+  const signals = []
+  const stdout = new Readable({ read() {} })
+  const dump = { child: { stdout, kill(signal) { signals.push(signal) }, unref() {} }, done: new Promise(() => {}) }
+  const bucket = { async getMetadata() { return [metadata] }, file() { throw new Error('Synthetic setup failure') } }
+  await assert.rejects(exportEncryptedBackup(backupConfiguration(env), { storage: { bucket: () => bucket },
+    cleanupTimeoutMs: 20, start: () => dump }), /Synthetic setup failure/)
+  assert.deepEqual(signals, ['SIGTERM', 'SIGKILL'])
+  assert.equal(stdout.destroyed, true)
+})
+
 test('different archive metadata prevents a completion record', async () => {
   const { storage, manifests } = provider(metadata, false, false, true)
   await assert.rejects(exportEncryptedBackup(backupConfiguration(env), { storage, now: new Date('2026-11-02T10:00:00Z'), start: () => source() }))

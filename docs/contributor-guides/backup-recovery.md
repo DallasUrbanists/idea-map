@@ -222,9 +222,11 @@ and cleanup. Verify effective permissions before relying on this boundary.
 Bucket metadata and completion-record requests each have a 15-second wait
 limit. The limit does not cancel an SDK request already in flight; it can still
 finish after the exporter reports failure. Review the outcome before retrying.
-The dump and uploads share a 30-minute transfer limit that stops the child and
-destroys the streams on timeout. Provider requests can still finish ambiguously;
-the separate hosted job timeout remains necessary.
+The dump and uploads share a 30-minute transfer limit. On failure, the exporter
+requests child termination, destroys the upload streams, and waits up to five
+seconds for cleanup before requesting a forced kill and closing its pipes. A
+provider request can still finish ambiguously, and process termination is not
+guaranteed; the separate hosted job timeout remains necessary.
 If an entire week's copy is missing, an authorized operator can rerun the
 command with `--weekly` to write both classes from one new snapshot. This does
 not reconstruct an earlier point in time.
