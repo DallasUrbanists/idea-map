@@ -3,7 +3,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { Readable, Writable } from 'node:stream'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { backupConfiguration, exportEncryptedBackup, startDump, verifyBackupBucket } from '../ops/export-encrypted-backup.mjs'
+import { backupConfiguration, backupConnectionEnvironment, exportEncryptedBackup, startDump, verifyBackupBucket } from '../ops/export-encrypted-backup.mjs'
 
 const env = { BACKUP_ENVIRONMENT: 'dev', BACKUP_BUCKET: 'synthetic-private-backups', BACKUP_PROJECT_NUMBER: '123456789',
   BACKUP_DATABASE_URL: 'postgres://test:secret@example.invalid/db?sslmode=verify-full&sslrootcert=system' }
@@ -15,6 +15,9 @@ test('backup configuration requires direct verified TLS and a hosted production 
   assert.equal(backupConfiguration(env).environment, 'dev')
   assert.equal(backupConfiguration({ ...env, BACKUP_DATABASE_URL: `${env.BACKUP_DATABASE_URL}&gssencmode=disable` }).environment, 'dev')
   assert.equal(backupConfiguration({ ...env, BACKUP_DATABASE_URL: 'postgres://test@[::1]/db?sslmode=verify-full&sslrootcert=system' }).environment, 'dev')
+  assert.deepEqual(backupConnectionEnvironment('postgres://user%40test:p%3Ass@[::1]:5433/data%23set?sslmode=verify-full&sslrootcert=system&channel_binding=require'),
+    { PGHOST: '::1', PGDATABASE: 'data#set', PGPORT: '5433', PGUSER: 'user@test', PGPASSWORD: 'p:ss',
+      PGSSLMODE: 'verify-full', PGSSLROOTCERT: 'system', PGGSSENCMODE: 'disable', PGCHANNELBINDING: 'require' })
   for (const change of [
     { BACKUP_ENVIRONMENT: 'v1' }, { BACKUP_BUCKET: 'gs://wrong' }, { BACKUP_PROJECT_NUMBER: 'bad' },
     { STORAGE_EMULATOR_HOST: '' }, { STORAGE_EMULATOR_HOST: 'http://127.0.0.1:8080' },
@@ -26,6 +29,11 @@ test('backup configuration requires direct verified TLS and a hosted production 
     { BACKUP_DATABASE_URL: 'postgres://%2Ftmp/db?sslmode=verify-full&sslrootcert=system' },
     { BACKUP_DATABASE_URL: 'postgres://example.invalid,other.invalid/db?sslmode=verify-full&sslrootcert=system' },
     { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&sslmode=disable' },
+    { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system#&sslmode=disable' },
+    { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system#' },
+    { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&options=-c%20role%3Dother' },
+    { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&channel_binding=disable' },
+    { BACKUP_DATABASE_URL: 'postgres://test:p%00ass@example.invalid/db?sslmode=verify-full&sslrootcert=system' },
     { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&host=other.invalid' },
     { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&ssl=true' },
     { BACKUP_DATABASE_URL: 'postgres://example.invalid/db?sslmode=verify-full&sslrootcert=system&dbname=other' },
@@ -103,10 +111,16 @@ test('one completed Monday dump finalizes identical daily and weekly uploads', a
   let childEnv
   let dumps = 0
   const result = await exportEncryptedBackup(backupConfiguration(env), { storage, now: new Date('2026-11-02T10:00:00Z'), start: pgEnv => { childEnv = pgEnv; dumps++; return source() } })
-  assert.equal(childEnv.PGDATABASE, env.BACKUP_DATABASE_URL)
+  assert.equal(childEnv.PGDATABASE, 'db')
+  assert.equal(childEnv.PGHOST, 'example.invalid')
+  assert.equal(childEnv.PGUSER, 'test')
+  assert.equal(childEnv.PGPASSWORD, 'secret')
+  assert.equal(childEnv.PGSSLMODE, 'verify-full')
+  assert.equal(childEnv.PGSSLROOTCERT, 'system')
   assert.equal(childEnv.BACKUP_DATABASE_URL, undefined)
   assert.equal(childEnv.PGGSSENCMODE, 'disable')
-  assert.ok(Object.keys(childEnv).every(key => ['PATH', 'SystemRoot', 'WINDIR', 'PGDATABASE', 'PGCONNECT_TIMEOUT', 'PGGSSENCMODE'].includes(key)))
+  assert.ok(Object.keys(childEnv).every(key => ['PATH', 'SystemRoot', 'WINDIR', 'PGHOST', 'PGPORT', 'PGUSER', 'PGPASSWORD', 'PGDATABASE',
+    'PGSSLMODE', 'PGSSLROOTCERT', 'PGCHANNELBINDING', 'PGCONNECT_TIMEOUT', 'PGGSSENCMODE'].includes(key)))
   assert.equal(dumps, 1)
   assert.equal(states.length, 2)
   for (const state of states) {

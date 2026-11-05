@@ -127,12 +127,21 @@ try {
     return file
   } }) }
   const startSyntheticDump = childEnv => {
-    if (childEnv.PGDATABASE !== databaseUrl) throw new Error('Unexpected synthetic source')
-    const process = start('docker', ['exec', container, 'pg_dump', '-U', 'idea_map', ...dumpArguments, source])
+    if (childEnv.PGDATABASE !== source || childEnv.PGHOST !== '127.0.0.1' || childEnv.PGPORT !== port ||
+        childEnv.PGUSER !== 'idea_map' || childEnv.PGPASSWORD !== 'synthetic-local-only' ||
+        childEnv.PGSSLMODE !== 'verify-full' || childEnv.PGSSLROOTCERT !== 'system') throw new Error('Unexpected synthetic source')
+    // The synthetic database is local to this disposable container and has no
+    // TLS setup. Use the parsed connection fields, overriding only its port and
+    // TLS mode for this local fixture; hosted exports still require verified TLS.
+    const process = start('docker', ['exec', '-e', `PGHOST=${childEnv.PGHOST}`, '-e', 'PGPORT=5432',
+      '-e', `PGUSER=${childEnv.PGUSER}`, '-e', `PGPASSWORD=${childEnv.PGPASSWORD}`,
+      '-e', `PGDATABASE=${childEnv.PGDATABASE}`, '-e', 'PGSSLMODE=disable', '-e', 'PGGSSENCMODE=disable',
+      container, 'pg_dump', ...dumpArguments])
     process.child.stdin.end()
     return process
   }
-  await exportEncryptedBackup({ environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789', databaseUrl },
+  await exportEncryptedBackup({ environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789',
+    databaseUrl: `${databaseUrl}?sslmode=verify-full&sslrootcert=system` },
     { start: startSyntheticDump, storage, now: new Date('2026-11-03T00:00:00Z') })
   const backupFinished = Date.now()
   // Model the missing-gate condition of an older archive. This is not a full

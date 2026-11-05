@@ -16,6 +16,40 @@ export function backupTarget(env) {
   return { environment: env.BACKUP_ENVIRONMENT, bucket: env.BACKUP_BUCKET, projectNumber: env.BACKUP_PROJECT_NUMBER }
 }
 
+/** Translate a verified connection URL into individual libpq environment fields. */
+export function backupConnectionEnvironment(databaseUrl) {
+  if (typeof databaseUrl !== 'string' || databaseUrl.includes('#')) throw new Error('Invalid backup configuration')
+  let url
+  try { url = new URL(databaseUrl) } catch { throw new Error('Invalid backup configuration') }
+  const host = url.hostname
+  const dnsName = /^(?=.{1,254}$)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.?$/i.test(host) &&
+    host.replace(/\.$/, '').split('.').every(label => label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label))
+  const ipv6 = host.startsWith('[') && host.endsWith(']') && isIP(host.slice(1, -1)) === 6
+  const allowed = new Set(['sslmode', 'sslrootcert', 'gssencmode', 'channel_binding'])
+  if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.hostname || !url.pathname || url.pathname === '/' || url.hash ||
+      (!dnsName && !ipv6) || host.toLowerCase().includes('-pooler.') || url.searchParams.get('sslmode') !== 'verify-full' ||
+      url.searchParams.get('sslrootcert') !== 'system' ||
+      [...url.searchParams.keys()].some(key => !allowed.has(key)) ||
+      ['sslmode', 'sslrootcert'].some(key => url.searchParams.getAll(key).length !== 1) ||
+      url.searchParams.getAll('gssencmode').length > 1 ||
+      (url.searchParams.has('gssencmode') && url.searchParams.get('gssencmode') !== 'disable') ||
+      url.searchParams.getAll('channel_binding').length > 1 ||
+      (url.searchParams.has('channel_binding') && !['require', 'prefer'].includes(url.searchParams.get('channel_binding')))) {
+    throw new Error('Invalid backup configuration')
+  }
+  let database, user, password
+  try {
+    database = decodeURIComponent(url.pathname.slice(1))
+    user = decodeURIComponent(url.username)
+    password = decodeURIComponent(url.password)
+  } catch { throw new Error('Invalid backup configuration') }
+  if (!database || [database, user, password].some(value => /[\x00-\x1f\x7f]/u.test(value))) throw new Error('Invalid backup configuration')
+  return { PGHOST: ipv6 ? host.slice(1, -1) : host, PGDATABASE: database,
+    ...(url.port ? { PGPORT: url.port } : {}), ...(user ? { PGUSER: user } : {}), ...(password ? { PGPASSWORD: password } : {}),
+    PGSSLMODE: 'verify-full', PGSSLROOTCERT: 'system', PGGSSENCMODE: 'disable',
+    ...(url.searchParams.has('channel_binding') ? { PGCHANNELBINDING: url.searchParams.get('channel_binding') } : {}) }
+}
+
 // Production exports run in the hosted backup job, never on a local machine.
 export function backupConfiguration(env) {
   const target = backupTarget(env)
@@ -23,21 +57,7 @@ export function backupConfiguration(env) {
       (!/^idea-map-backup-[a-z0-9-]+$/.test(env.CLOUD_RUN_JOB ?? '') || !env.CLOUD_RUN_EXECUTION)) {
     throw new Error('Invalid backup configuration')
   }
-  let url
-  try { url = new URL(env.BACKUP_DATABASE_URL) } catch { throw new Error('Invalid backup configuration') }
-  const host = url.hostname
-  const dnsName = /^(?=.{1,254}$)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.?$/i.test(host) &&
-    host.replace(/\.$/, '').split('.').every(label => label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label))
-  const ipv6 = host.startsWith('[') && host.endsWith(']') && isIP(host.slice(1, -1)) === 6
-  if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.hostname || !url.pathname || url.pathname === '/' ||
-      (!dnsName && !ipv6) || host.toLowerCase().includes('-pooler.') || url.searchParams.get('sslmode') !== 'verify-full' ||
-      url.searchParams.get('sslrootcert') !== 'system' ||
-      ['host', 'hostaddr', 'port', 'user', 'password', 'dbname', 'service', 'ssl', 'requiressl', 'sslkeylogfile'].some(key => url.searchParams.has(key)) ||
-      ['sslmode', 'sslrootcert'].some(key => url.searchParams.getAll(key).length !== 1) ||
-      url.searchParams.getAll('gssencmode').length > 1 ||
-      (url.searchParams.has('gssencmode') && url.searchParams.get('gssencmode') !== 'disable')) {
-    throw new Error('Invalid backup configuration')
-  }
+  backupConnectionEnvironment(env.BACKUP_DATABASE_URL)
   return { ...target, databaseUrl: env.BACKUP_DATABASE_URL }
 }
 
@@ -80,6 +100,7 @@ export async function exportEncryptedBackup(config, options = {}) {
   if (!Number.isInteger(providerTimeoutMs) || providerTimeoutMs < 1 || providerTimeoutMs > 15_000) throw new Error('Invalid backup timeout')
   const transferTimeoutMs = options.transferTimeoutMs ?? 30 * 60 * 1000
   if (!Number.isInteger(transferTimeoutMs) || transferTimeoutMs < 1 || transferTimeoutMs > 30 * 60 * 1000) throw new Error('Invalid backup timeout')
+  const connection = backupConnectionEnvironment(config.databaseUrl)
   const date = now.toISOString().slice(0, 10)
   const id = randomUUID()
   const kinds = now.getUTCDay() === 1 || options.forceWeekly === true ? ['daily', 'weekly'] : ['daily']
@@ -87,7 +108,7 @@ export async function exportEncryptedBackup(config, options = {}) {
   const bucket = options.storage.bucket(config.bucket)
   const [metadata] = await withinProviderTimeout(() => bucket.getMetadata(), providerTimeoutMs)
   verifyBackupBucket(metadata, config)
-  const dump = (options.start ?? startDump)({ ...env, PGDATABASE: config.databaseUrl, PGCONNECT_TIMEOUT: '10', PGGSSENCMODE: 'disable' })
+  const dump = (options.start ?? startDump)({ ...env, ...connection, PGCONNECT_TIMEOUT: '10' })
   const uploads = []
   const files = []
   try {

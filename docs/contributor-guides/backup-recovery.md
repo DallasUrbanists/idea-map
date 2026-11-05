@@ -29,9 +29,11 @@ pnpm test:recovery-rehearsal
 ```
 
 The rehearsal creates a uniquely named PostGIS container, binds an automatically
-assigned loopback port, and migrates a synthetic database. It streams one archive
-through the export pipeline to a local storage fake, then restores it into a
-separate empty database. It verifies the synthetic idea, PostGIS, migrations,
+assigned loopback port, and migrates a synthetic database. It uses the parsed
+libpq connection fields for its local dump, with TLS disabled only for that
+disposable fixture; it does not test the hosted TLS connection. It streams one
+archive through the export pipeline to a local storage fake, then restores it
+into a separate empty database. It verifies the synthetic idea, PostGIS, migrations,
 and the absence of a record inserted after the snapshot. It also withdraws a
 synthetic approved idea, adds a later revision, and places a synthetic legal
 hold after the export. The older isolated restore still contains the previously
@@ -144,13 +146,14 @@ separate synthetic rehearsal or provider fake for local tests.
 
 Specify the database, one unescaped DNS or IP host, port, user, and password in
 the URL's main connection fields. The exporter rejects encoded hosts, Unix
-socket paths, host lists, pooled endpoints, and query parameters that override those
-fields and the `ssl` compatibility alias, which libpq can translate into a
-weaker SSL mode. With the required system trust setting, libpq rejects that
-weaker mode rather than connecting. The exporter also rejects duplicate TLS
-settings and TLS key logging. It disables GSS encryption for the dump so
-[libpq](https://www.postgresql.org/docs/current/libpq-connect.html) uses the
-required certificate-verified TLS instead. Verify the intended
+socket paths, host lists, pooled endpoints, and query parameters that override
+those fields. It accepts only `sslmode`, `sslrootcert`, an optional
+`gssencmode=disable`, and an optional `channel_binding=require` or `prefer`;
+it rejects duplicate settings and URL fragments. The exporter decodes the URL
+and passes its connection fields to `pg_dump` as separate libpq environment
+variables, keeping credentials out of command arguments. It disables GSS
+encryption for the dump so [libpq](https://www.postgresql.org/docs/current/libpq-connect.html)
+uses the required certificate-verified TLS instead. Verify the intended
 project, branch, role, and database separately; URL validation does not prove
 their identity.
 

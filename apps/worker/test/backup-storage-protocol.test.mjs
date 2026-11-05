@@ -10,7 +10,8 @@ import { readUnverifiedHeldMaterial, writeUnverifiedHeldMaterial } from '../../.
 
 const require = createRequire(import.meta.url)
 const { Storage } = require('@google-cloud/storage')
-const target = { environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789', databaseUrl: 'synthetic-only' }
+const target = { environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789',
+  databaseUrl: 'postgres://synthetic:synthetic@example.invalid/db?sslmode=verify-full&sslrootcert=system' }
 const created = '2026-11-02T10:01:00.000Z'
 
 // Independent checksum for the fake server's synthetic bytes.
