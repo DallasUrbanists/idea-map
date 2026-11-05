@@ -9,6 +9,7 @@ The following contents links navigate within this guide:
 - [Prepare the snapshot](#prepare-the-snapshot)
 - [Interpret the snapshot](#interpret-the-snapshot)
 - [Inspect the provider queue](#inspect-the-provider-queue)
+- [Prepare a development notification channel](#prepare-a-development-notification-channel)
 - [Prepare scheduled collection](#prepare-scheduled-collection)
 - [Inspect provider metrics](#inspect-provider-metrics)
 - [Review costs across providers](#review-costs-across-providers)
@@ -113,6 +114,31 @@ a transactional snapshot and can change while pages are read, so these values
 are estimates. The reader rejects malformed or non-normalized provider timestamps
 rather than interpreting an ambiguous page as healthy. A healthy result does not
 prove task delivery or configure an alert. Review collection limits and provider metrics before scheduling it.
+
+## Prepare a development notification channel
+
+The foundation has an optional development-only email channel for synthetic
+monitoring. It is disabled by default and does not attach itself to any alert.
+Before planning it, inspect existing notification channels and their ownership so
+the foundation does not duplicate a channel owned elsewhere. Confirm the exact
+development project, recipient, state backend, and cleanup plan. Channel creation
+or notification delivery requires explicit authorization; choosing a recipient
+alone does not authorize either action.
+
+Set `enable_development_email_channel` and supply
+`development_notification_email` using an approved private variable mechanism.
+Do not commit the address or expose it in public logs. Terraform treats the input
+as sensitive, but its state and the monitoring service still contain the address;
+restrict their access and review the plan's redaction before using it. Review a
+credentialed plan and obtain authorization before applying it. The option is
+rejected in production, and the channel cannot be forcibly deleted while in use.
+
+After an approved creation, retrieve `development_email_channel_name` from the
+same authorized state and add that resource name to the separately reviewed
+`monitoring_notification_channels` input for chosen alerts. Creating a channel
+does not establish verification, successful delivery, or alert behavior. Test
+synthetic delivery only after separate approval, and review dependent alert
+policies before any authorized cleanup.
 
 ## Prepare scheduled collection
 
