@@ -72,6 +72,18 @@ test('queue snapshot preserves sub-millisecond observation boundaries', async ()
   assert.equal(result.oldest_due_seconds, null)
 })
 
+test('queue snapshot retains a supplied observation time across provider waits', async () => {
+  const selected = new Date(now)
+  const transport = { async request() {
+    selected.setUTCFullYear(2040)
+    return { status: 200, data: { tasks: [{ createTime: '2026-11-03T11:00:00Z', scheduleTime: '2026-11-03T11:30:00Z' }] } }
+  } }
+  const result = await readQueueSnapshot(transport, queue, selected)
+  assert.equal(result.observed_at, now.toISOString())
+  assert.equal(result.oldest_seconds, 3600)
+  await assert.rejects(readQueueSnapshot(transport, queue, new Date('invalid')), /Invalid queue snapshot target/)
+})
+
 test('queue snapshot times out even when the transport ignores its abort signal', async () => {
   let signal
   const transport = { request(_method, _path, _body, received) {

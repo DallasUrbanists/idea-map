@@ -19,9 +19,11 @@ function providerTimestamp(value: unknown): { floor: number, ceiling: number } {
 
 /** Estimate queue age without requesting or returning task bodies or identifiers. */
 export async function readQueueSnapshot(transport: TaskTransport, queue: string, now?: Date, timeoutMs = 30_000) {
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000 || !/^projects\/[a-z0-9-]+\/locations\/[a-z0-9-]+\/queues\/[a-zA-Z0-9_-]+$/.test(queue) || (now && !Number.isFinite(now.getTime()))) {
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000 || !/^projects\/[a-z0-9-]+\/locations\/[a-z0-9-]+\/queues\/[a-zA-Z0-9_-]+$/.test(queue) ||
+      (now !== undefined && (!(now instanceof Date) || !Number.isFinite(now.getTime())))) {
     throw new Error('Invalid queue snapshot target')
   }
+  const selectedTime = now === undefined ? undefined : new Date(now.getTime())
   const tokens = new Set<string>()
   let token = ''
   let count = 0
@@ -65,7 +67,7 @@ export async function readQueueSnapshot(transport: TaskTransport, queue: string,
   } finally {
     if (timer) clearTimeout(timer)
   }
-  const observed = now ?? new Date()
+  const observed = selectedTime ?? new Date()
   if (latestCreated !== null && latestCreated > observed.getTime()) throw new Error('Queue timestamps are invalid')
   const dueSchedules = schedules.filter(scheduled => scheduled.ceiling <= observed.getTime())
   const oldestDue = dueSchedules.reduce<number | null>((oldest, scheduled) => oldest === null ? scheduled.floor : Math.min(oldest, scheduled.floor), null)
