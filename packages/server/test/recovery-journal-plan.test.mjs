@@ -107,6 +107,11 @@ test('hold evidence identifies the original authority and placement time for rev
     placementAuthorityId: authority, placedAt, authorityEvidence: assignment }])
   assert.deepEqual(result.reviewOperations, [operation(1)])
   assert.equal(result.coverageVerified, false)
+  const sameMillisecond = encodeRecoveryHoldConfirmation(operation(1), 'dev', '2026-11-03T12:00:00.123Z',
+    holdId, authority, placedAt, assignment)
+  const ambiguousTime = summarizeUnverifiedRecovery([intent(1, hold), sameMillisecond], 'dev')
+  assert.deepEqual(ambiguousTime.reviewOperations, [operation(1)])
+  assert.equal(ambiguousTime.coverageVerified, false)
   const premature = encodeRecoveryHoldConfirmation(operation(1), 'dev', '2026-11-03T12:01:00.000Z', holdId, authority, '2026-11-03T11:59:59.999999Z', assignment)
   assert.throws(() => summarizeUnverifiedRecovery([intent(1, hold), premature], 'dev'), /ambiguous/)
   const wrongActor = encodeRecoveryHoldConfirmation(operation(1), 'dev', '2026-11-03T12:01:00.000Z',

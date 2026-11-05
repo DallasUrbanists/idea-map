@@ -225,7 +225,11 @@ The summary rejects an assignment actor that differs from the intent and
 conflicting immutable facts for the same assignment ID across holds. An action's
 authorization reference and its assignment's delegation reference can differ;
 both require authorized review. These records do not independently authenticate
-the person, the written delegation, or the stored facts. A version-one confirmation does not
+the person, the written delegation, or the stored facts. A confirmation time has
+millisecond precision while placement time has microsecond precision, so times
+within the same millisecond cannot independently establish their ordering. Review
+the committed transaction evidence instead of inferring order from those values.
+A version-one confirmation does not
 contain these fields.
 Preserve and verify the necessary authorization and referenced records through a
 reviewed recovery design; do not synthesize an assignment or substitute a new
