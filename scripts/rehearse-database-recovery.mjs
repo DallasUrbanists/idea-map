@@ -11,9 +11,10 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { dumpArguments, exportEncryptedBackup } from '../apps/worker/ops/export-encrypted-backup.mjs'
 import { decodeRecoveryRecord, encodeRecoveryHoldManifestConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../packages/server/dist/recovery-journal-record.js'
 import { encodeRecoverySequenceEntry } from '../packages/server/dist/recovery-sequence.js'
+import { unverifiedRolloverCheckpoint } from '../packages/server/dist/recovery-sequence-rollover.js'
 import { encodeUnverifiedHeldManifest } from '../packages/server/dist/recovery-held-manifest.js'
 import { verifySequenceHeldCaptures, verifyUnverifiedHeldCapture } from '../packages/server/dist/recovery-held-verification.js'
-import { suppressKnownRemovalsFromSequence, suppressUnverifiedRestoredRemovals } from '../packages/server/dist/recovery-suppression.js'
+import { suppressKnownRemovalsFromRollover, suppressKnownRemovalsFromSequence, suppressUnverifiedRestoredRemovals } from '../packages/server/dist/recovery-suppression.js'
 import { appendAndVerifyRecoverySequenceVersion, readUnverifiedRecoverySequence } from '../packages/server/dist/recovery-sequence-storage.js'
 import { writeUnverifiedHeldMaterial } from '../packages/server/dist/recovery-held-storage.js'
 import { acquirePublicAccessLease } from '../packages/server/dist/public-access-lease.js'
@@ -479,6 +480,33 @@ update-ca-certificates >/dev/null 2>&1`)
       catch (error) { rejectedMissingVersion = error.message === 'Recovery sequence could not be verified' }
       finally { omitSequenceVersion = false }
       if (!rejectedMissingVersion || (await sql(target, visibleQuery)) !== '1') throw new Error('Synthetic sequence accepted a missing version')
+      const previous = { ...sequenceTarget, fenceVersion: sequenceFenceVersion, fenceNonce: sequenceFenceNonce }
+      const checkpoint = unverifiedRolloverCheckpoint(previous, frames.map((payload, index) => ({ version: String(index + 1), payload })))
+      const next = { ...sequenceTarget, secretId: 'synthetic-recovery-successor', epochId: randomUUID(), fenceVersion: '3', fenceNonce: randomUUID() }
+      const nextBase = { environment: next.environment, epochId: next.epochId }
+      const nextOperation = randomUUID()
+      const nextIntent = encodeRecoveryIntent({ ...base, ideaId: randomUUID(), operationId: nextOperation,
+        decision: { kind: 'removal', classification: 'other', reason: 'synthetic uncertain removal' } })
+      const nextFrames = [encodeRecoverySequenceEntry({ ...nextBase, kind: 'baseline', checkpointDigest: checkpoint.checkpointDigest }),
+        encodeRecoverySequenceEntry({ ...nextBase, kind: 'decision', recordId: nextOperation, data: Buffer.from(nextIntent).toString('base64') }),
+        encodeRecoverySequenceEntry({ ...nextBase, kind: 'fence', nonce: next.fenceNonce })].map(payload => Buffer.from(payload))
+      const nextParent = `projects/${next.projectNumber}/secrets/${next.secretId}`
+      const nextReader = { async request(method, path) {
+        const match = new RegExp(`^${nextParent}/versions/([1-9][0-9]*):access$`).exec(path)
+        if (method !== 'GET' || !match) throw new Error('Unexpected synthetic successor read')
+        const bytes = nextFrames[Number(match[1]) - 1]
+        if (!bytes) return { status: 404, data: null }
+        const checksum = new CRC32C(); checksum.update(bytes)
+        return { status: 200, data: { name: `${nextParent}/versions/${match[1]}`, payload: {
+          data: bytes.toString('base64'), dataCrc32c: String(Buffer.from(checksum.toString(), 'base64').readUInt32BE(0)),
+        } } }
+      } }
+      const rollover = await suppressKnownRemovalsFromRollover(sequenceReader, previous, nextReader, next, recoveryPool)
+      if (JSON.stringify(rollover) !== JSON.stringify({ matched: 1, absent: 1, reviewOperations: 2,
+        coverageVerified: false, earlierEpochsIncluded: false }) || (await sql(target, visibleQuery)) !== '0') {
+        throw new Error('Synthetic rollover did not suppress known removals')
+      }
+      await sql(target, `UPDATE ideas SET publication_state='approved' WHERE id='${ideaId}'; UPDATE media_previews SET published=true WHERE id='${previewId}'`)
       const coordinated = await suppressKnownRemovalsFromSequence(sequenceReader, sequenceTarget, sequenceFenceVersion, sequenceFenceNonce, recoveryPool)
       if (JSON.stringify(coordinated) !== JSON.stringify({ matched: 1, absent: 0, reviewOperations: 1, coverageVerified: false }) ||
           (await sql(target, visibleQuery)) !== '0') throw new Error('Synthetic inventory did not suppress the restored removal')

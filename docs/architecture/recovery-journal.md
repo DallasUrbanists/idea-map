@@ -190,6 +190,11 @@ does not perform rollover or solve the 10,000-version boundary by itself.
 An unwired reader can retrieve the supplied epochs by exact version number under
 one deadline before comparing that link. A missing or unreadable version rejects
 the read; its private output likewise does not establish authenticated coverage.
+An unwired coordinator can pass known removal intents from those two epochs to
+the existing suppression function on an independently isolated restore. Its
+result still excludes earlier epochs and does not restore held material or prove
+coverage. The read deadline does not bound the database connection or transaction;
+the latter has separate database lock and statement timeouts.
 
 Review the expected number of enabled and disabled Secret Manager versions,
 retries, service quotas, retention and safe rollover before provisioning. Do not

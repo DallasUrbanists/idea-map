@@ -1,6 +1,8 @@
 import type pg from 'pg'
 import { summarizeUnverifiedRecovery } from './recovery-journal-plan.js'
 import { readUnverifiedRecoverySequence, type RecoverySequenceTransport } from './recovery-sequence-storage.js'
+import { readUnverifiedSequenceRollover } from './recovery-sequence-rollover-storage.js'
+import type { RolloverDescriptor } from './recovery-sequence-rollover.js'
 
 /**
  * Suppress every known removal intent on an independently isolated restore.
@@ -45,4 +47,18 @@ export async function suppressKnownRemovalsFromSequence(reader: RecoverySequence
   const destination = { ...target }
   const inventory = await readUnverifiedRecoverySequence(reader, destination, fenceVersion, fenceNonce, timeoutMs)
   return suppressUnverifiedRestoredRemovals(pool, inventory.records.map(record => record.payload), destination.environment)
+}
+
+/**
+ * Suppress known removals from two linked, independently isolated epochs.
+ * Earlier epochs, writer coverage, the traffic fence and holds still require
+ * independent verification. The timeout bounds journal reads, not the database.
+ */
+export async function suppressKnownRemovalsFromRollover(previousReader: RecoverySequenceTransport, previous: RolloverDescriptor,
+  nextReader: RecoverySequenceTransport, next: RolloverDescriptor, pool: pg.Pool, timeoutMs = 120_000) {
+  if (!previous || !next) throw new Error('Invalid rollover request')
+  const old = { ...previous }, successor = { ...next }
+  const inventory = await readUnverifiedSequenceRollover(previousReader, old, nextReader, successor, timeoutMs)
+  const result = await suppressUnverifiedRestoredRemovals(pool, inventory.records.map(record => record.payload), old.environment)
+  return { ...result, earlierEpochsIncluded: false as const }
 }

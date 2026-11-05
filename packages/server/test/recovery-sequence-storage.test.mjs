@@ -6,7 +6,7 @@ import { encodeRecoverySequenceEntry } from '../dist/recovery-sequence.js'
 import { appendAndVerifyRecoverySequenceVersion, appendRecoverySequenceVersion, inspectRecoverySequenceVersionOutsideScanLimit, readRecoverySequenceVersion, readUnverifiedRecoverySequence, readUnverifiedRecoverySequenceFrames } from '../dist/recovery-sequence-storage.js'
 import { unverifiedRolloverCheckpoint } from '../dist/recovery-sequence-rollover.js'
 import { readUnverifiedSequenceRollover } from '../dist/recovery-sequence-rollover-storage.js'
-import { suppressKnownRemovalsFromSequence } from '../dist/recovery-suppression.js'
+import { suppressKnownRemovalsFromRollover, suppressKnownRemovalsFromSequence } from '../dist/recovery-suppression.js'
 
 const target = { environment: 'dev', epochId: '11111111-1111-4111-8111-111111111111',
   projectNumber: '123456789', secretId: 'synthetic-recovery-sequence' }
@@ -101,9 +101,28 @@ test('rollover reads both exact sequences and retains unresolved removals withou
   assert.deepEqual(result.summary.removals, ['44444444-4444-4444-8444-444444444444', nextIdea])
   assert.equal(result.records.length, 2)
   assert.ok([...old.calls, ...successor.calls].filter(call => call.method === 'GET').every(call => !call.path.includes('latest')))
+  const calls = []
+  const client = { async query(statement, parameters) {
+    calls.push({ statement, parameters })
+    return { rows: statement.startsWith('SELECT * FROM public.suppress_restored_removals') ? [{ matched: 2, absent: 0 }] : [] }
+  }, release() {} }
+  const mutableForSuppression = { ...previous }
+  const changingForSuppression = { async request(...args) {
+    mutableForSuppression.environment = 'prod'; mutableForSuppression.secretId = 'changed-old'
+    return old.transport.request(...args)
+  } }
+  const suppressed = await suppressKnownRemovalsFromRollover(changingForSuppression, mutableForSuppression,
+    successor.transport, next, { async connect() { return client } })
+  assert.deepEqual(suppressed, { matched: 2, absent: 0, reviewOperations: 2, coverageVerified: false, earlierEpochsIncluded: false })
+  assert.deepEqual(calls.find(call => call.parameters)?.parameters, [['44444444-4444-4444-8444-444444444444', nextIdea]])
+  assert.doesNotMatch(JSON.stringify(suppressed), /synthetic|44444444|aaaaaaaa/)
   successor.versions[1] = undefined
   await assert.rejects(readUnverifiedSequenceRollover(old.transport, previous, successor.transport, next), error =>
     error.message === 'Rollover sequence could not be verified' && !error.message.includes('private'))
+  let connected = false
+  await assert.rejects(suppressKnownRemovalsFromRollover(old.transport, previous, successor.transport, next,
+    { async connect() { connected = true; throw new Error('unexpected database access') } }), /could not be verified/)
+  assert.equal(connected, false)
 })
 
 test('rollover validates both targets before reading and shares one bounded deadline', async () => {
