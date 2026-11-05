@@ -4,7 +4,7 @@ import { summarizeUnverifiedRecovery } from './recovery-journal-plan.js'
 import { matchUnverifiedHeldManifest } from './recovery-held-manifest.js'
 import { readUnverifiedHeldMaterial } from './recovery-held-storage.js'
 import { readUnverifiedRecoverySequence, type RecoverySequenceTransport } from './recovery-sequence-storage.js'
-import { readUnverifiedSequenceRollover } from './recovery-sequence-rollover-storage.js'
+import { readUnverifiedSequenceChain, readUnverifiedSequenceRollover, type SequenceReaderEpoch } from './recovery-sequence-rollover-storage.js'
 import type { RolloverDescriptor } from './recovery-sequence-rollover.js'
 
 type Target = { environment: 'dev' | 'prod', bucket: string, projectNumber: string }
@@ -128,5 +128,25 @@ export async function verifyRolloverHeldCaptures(previousReader: RecoverySequenc
     const inventory = await readUnverifiedSequenceRollover(previousReader, old, nextReader, successor, remaining())
     const result = await verifyInventoryHeldCaptures(inventory, old.environment, storage, destination, remaining)
     return { ...result, earlierEpochsIncluded: false as const }
+  } catch { throw new Error('Held capture inventory could not be verified') }
+}
+
+/** Verify only selected captures in a bounded supplied chain; earlier history remains unverified. */
+export async function verifySequenceChainHeldCaptures(epochs: SequenceReaderEpoch[], storage: Storage, heldTarget: Target, timeoutMs = 120_000) {
+  const environment = epochs?.[0]?.descriptor?.environment
+  if (!heldTarget || (environment !== 'dev' && environment !== 'prod') || environment !== heldTarget.environment ||
+      !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 120_000) {
+    throw new Error('Invalid held capture')
+  }
+  const destination = { ...heldTarget }, deadline = performance.now() + timeoutMs
+  const remaining = () => {
+    const value = Math.ceil(deadline - performance.now())
+    if (value < 1) throw new Error('Held capture verification timed out')
+    return value
+  }
+  try {
+    const inventory = await readUnverifiedSequenceChain(epochs, remaining())
+    const result = await verifyInventoryHeldCaptures(inventory, environment, storage, destination, remaining)
+    return { ...result, epochCount: inventory.epochCount, earlierEpochsIncluded: false as const }
   } catch { throw new Error('Held capture inventory could not be verified') }
 }

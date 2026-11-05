@@ -13,8 +13,8 @@ import { decodeRecoveryRecord, encodeRecoveryHoldManifestConfirmation, encodeRec
 import { encodeRecoverySequenceEntry } from '../packages/server/dist/recovery-sequence.js'
 import { unverifiedRolloverCheckpoint } from '../packages/server/dist/recovery-sequence-rollover.js'
 import { encodeUnverifiedHeldManifest } from '../packages/server/dist/recovery-held-manifest.js'
-import { verifyRolloverHeldCaptures, verifySequenceHeldCaptures, verifyUnverifiedHeldCapture } from '../packages/server/dist/recovery-held-verification.js'
-import { suppressKnownRemovalsFromRollover, suppressKnownRemovalsFromSequence, suppressUnverifiedRestoredRemovals } from '../packages/server/dist/recovery-suppression.js'
+import { verifyRolloverHeldCaptures, verifySequenceChainHeldCaptures, verifySequenceHeldCaptures, verifyUnverifiedHeldCapture } from '../packages/server/dist/recovery-held-verification.js'
+import { suppressKnownRemovalsFromRollover, suppressKnownRemovalsFromSequence, suppressKnownRemovalsFromSequenceChain, suppressUnverifiedRestoredRemovals } from '../packages/server/dist/recovery-suppression.js'
 import { appendAndVerifyRecoverySequenceVersion, readUnverifiedRecoverySequence } from '../packages/server/dist/recovery-sequence-storage.js'
 import { writeUnverifiedHeldMaterial } from '../packages/server/dist/recovery-held-storage.js'
 import { acquirePublicAccessLease } from '../packages/server/dist/public-access-lease.js'
@@ -490,17 +490,18 @@ update-ca-certificates >/dev/null 2>&1`)
       const nextFrames = [encodeRecoverySequenceEntry({ ...nextBase, kind: 'baseline', checkpointDigest: checkpoint.checkpointDigest }),
         encodeRecoverySequenceEntry({ ...nextBase, kind: 'decision', recordId: nextOperation, data: Buffer.from(nextIntent).toString('base64') }),
         encodeRecoverySequenceEntry({ ...nextBase, kind: 'fence', nonce: next.fenceNonce })].map(payload => Buffer.from(payload))
-      const nextParent = `projects/${next.projectNumber}/secrets/${next.secretId}`
-      const nextReader = { async request(method, path) {
-        const match = new RegExp(`^${nextParent}/versions/([1-9][0-9]*):access$`).exec(path)
+      const readerFor = (descriptor, source) => ({ async request(method, path) {
+        const parent = `projects/${descriptor.projectNumber}/secrets/${descriptor.secretId}`
+        const match = new RegExp(`^${parent}/versions/([1-9][0-9]*):access$`).exec(path)
         if (method !== 'GET' || !match) throw new Error('Unexpected synthetic successor read')
-        const bytes = nextFrames[Number(match[1]) - 1]
+        const bytes = source[Number(match[1]) - 1]
         if (!bytes) return { status: 404, data: null }
         const checksum = new CRC32C(); checksum.update(bytes)
-        return { status: 200, data: { name: `${nextParent}/versions/${match[1]}`, payload: {
+        return { status: 200, data: { name: `${parent}/versions/${match[1]}`, payload: {
           data: bytes.toString('base64'), dataCrc32c: String(Buffer.from(checksum.toString(), 'base64').readUInt32BE(0)),
         } } }
-      } }
+      } })
+      const nextReader = readerFor(next, nextFrames)
       const rollover = await suppressKnownRemovalsFromRollover(sequenceReader, previous, nextReader, next, recoveryPool)
       if (JSON.stringify(rollover) !== JSON.stringify({ matched: 1, absent: 1, reviewOperations: 2,
         coverageVerified: false, earlierEpochsIncluded: false }) || (await sql(target, visibleQuery)) !== '0') {
@@ -511,6 +512,25 @@ update-ca-certificates >/dev/null 2>&1`)
         totalBytes: heldReference.size + manifestReference.size, incompletePlacements: 0, reviewOperations: 2,
         unmatchedConfirmations: 0, coverageVerified: false, authorityVerified: false, earlierEpochsIncluded: false })) {
         throw new Error('Synthetic rollover held-material readback failed')
+      }
+      await sql(target, `UPDATE ideas SET publication_state='approved' WHERE id='${ideaId}'; UPDATE media_previews SET published=true WHERE id='${previewId}'`)
+      const nextCheckpoint = unverifiedRolloverCheckpoint(next, nextFrames.map((payload, index) => ({ version: String(index + 1), payload })))
+      const third = { ...next, secretId: 'synthetic-recovery-third', epochId: randomUUID(), fenceVersion: '2', fenceNonce: randomUUID() }
+      const thirdBase = { environment: third.environment, epochId: third.epochId }
+      const thirdFrames = [encodeRecoverySequenceEntry({ ...thirdBase, kind: 'baseline', checkpointDigest: nextCheckpoint.checkpointDigest }),
+        encodeRecoverySequenceEntry({ ...thirdBase, kind: 'fence', nonce: third.fenceNonce })].map(payload => Buffer.from(payload))
+      const chain = [{ reader: sequenceReader, descriptor: previous }, { reader: nextReader, descriptor: next },
+        { reader: readerFor(third, thirdFrames), descriptor: third }]
+      const chainSuppression = await suppressKnownRemovalsFromSequenceChain(chain, recoveryPool)
+      if (JSON.stringify(chainSuppression) !== JSON.stringify({ matched: 1, absent: 1, reviewOperations: 2,
+        coverageVerified: false, epochCount: 3, earlierEpochsIncluded: false }) || (await sql(target, visibleQuery)) !== '0') {
+        throw new Error('Synthetic chain did not suppress known removals')
+      }
+      const heldChain = await verifySequenceChainHeldCaptures(chain, journal, journalTarget)
+      if (JSON.stringify(heldChain) !== JSON.stringify({ checkedCaptures: 1, checkedArtifacts: 1,
+        totalBytes: heldReference.size + manifestReference.size, incompletePlacements: 0, reviewOperations: 2,
+        unmatchedConfirmations: 0, coverageVerified: false, authorityVerified: false, epochCount: 3, earlierEpochsIncluded: false })) {
+        throw new Error('Synthetic chain held-material readback failed')
       }
       await sql(target, `UPDATE ideas SET publication_state='approved' WHERE id='${ideaId}'; UPDATE media_previews SET published=true WHERE id='${previewId}'`)
       const coordinated = await suppressKnownRemovalsFromSequence(sequenceReader, sequenceTarget, sequenceFenceVersion, sequenceFenceNonce, recoveryPool)

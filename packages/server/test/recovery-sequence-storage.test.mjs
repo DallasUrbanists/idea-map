@@ -5,8 +5,8 @@ import { encodeRecoveryIntent } from '../dist/recovery-journal-record.js'
 import { encodeRecoverySequenceEntry } from '../dist/recovery-sequence.js'
 import { appendAndVerifyRecoverySequenceVersion, appendRecoverySequenceVersion, inspectRecoverySequenceVersionOutsideScanLimit, readRecoverySequenceVersion, readUnverifiedRecoverySequence, readUnverifiedRecoverySequenceFrames } from '../dist/recovery-sequence-storage.js'
 import { unverifiedRolloverCheckpoint } from '../dist/recovery-sequence-rollover.js'
-import { readUnverifiedSequenceRollover } from '../dist/recovery-sequence-rollover-storage.js'
-import { suppressKnownRemovalsFromRollover, suppressKnownRemovalsFromSequence } from '../dist/recovery-suppression.js'
+import { readUnverifiedSequenceChain, readUnverifiedSequenceRollover } from '../dist/recovery-sequence-rollover-storage.js'
+import { suppressKnownRemovalsFromRollover, suppressKnownRemovalsFromSequence, suppressKnownRemovalsFromSequenceChain } from '../dist/recovery-suppression.js'
 
 const target = { environment: 'dev', epochId: '11111111-1111-4111-8111-111111111111',
   projectNumber: '123456789', secretId: 'synthetic-recovery-sequence' }
@@ -101,11 +101,45 @@ test('rollover reads both exact sequences and retains unresolved removals withou
   assert.deepEqual(result.summary.removals, ['44444444-4444-4444-8444-444444444444', nextIdea])
   assert.equal(result.records.length, 2)
   assert.ok([...old.calls, ...successor.calls].filter(call => call.method === 'GET').every(call => !call.path.includes('latest')))
+  const secondRead = await readUnverifiedRecoverySequenceFrames(successor.transport, next, next.fenceVersion, next.fenceNonce)
+  const secondCheckpoint = unverifiedRolloverCheckpoint(next, secondRead.frames)
+  const third = { ...next, epochId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', secretId: 'synthetic-third',
+    fenceVersion: '2', fenceNonce: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' }
+  const thirdSource = fake(third)
+  const thirdBase = { environment: 'dev', epochId: third.epochId }
+  for (const bytes of [encodeRecoverySequenceEntry({ ...thirdBase, kind: 'baseline', checkpointDigest: secondCheckpoint.checkpointDigest }),
+    encodeRecoverySequenceEntry({ ...thirdBase, kind: 'fence', nonce: third.fenceNonce })]) {
+    await appendRecoverySequenceVersion(thirdSource.transport, third, bytes)
+  }
+  const chain = [{ reader: old.transport, descriptor: previous }, { reader: successor.transport, descriptor: next },
+    { reader: thirdSource.transport, descriptor: third }]
+  const chainResult = await readUnverifiedSequenceChain(chain)
+  assert.equal(chainResult.epochCount, 3)
+  assert.equal(chainResult.earlierEpochsIncluded, false)
+  assert.equal(chainResult.coverageVerified, false)
+  assert.deepEqual(chainResult.summary.removals, ['44444444-4444-4444-8444-444444444444', nextIdea])
+  const beforeInvalid = old.calls.length
+  await assert.rejects(readUnverifiedSequenceChain([chain[0], chain[1],
+    { ...chain[2], descriptor: { ...third, secretId: previous.secretId } }]), /Invalid rollover request/)
+  assert.equal(old.calls.length, beforeInvalid)
+  const thirdFence = thirdSource.versions[1]
+  thirdSource.versions[1] = undefined
+  await assert.rejects(readUnverifiedSequenceChain(chain), /could not be verified/)
+  thirdSource.versions[1] = thirdFence
   const calls = []
   const client = { async query(statement, parameters) {
     calls.push({ statement, parameters })
     return { rows: statement.startsWith('SELECT * FROM public.suppress_restored_removals') ? [{ matched: 2, absent: 0 }] : [] }
   }, release() {} }
+  assert.deepEqual(await suppressKnownRemovalsFromSequenceChain(chain, { async connect() { return client } }),
+    { matched: 2, absent: 0, reviewOperations: 2, coverageVerified: false, epochCount: 3, earlierEpochsIncluded: false })
+  assert.deepEqual(calls.find(call => call.parameters)?.parameters, [['44444444-4444-4444-8444-444444444444', nextIdea]])
+  calls.length = 0
+  thirdSource.versions[1] = undefined
+  let chainConnected = false
+  await assert.rejects(suppressKnownRemovalsFromSequenceChain(chain,
+    { async connect() { chainConnected = true; throw new Error('unexpected database access') } }), /could not be verified/)
+  assert.equal(chainConnected, false)
   const mutableForSuppression = { ...previous }
   const changingForSuppression = { async request(...args) {
     mutableForSuppression.environment = 'prod'; mutableForSuppression.secretId = 'changed-old'

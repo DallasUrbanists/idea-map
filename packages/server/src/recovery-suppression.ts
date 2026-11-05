@@ -1,7 +1,7 @@
 import type pg from 'pg'
 import { summarizeUnverifiedRecovery } from './recovery-journal-plan.js'
 import { readUnverifiedRecoverySequence, type RecoverySequenceTransport } from './recovery-sequence-storage.js'
-import { readUnverifiedSequenceRollover } from './recovery-sequence-rollover-storage.js'
+import { readUnverifiedSequenceChain, readUnverifiedSequenceRollover, type SequenceReaderEpoch } from './recovery-sequence-rollover-storage.js'
 import type { RolloverDescriptor } from './recovery-sequence-rollover.js'
 
 /**
@@ -61,4 +61,13 @@ export async function suppressKnownRemovalsFromRollover(previousReader: Recovery
   const inventory = await readUnverifiedSequenceRollover(previousReader, old, nextReader, successor, timeoutMs)
   const result = await suppressUnverifiedRestoredRemovals(pool, inventory.records.map(record => record.payload), old.environment)
   return { ...result, earlierEpochsIncluded: false as const }
+}
+
+/** Suppress only the supplied chain's known removals on an independently isolated restore. */
+export async function suppressKnownRemovalsFromSequenceChain(epochs: SequenceReaderEpoch[], pool: pg.Pool, timeoutMs = 120_000) {
+  const environment = epochs?.[0]?.descriptor?.environment
+  if (environment !== 'dev' && environment !== 'prod') throw new Error('Invalid rollover request')
+  const inventory = await readUnverifiedSequenceChain(epochs, timeoutMs)
+  const result = await suppressUnverifiedRestoredRemovals(pool, inventory.records.map(record => record.payload), environment)
+  return { ...result, epochCount: inventory.epochCount, earlierEpochsIncluded: false as const }
 }

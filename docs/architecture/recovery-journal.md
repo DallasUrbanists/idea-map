@@ -191,16 +191,17 @@ An offline comparison can also combine two to eight supplied epochs, up to
 64 MiB of framed data in total, while retaining the same unverified status. It
 rejects repeated secret or epoch IDs and checks every adjacent checkpoint; it
 does not discover earlier epochs or prove the first supplied baseline.
-An unwired reader can retrieve two supplied epochs by exact version number under
-one deadline before comparing that link. A missing or unreadable version rejects
-the read; its private output likewise does not establish authenticated coverage.
-An unwired coordinator can pass known removal intents from those two epochs to
+An unwired reader can retrieve up to eight supplied epochs by exact version
+number under one deadline before comparing the links. A missing or unreadable
+version rejects the read; its private output likewise does not establish
+authenticated coverage.
+An unwired coordinator can pass known removal intents from a supplied chain to
 the existing suppression function on an independently isolated restore. Its
 result still excludes earlier epochs and does not restore held material or prove
 coverage. The read deadline does not bound the database connection or transaction;
 the latter has separate database lock and statement timeouts.
-Another unwired verifier can check selected held artifacts named by those two
-epochs, including an intent and confirmation split across the boundary. It still
+Another unwired verifier can check selected held artifacts named by the supplied
+chain, including an intent and confirmation split across a boundary. It still
 reports authority and coverage as unverified and excludes earlier epochs; a
 missing version or held artifact rejects the check.
 

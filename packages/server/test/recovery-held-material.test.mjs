@@ -8,7 +8,7 @@ import { encodeUnverifiedHeldManifest } from '../dist/recovery-held-manifest.js'
 import { encodeRecoveryHoldManifestConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
 import { encodeRecoverySequenceEntry } from '../dist/recovery-sequence.js'
 import { unverifiedRolloverCheckpoint } from '../dist/recovery-sequence-rollover.js'
-import { verifyRolloverHeldCaptures, verifySequenceHeldCaptures, verifyUnverifiedHeldCapture } from '../dist/recovery-held-verification.js'
+import { verifyRolloverHeldCaptures, verifySequenceChainHeldCaptures, verifySequenceHeldCaptures, verifyUnverifiedHeldCapture } from '../dist/recovery-held-verification.js'
 
 const target = { environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789' }
 const artifact = '11111111-1111-4111-8111-111111111111'
@@ -229,9 +229,21 @@ test('verification reads every selected generation but never asserts hold covera
   assert.deepEqual(await verifyRolloverHeldCaptures(previousReader, previous, nextReader, next, storage, target),
     { checkedCaptures: 1, checkedArtifacts: 2, totalBytes: manifest.length + contents.length + secondBytes.length, incompletePlacements: 0,
       reviewOperations: 1, unmatchedConfirmations: 0, coverageVerified: false, authorityVerified: false, earlierEpochsIncluded: false })
+  const nextCheckpoint = unverifiedRolloverCheckpoint(next, nextEntries.map((payload, index) => ({ version: String(index + 1), payload })))
+  const third = { ...next, secretId: 'synthetic-third', epochId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    fenceVersion: '2', fenceNonce: 'ffffffff-ffff-4fff-8fff-ffffffffffff' }
+  const thirdBase = { environment: 'dev', epochId: third.epochId }
+  const thirdEntries = [encodeRecoverySequenceEntry({ ...thirdBase, kind: 'baseline', checkpointDigest: nextCheckpoint.checkpointDigest }),
+    encodeRecoverySequenceEntry({ ...thirdBase, kind: 'fence', nonce: third.fenceNonce })]
+  const chain = [{ reader: previousReader, descriptor: previous }, { reader: nextReader, descriptor: next },
+    { reader: readerFor(third, thirdEntries), descriptor: third }]
+  assert.deepEqual(await verifySequenceChainHeldCaptures(chain, storage, target),
+    { checkedCaptures: 1, checkedArtifacts: 2, totalBytes: manifest.length + contents.length + secondBytes.length, incompletePlacements: 0,
+      reviewOperations: 1, unmatchedConfirmations: 0, coverageVerified: false, authorityVerified: false, epochCount: 3, earlierEpochsIncluded: false })
   const beforeMissing = reads()
   nextEntries[1] = undefined
   await assert.rejects(verifyRolloverHeldCaptures(previousReader, previous, nextReader, next, storage, target), /could not be verified/)
+  await assert.rejects(verifySequenceChainHeldCaptures(chain, storage, target), /could not be verified/)
   assert.equal(reads(), beforeMissing)
   const mediaPath = `idea-map-v2/dev/held-material/${secondId}.bin`
   objects.get(mediaPath).body = Buffer.alloc(secondBytes.length, 1)
