@@ -111,7 +111,8 @@ export function confirmCompletedExports(objects, environment, now, bucketIdentit
           archive.generation !== meta[`${kind}_generation`] || archive.size !== meta[`${kind}_size`] || archive.crc32c !== meta[`${kind}_crc32c`]) {
         throw new Error('Backup archive differs from its completion record')
       }
-      confirmed.push({ ...archive, metadata: { ...archive.metadata, backup_started_at: startedAt } })
+      confirmed.push({ ...archive, bucketIdentityVerified: !legacy,
+        metadata: { ...archive.metadata, backup_started_at: startedAt } })
     }
     if (group.weekly && !hasWeekly) throw new Error('Unexpected weekly backup')
     if (!group.daily && !group.weekly) orphanCompletions++
@@ -215,10 +216,11 @@ export async function inspectBackupRetention(storage, target, now, options = {})
     [...live, ...pending, ...completions, ...pendingCompletions], target.environment, now, bucketIdentity)
   const liveNames = new Set(live.map(object => object.name))
   const confirmedLive = confirmed.filter(object => liveNames.has(object.name))
+  const verifiedLive = confirmedLive.filter(object => object.bucketIdentityVerified)
   const plan = planBackupRetention({ environment: target.environment, complete: true, objects: confirmedLive, now })
-  const latestDaily = confirmedLive.reduce((latest, object) => object.name.startsWith(`${prefix}daily/`)
+  const latestDaily = verifiedLive.reduce((latest, object) => object.name.startsWith(`${prefix}daily/`)
     ? Math.max(latest, Date.parse(object.metadata.backup_started_at)) : latest, -Infinity)
-  const latestWeekly = confirmedLive.reduce((latest, object) => object.name.startsWith(`${prefix}weekly/`)
+  const latestWeekly = verifiedLive.reduce((latest, object) => object.name.startsWith(`${prefix}weekly/`)
     ? Math.max(latest, Date.parse(object.metadata.backup_started_at)) : latest, -Infinity)
   const evaluatedAt = fixedTime ? now : new Date()
   const latestDailyAgeSeconds = Number.isFinite(latestDaily) ? (evaluatedAt.getTime() - latestDaily) / 1000 : null

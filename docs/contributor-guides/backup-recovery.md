@@ -367,9 +367,10 @@ change also requires separate review. Older version-two markers lack those
 values: `legacyCompletions` counts them, requires review, and prevents a verified
 retention result or deletion candidates. Do not delete or rewrite older records
 solely to make the inventory pass; reconcile their archives independently.
-`latestDailyAgeSeconds` and `latestWeeklyAgeSeconds`
-measure the ages of the latest confirmed exports from their conservative start
-times. `dailyFreshEnough` and `weeklyFreshEnough` are false when the respective
+`latestDailyAgeSeconds` and `latestWeeklyAgeSeconds` measure the ages of the
+latest exports with matching version-three markers from their conservative start
+times. Older markers do not establish freshness. `dailyFreshEnough` and
+`weeklyFreshEnough` are false when the respective
 export is absent or older than 24 hours or seven days. The command then proposes
 no candidates and exits nonzero. These conservative limits can signal a gap
 during a delayed run. This diagnostic does not schedule checks or send alerts.

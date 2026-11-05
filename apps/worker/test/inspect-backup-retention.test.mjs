@@ -246,11 +246,40 @@ test('legacy markers remain visible but cannot establish a verified retention pl
   const objects = records.map(item => item === marker ? { ...item, metadata: legacyMetadata } : item)
   const bucket = { async getMetadata() { return [metadata] },
     async getFiles(query) { return [query.softDeleted ? [] : objects.map(item => ({ metadata: item })), null] } }
-  const result = await inspectBackupRetention(storageFor(bucket), target, now)
+  const result = await inspectBackupRetention(storageFor(bucket), target, new Date(now.getTime() + 1))
   assert.equal(result.legacyCompletions, 1)
   assert.equal(result.retentionSatisfied, false)
   assert.equal(result.reviewRequired, true)
+  assert.equal(result.dailyFreshEnough, false)
+  assert.equal(result.latestDailyAgeSeconds, 86_400.001)
   assert.deepEqual(result.candidates, [])
+  const weeklyMarker = records.find(item => item.name.includes('/completion/') && item.metadata.weekly_generation)
+  const legacyWeekly = { ...weeklyMarker.metadata, backup_version: '2' }
+  delete legacyWeekly.bucket_generation
+  delete legacyWeekly.bucket_metageneration
+  const weeklyObjects = records.map(item => item === weeklyMarker ? { ...item, metadata: legacyWeekly } : item)
+  bucket.getFiles = async query => [query.softDeleted ? [] : weeklyObjects.map(item => ({ metadata: item })), null]
+  const weeklyResult = await inspectBackupRetention(storageFor(bucket), target, now)
+  assert.equal(weeklyResult.legacyCompletions, 1)
+  assert.equal(weeklyResult.weeklyFreshEnough, false)
+  assert.ok(weeklyResult.latestWeeklyAgeSeconds > 7 * 86_400)
+  assert.deepEqual(weeklyResult.candidates, [])
+  const allLegacy = records.map(item => {
+    if (!item.name.includes('/completion/')) return item
+    const oldMetadata = { ...item.metadata, backup_version: '2' }
+    delete oldMetadata.bucket_generation
+    delete oldMetadata.bucket_metageneration
+    return { ...item, metadata: oldMetadata }
+  })
+  bucket.getFiles = async query => [query.softDeleted ? [] : allLegacy.map(item => ({ metadata: item })), null]
+  const legacyOnly = await inspectBackupRetention(storageFor(bucket), target, now)
+  assert.equal(legacyOnly.latestDailyAgeSeconds, null)
+  assert.equal(legacyOnly.latestWeeklyAgeSeconds, null)
+  assert.equal(legacyOnly.dailyFreshEnough, false)
+  assert.equal(legacyOnly.weeklyFreshEnough, false)
+  assert.equal(legacyOnly.retentionSatisfied, false)
+  assert.equal(legacyOnly.reviewRequired, true)
+  assert.deepEqual(legacyOnly.candidates, [])
 })
 
 test('an old completion record can outlive its archive without being counted as a backup', async () => {
