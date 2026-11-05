@@ -259,7 +259,9 @@ It revokes the synthetic reader's function grant while a lease is active and
 checks that both the active lease and a subsequent lease fail closed.
 It separately grants a synthetic role the close-only recovery function and
 checks that retries are idempotent and that the role cannot remove a cause or
-open the gate. This local test does not authorize any hosted role grant.
+open the gate. A second synthetic role checks the exact committed cause without
+receiving permission to place one. This local test does not authorize any hosted
+role grant.
 It also uses fake journal writer and reader interfaces to check that a completed
 write, an ambiguous write, a rejected retry, and a matching read leave the gate
 closed. A synthetic coordinator role tests a verified pending removal, reader

@@ -337,6 +337,13 @@
       "when": 1793851952010,
       "tag": "0047_place_independent_access_closure",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1793852222611,
+      "tag": "0048_inspect_independent_access_closure",
+      "breakpoints": true
     }
   ]
 }

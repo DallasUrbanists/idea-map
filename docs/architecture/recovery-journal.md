@@ -329,8 +329,12 @@ removal closure with its pending decision, but no reviewed recovery or operator
 closure workflow exists. An unwired database function can only add a recovery or
 operator closure and close the gate; its execution privilege is revoked from
 `PUBLIC`. Review the operator identity, grant, audit evidence and independent
-traffic fence before relying on it. Inserting a closure locks and closes the
-gate, and a database guard refuses to open it while any closure remains or under stronger
+traffic fence before relying on it. A separately granted read-only function can
+check a known recovery or operator cause and the closed gate after an uncertain
+commit. Its result is a point-in-time database observation; it does not prove
+the traffic fence, journal coverage, or permission to reopen. Inserting a
+closure locks and closes the gate, and a database guard refuses to open it while
+any closure remains or under stronger
 transaction isolation. The guard also refuses to open while any pending decision
 remains, including when its closure record is missing. The read lease checks the
 gate, closure ledger, and pending decisions through a restricted boolean

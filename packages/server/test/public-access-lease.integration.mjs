@@ -167,9 +167,11 @@ test('independent closures serialize with opening and cannot be bypassed', async
 test('a separately granted closure capability can close but never reopen access', async () => {
   const admin = new pg.Pool({ connectionString: url.toString(), max: 3, connectionTimeoutMillis: 2000 })
   const role = `gate_closer_${randomUUID().replaceAll('-', '')}`
+  const inspectorRole = `gate_inspector_${randomUUID().replaceAll('-', '')}`
   const recovery = randomUUID(), operator = randomUUID()
   const closureSql = 'SELECT public.place_independent_access_closure($1,$2)'
-  let restricted, lease, roleCreated = false
+  const inspectSql = 'SELECT public.inspect_independent_access_closure($1,$2) AS confirmed'
+  let restricted, inspector, lease, roleCreated = false, inspectorCreated = false
   try {
     await admin.query(`CREATE ROLE "${role}" LOGIN PASSWORD 'synthetic-only'`); roleCreated = true
     await admin.query(`GRANT USAGE ON SCHEMA public TO "${role}"`)
@@ -178,6 +180,16 @@ test('a separately granted closure capability can close but never reopen access'
     restricted = new pg.Pool({ connectionString: restrictedUrl.toString(), max: 1 })
     await assert.rejects(restricted.query(closureSql, ['recovery', recovery]), { code: '42501' })
     await admin.query(`GRANT EXECUTE ON FUNCTION public.place_independent_access_closure(text,uuid) TO "${role}"`)
+    await assert.rejects(restricted.query(inspectSql, ['recovery', recovery]), { code: '42501' })
+    await admin.query(`CREATE ROLE "${inspectorRole}" LOGIN PASSWORD 'synthetic-only'`); inspectorCreated = true
+    await admin.query(`GRANT USAGE ON SCHEMA public TO "${inspectorRole}"`)
+    await admin.query(`GRANT EXECUTE ON FUNCTION public.inspect_independent_access_closure(text,uuid) TO "${inspectorRole}"`)
+    const inspectorUrl = new URL(url)
+    inspectorUrl.username = inspectorRole; inspectorUrl.password = 'synthetic-only'
+    inspector = new pg.Pool({ connectionString: inspectorUrl.toString(), max: 1 })
+    assert.equal((await inspector.query(inspectSql, ['recovery', recovery])).rows[0].confirmed, false)
+    await assert.rejects(inspector.query(closureSql, ['recovery', recovery]), { code: '42501' })
+    await assert.rejects(inspector.query('SELECT * FROM public.public_access_closures'), { code: '42501' })
     await assert.rejects(restricted.query(closureSql, ['removal', recovery]), /Invalid access closure/)
     await assert.rejects(restricted.query(closureSql, ['operator', '00000000-0000-8000-8000-000000000001']), /Invalid access closure/)
     await restricted.query('BEGIN ISOLATION LEVEL REPEATABLE READ')
@@ -185,9 +197,23 @@ test('a separately granted closure capability can close but never reopen access'
     await restricted.query('ROLLBACK')
     await admin.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true')
     lease = await acquirePublicAccessLease(admin)
+    await restricted.query('BEGIN')
+    await restricted.query(closureSql, ['operator', operator])
+    await restricted.query('ROLLBACK')
+    assert.equal((await inspector.query(inspectSql, ['operator', operator])).rows[0].confirmed, false)
+    await restricted.query('BEGIN')
     await restricted.query(closureSql, ['recovery', recovery])
+    await restricted.query('COMMIT') // Model a caller that must reconcile the committed outcome.
+    assert.equal((await inspector.query(inspectSql, ['recovery', recovery])).rows[0].confirmed, true)
     await restricted.query(closureSql, ['recovery', recovery])
     await restricted.query(closureSql, ['operator', operator])
+    assert.equal((await inspector.query(inspectSql, ['recovery', recovery])).rows[0].confirmed, true)
+    assert.equal((await inspector.query(inspectSql, ['operator', recovery])).rows[0].confirmed, false)
+    assert.equal((await inspector.query(inspectSql, ['operator', operator])).rows[0].confirmed, true)
+    await assert.rejects(inspector.query(inspectSql, ['removal', recovery]), /Invalid access closure/)
+    await inspector.query('BEGIN ISOLATION LEVEL REPEATABLE READ')
+    await assert.rejects(inspector.query(inspectSql, ['recovery', recovery]), /Invalid access closure/)
+    await inspector.query('ROLLBACK')
     await waitForAborts(lease.signal)
     await assert.rejects(lease.release(), /Public access unavailable/)
     assert.equal((await admin.query('SELECT count(*)::int AS count FROM public.public_access_closures WHERE cause_id=ANY($1::uuid[])', [[recovery, operator]])).rows[0].count, 2)
@@ -199,14 +225,17 @@ test('a separately granted closure capability can close but never reopen access'
     try {
       await missingGate.query('BEGIN')
       await missingGate.query('DELETE FROM public.public_access_gate WHERE singleton=true')
+      assert.equal((await missingGate.query(inspectSql, ['operator', operator])).rows[0].confirmed, false)
       await assert.rejects(missingGate.query(closureSql, ['recovery', recovery]), /Public access unavailable/)
     } finally { await missingGate.query('ROLLBACK').catch(() => {}); missingGate.release() }
   } finally {
     await lease?.release().catch(() => {})
     if (restricted) await restricted.end()
+    if (inspector) await inspector.end()
     await admin.query('UPDATE public.public_access_gate SET is_open=false WHERE singleton=true')
     await admin.query('DELETE FROM public.public_access_closures WHERE cause_id=ANY($1::uuid[])', [[recovery, operator]])
     if (roleCreated) { await admin.query(`DROP OWNED BY "${role}"`); await admin.query(`DROP ROLE "${role}"`) }
+    if (inspectorCreated) { await admin.query(`DROP OWNED BY "${inspectorRole}"`); await admin.query(`DROP ROLE "${inspectorRole}"`) }
     await admin.end()
   }
 })
