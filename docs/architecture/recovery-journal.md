@@ -326,8 +326,11 @@ public traffic outside the restored database, establish a fresh authorized
 baseline and reconcile the independent journal before releasing that fence. The
 scheme is a design for further implementation and testing. The schema records a
 removal closure with its pending decision, but no reviewed recovery or operator
-closure workflow exists. The read gate does not yet evaluate closure records,
-and nothing automatically reopens it.
+closure workflow exists. Inserting a closure locks and closes the gate, and a
+database guard refuses to open it while any closure remains or under stronger
+transaction isolation. The read gate does not independently evaluate closure
+records, and nothing automatically reopens it. An empty ledger does not establish
+the required journal coverage or authorize access.
 
 This boundary must coordinate requests already in flight, including responses
 that have read content but have not finished delivery. An unreadable or missing

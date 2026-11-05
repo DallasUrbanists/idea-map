@@ -309,6 +309,13 @@
       "when": 1793849091736,
       "tag": "0043_dark_master_mold",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1793849644954,
+      "tag": "0044_guard_access_closures",
+      "breakpoints": true
     }
   ]
 }

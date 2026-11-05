@@ -104,6 +104,59 @@ test('a lease observes gate closure even when the role defaults to repeatable re
   }
 })
 
+test('independent closures serialize with opening and cannot be bypassed', async () => {
+  const pool = new pg.Pool({ connectionString: url.toString(), max: 4, connectionTimeoutMillis: 2000 })
+  const closer = await pool.connect(), opener = await pool.connect()
+  const recovery = randomUUID(), operator = randomUUID()
+  let opening
+  try {
+    await pool.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true')
+    // A previously recorded cause must also close an open gate on upgrade.
+    const guardMigration = await readFile(new URL('../migrations/0044_guard_access_closures.sql', import.meta.url), 'utf8')
+    await closer.query('BEGIN')
+    await closer.query('DROP TRIGGER close_gate_for_access_closure ON public.public_access_closures')
+    await closer.query('DROP FUNCTION public.close_gate_for_access_closure()')
+    await closer.query('DROP TRIGGER reject_open_gate_with_closures ON public.public_access_gate')
+    await closer.query('DROP FUNCTION public.reject_open_gate_with_closures()')
+    await closer.query("INSERT INTO public.public_access_closures(kind,cause_id) VALUES ('recovery',$1)", [recovery])
+    await closer.query(guardMigration)
+    assert.equal((await closer.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
+    await closer.query('ROLLBACK')
+    await closer.query('BEGIN')
+    await closer.query("INSERT INTO public.public_access_closures(kind,cause_id) VALUES ('recovery',$1)", [recovery])
+    await opener.query('BEGIN')
+    const pid = (await opener.query('SELECT pg_backend_pid() AS pid')).rows[0].pid
+    opening = opener.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true')
+    opening.catch(() => {})
+    let waiting = false
+    for (let attempt = 0; attempt < 50; attempt++) {
+      waiting = (await pool.query('SELECT EXISTS(SELECT 1 FROM pg_locks WHERE pid=$1 AND NOT granted) AS waiting', [pid])).rows[0].waiting
+      if (waiting) break
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+    assert.equal(waiting, true)
+    await closer.query('COMMIT')
+    await assert.rejects(opening, /Public access unavailable/)
+    await opener.query('ROLLBACK')
+    assert.equal((await pool.query('SELECT is_open FROM public.public_access_gate')).rows[0].is_open, false)
+    await pool.query("INSERT INTO public.public_access_closures(kind,cause_id) VALUES ('operator',$1)", [operator])
+    await pool.query("DELETE FROM public.public_access_closures WHERE kind='recovery' AND cause_id=$1", [recovery])
+    await assert.rejects(pool.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true'), /Public access unavailable/)
+    await pool.query("DELETE FROM public.public_access_closures WHERE kind='operator' AND cause_id=$1", [operator])
+    await opener.query('BEGIN ISOLATION LEVEL REPEATABLE READ')
+    await assert.rejects(opener.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true'), /Public access unavailable/)
+    await opener.query('ROLLBACK')
+  } finally {
+    await closer.query('ROLLBACK').catch(() => {})
+    await opener.query('ROLLBACK').catch(() => {})
+    await opening?.catch(() => {})
+    await pool.query('DELETE FROM public.public_access_closures WHERE cause_id=ANY($1::uuid[])', [[recovery, operator]])
+    await pool.query('UPDATE public.public_access_gate SET is_open=false WHERE singleton=true')
+    closer.release(); opener.release()
+    await pool.end()
+  }
+})
+
 test('authorized pending removal closes the gate atomically and retries without duplicating the decision', async () => {
   const pool = new pg.Pool({ connectionString: url.toString(), max: 6, connectionTimeoutMillis: 2000 })
   let reader, otherReader, pendingOperationId, secondOperationId, restrictedUrl, restrictedPool, roleCreated = false
@@ -407,6 +460,8 @@ test('authorized pending removal closes the gate atomically and retries without 
     if (pendingOperationId) await pool.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id = $1', [pendingOperationId])
     if (secondOperationId) await pool.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id = $1', [secondOperationId])
     if (concurrentOperations.length) await pool.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id = ANY($1::uuid[])', [concurrentOperations])
+    await pool.query("DELETE FROM public.public_access_closures WHERE kind='removal' AND cause_id=ANY($1::uuid[])",
+      [[pendingOperationId, secondOperationId, ...concurrentOperations].filter(Boolean)])
     await pool.query('UPDATE public.public_access_gate SET is_open = false WHERE singleton = true')
     if (roleCreated) {
       await pool.query(`REVOKE EXECUTE ON FUNCTION public.lock_active_moderator(text,text), public.prepare_pending_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text), public.apply_pending_sequence_removal(text,text,uuid,uuid,text,text,text,text,text,uuid), public.pin_pending_removal_sequence(text,text,uuid,uuid,text,text,text,uuid), public.prepare_pending_removal_confirmation(text,text,uuid,uuid,text,text,timestamptz,uuid), public.pending_sequence_confirmation_status(text,text,uuid,uuid,text,text,timestamptz,uuid,timestamptz,text,text,text,uuid), public.verify_pending_sequence_confirmation(text,text,uuid,uuid,timestamptz,text,text,text,text,uuid) FROM "${role}"`)
@@ -703,6 +758,8 @@ test('sequence coordinator drains readers and preserves a committed confirmation
     if (operationId) await admin.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id=$1', [operationId])
     if (staleOperation) await admin.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id=$1', [staleOperation])
     if (coordinatedOperation) await admin.query('DELETE FROM public.public_access_pending_decisions WHERE operation_id=$1', [coordinatedOperation])
+    await admin.query("DELETE FROM public.public_access_closures WHERE kind='removal' AND cause_id=ANY($1::uuid[])",
+      [[operationId, staleOperation, coordinatedOperation].filter(Boolean)])
     if (idea) {
       await admin.query('DELETE FROM public.moderator_removals WHERE idea_id=$1', [idea])
       await admin.query('DELETE FROM public.outbox WHERE job_id IN (SELECT id FROM public.jobs WHERE idempotency_key=$1)', [`removal:${idea}:${revision}`])
