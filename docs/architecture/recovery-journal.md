@@ -187,7 +187,11 @@ identity, find unknown versions or forks, drain writers, prove coverage, or perm
 deleting prior versions. Its result includes records from only those two epochs;
 earlier epochs still need separate verified recovery handling. This comparison
 does not perform rollover or solve the 10,000-version boundary by itself.
-An unwired reader can retrieve the supplied epochs by exact version number under
+An offline comparison can also combine two to eight supplied epochs, up to
+64 MiB of framed data in total, while retaining the same unverified status. It
+rejects repeated secret or epoch IDs and checks every adjacent checkpoint; it
+does not discover earlier epochs or prove the first supplied baseline.
+An unwired reader can retrieve two supplied epochs by exact version number under
 one deadline before comparing that link. A missing or unreadable version rejects
 the read; its private output likewise does not establish authenticated coverage.
 An unwired coordinator can pass known removal intents from those two epochs to

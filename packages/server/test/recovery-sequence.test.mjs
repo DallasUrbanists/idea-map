@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { compareUnverifiedRecoverySequence, decodeRecoverySequenceEntry, encodeRecoverySequenceEntry } from '../dist/recovery-sequence.js'
-import { compareUnverifiedSequenceRollover, unverifiedRolloverCheckpoint } from '../dist/recovery-sequence-rollover.js'
+import { compareUnverifiedSequenceChain, compareUnverifiedSequenceRollover, unverifiedRolloverCheckpoint } from '../dist/recovery-sequence-rollover.js'
 import { encodeRecoveryConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
 
 const epochId = '11111111-1111-4111-8111-111111111111'
@@ -108,4 +108,43 @@ test('a rollover rejects an earlier confirmation followed by its first intent', 
   const nextFrames = frames([{ ...nextBase, kind: 'baseline', checkpointDigest: link.checkpointDigest },
     { ...record, ...nextBase }, { ...nextBase, kind: 'fence', nonce: next.fenceNonce }])
   assert.throws(() => compareUnverifiedSequenceRollover(previous, oldFrames, next, nextFrames), /could not be verified/)
+})
+
+test('a linked three-epoch chain retains selected earlier decisions and rejects reused secrets', () => {
+  const first = { ...base, projectNumber: '123456789', secretId: 'synthetic-first', fenceVersion: '3', fenceNonce: nonce }
+  const firstFrames = frames([checkpoint, record, fence])
+  const secondBase = { environment: 'dev', epochId: '77777777-7777-4777-8777-777777777777' }
+  const second = { ...first, epochId: secondBase.epochId, secretId: 'synthetic-second', fenceVersion: '4',
+    fenceNonce: '88888888-8888-4888-8888-888888888888' }
+  const firstConfirmation = { ...secondBase, kind: 'decision', recordId: recoveryConfirmationRecordId(operationId),
+    data: Buffer.from(encodeRecoveryConfirmation(operationId, 'dev', '2026-11-03T12:01:00.000Z')).toString('base64') }
+  const secondOperation = '99999999-9999-4999-8999-999999999999'
+  const secondIdea = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const secondIntent = { ...secondBase, kind: 'decision', recordId: secondOperation,
+    data: Buffer.from(encodeRecoveryIntent({ ...input, operationId: secondOperation, ideaId: secondIdea,
+      authorizedAt: '2026-11-03T12:02:00.000Z' })).toString('base64') }
+  const secondFrames = frames([{ ...secondBase, kind: 'baseline',
+    checkpointDigest: unverifiedRolloverCheckpoint(first, firstFrames).checkpointDigest }, firstConfirmation, secondIntent,
+  { ...secondBase, kind: 'fence', nonce: second.fenceNonce }])
+  const thirdBase = { environment: 'dev', epochId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' }
+  const third = { ...first, epochId: thirdBase.epochId, secretId: 'synthetic-third', fenceVersion: '3',
+    fenceNonce: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' }
+  const secondConfirmation = { ...thirdBase, kind: 'decision', recordId: recoveryConfirmationRecordId(secondOperation),
+    data: Buffer.from(encodeRecoveryConfirmation(secondOperation, 'dev', '2026-11-03T12:03:00.000Z')).toString('base64') }
+  const thirdFrames = frames([{ ...thirdBase, kind: 'baseline',
+    checkpointDigest: unverifiedRolloverCheckpoint(second, secondFrames).checkpointDigest }, secondConfirmation,
+  { ...thirdBase, kind: 'fence', nonce: third.fenceNonce }])
+  const chain = [{ descriptor: first, frames: firstFrames }, { descriptor: second, frames: secondFrames },
+    { descriptor: third, frames: thirdFrames }]
+  const result = compareUnverifiedSequenceChain(chain)
+  assert.equal(result.epochCount, 3)
+  assert.equal(result.earlierEpochsIncluded, false)
+  assert.equal(result.coverageVerified, false)
+  assert.equal(result.records.length, 4)
+  assert.deepEqual(result.summary.removals, [input.ideaId, secondIdea])
+  assert.deepEqual(result.summary.reviewOperations, [])
+  assert.throws(() => compareUnverifiedSequenceChain([chain[0], chain[2]]), /could not be verified/)
+  assert.throws(() => compareUnverifiedSequenceChain([chain[0], chain[1],
+    { ...chain[2], descriptor: { ...third, secretId: first.secretId } }]), /could not be verified/)
+  assert.throws(() => compareUnverifiedSequenceChain(Array(9).fill(chain[0])), /could not be verified/)
 })

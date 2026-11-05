@@ -67,30 +67,56 @@ export function unverifiedRolloverCheckpoint(descriptor: RolloverDescriptor, fra
  */
 export function compareUnverifiedSequenceRollover(previous: RolloverDescriptor, previousFrames: Frame[],
   next: RolloverDescriptor, nextFrames: Frame[]) {
+  const { epochCount: _epochCount, ...result } = compareUnverifiedSequenceChain([
+    { descriptor: previous, frames: previousFrames }, { descriptor: next, frames: nextFrames },
+  ])
+  return result
+}
+
+/** Compare a bounded supplied chain; its first baseline and external coverage remain unverified. */
+export function compareUnverifiedSequenceChain(epochs: { descriptor: RolloverDescriptor, frames: Frame[] }[]) {
   try {
-    const old = snapshot(previous, previousFrames), successor = snapshot(next, nextFrames)
-    if (old.target.environment !== successor.target.environment || old.target.projectNumber !== successor.target.projectNumber ||
-        old.target.epochId === successor.target.epochId || old.target.secretId === successor.target.secretId) throw new Error('Invalid rollover')
-    if (successor.compared.checkpointDigest !== digestSequence(old)) throw new Error('Invalid rollover')
-    const oldIntents = new Set<string>(), oldConfirmations = new Set<string>(), nextIntents = new Set<string>()
+    if (!Array.isArray(epochs) || epochs.length < 2 || epochs.length > 8) throw new Error('Invalid rollover')
+    let totalBytes = 0
+    for (const epoch of epochs) {
+      if (!epoch || !Array.isArray(epoch.frames) || epoch.frames.length < 1 || epoch.frames.length > 10_000) throw new Error('Invalid rollover')
+      for (const frame of epoch.frames) {
+        if (!frame || !(frame.payload instanceof Uint8Array)) throw new Error('Invalid rollover')
+        totalBytes += frame.payload.byteLength
+        if (totalBytes > 64 * 1024 * 1024) throw new Error('Rollover chain is too large')
+      }
+    }
+    const sequences = epochs.map(epoch => snapshot(epoch.descriptor, epoch.frames))
+    const first = sequences[0]
+    const epochsSeen = new Set<string>(), secretsSeen = new Set<string>()
+    for (let index = 0; index < sequences.length; index++) {
+      const sequence = sequences[index]
+      if (sequence.target.environment !== first.target.environment || sequence.target.projectNumber !== first.target.projectNumber ||
+          epochsSeen.has(sequence.target.epochId) || secretsSeen.has(sequence.target.secretId) ||
+          (index > 0 && sequence.compared.checkpointDigest !== digestSequence(sequences[index - 1]))) throw new Error('Invalid rollover')
+      epochsSeen.add(sequence.target.epochId); secretsSeen.add(sequence.target.secretId)
+    }
+    const earlierIntents = new Set<string>(), earlierConfirmations = new Set<string>()
     const records = new Map<string, Uint8Array>()
-    for (const [index, sequence] of [old, successor].entries()) {
+    for (const sequence of sequences) {
+      const currentIntents = new Set<string>(), currentConfirmations = new Set<string>()
       for (const record of sequence.compared.records) {
-        const decision = decodeRecoveryRecord(record.payload, old.target.environment)
-        if (index === 0 && decision.recordType === 'intent') oldIntents.add(decision.operationId)
-        if (index === 0 && decision.recordType !== 'intent') oldConfirmations.add(decision.operationId)
-        if (index === 1 && decision.recordType === 'intent') nextIntents.add(decision.operationId)
+        const decision = decodeRecoveryRecord(record.payload, first.target.environment)
+        if (decision.recordType === 'intent') currentIntents.add(decision.operationId)
+        else currentConfirmations.add(decision.operationId)
         const prior = records.get(record.recordId)
         if (prior && !Buffer.from(prior).equals(record.payload)) throw new Error('Conflicting rollover record')
         if (!prior) records.set(record.recordId, Buffer.from(record.payload))
       }
-    }
-    for (const operationId of oldConfirmations) {
-      if (!oldIntents.has(operationId) && nextIntents.has(operationId)) throw new Error('Confirmation precedes intent')
+      for (const operationId of currentIntents) {
+        if (earlierConfirmations.has(operationId) && !earlierIntents.has(operationId)) throw new Error('Confirmation precedes intent')
+        earlierIntents.add(operationId)
+      }
+      for (const operationId of currentConfirmations) earlierConfirmations.add(operationId)
     }
     const merged = [...records.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
       .map(([recordId, payload]) => ({ recordId, payload }))
-    const summary = summarizeUnverifiedRecovery(merged.map(record => record.payload), old.target.environment)
-    return { records: merged, summary, earlierEpochsIncluded: false as const, coverageVerified: false as const }
+    const summary = summarizeUnverifiedRecovery(merged.map(record => record.payload), first.target.environment)
+    return { epochCount: sequences.length, records: merged, summary, earlierEpochsIncluded: false as const, coverageVerified: false as const }
   } catch { throw new Error('Rollover sequence could not be verified') }
 }
