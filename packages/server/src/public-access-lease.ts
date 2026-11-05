@@ -42,14 +42,40 @@ export async function acquirePublicAccessLease(pool: pg.Pool): Promise<PublicAcc
     client.removeListener('end', abort)
     client.release(destroy)
   }
+  const boundedQuery = async (statement: string, observeAbort: boolean) => {
+    const deadline = performance.now() + 10_000
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let onAbort: (() => void) | undefined
+    try {
+      if (observeAbort && controller.signal.aborted) throw new Error('Public access unavailable')
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Public access unavailable')), 10_000)
+        timer.unref()
+      })
+      const aborted = observeAbort ? new Promise<never>((_, reject) => {
+        onAbort = () => reject(new Error('Public access unavailable'))
+        controller.signal.addEventListener('abort', onAbort, { once: true })
+      }) : undefined
+      const query = Promise.resolve().then(() => {
+        if (observeAbort && controller.signal.aborted) throw new Error('Public access unavailable')
+        return client.query(statement)
+      })
+      const result = await Promise.race([query, timeout, ...(aborted ? [aborted] : [])])
+      if (performance.now() >= deadline || (observeAbort && controller.signal.aborted)) throw new Error('Public access unavailable')
+      return result
+    } finally {
+      if (timer) clearTimeout(timer)
+      if (onAbort) controller.signal.removeEventListener('abort', onAbort)
+    }
+  }
   try {
     // Each poll must see a gate closure committed after the lease began,
     // regardless of the role's default transaction isolation.
-    await client.query('BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY')
-    await client.query("SET LOCAL lock_timeout = '5s'")
-    await client.query("SET LOCAL statement_timeout = '10s'")
-    await client.query(sharedLock)
-    const result = await client.query<{ is_open: boolean }>('SELECT public.public_access_allowed() AS is_open')
+    await boundedQuery('BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY', true)
+    await boundedQuery("SET LOCAL lock_timeout = '5s'", true)
+    await boundedQuery("SET LOCAL statement_timeout = '10s'", true)
+    await boundedQuery(sharedLock, true)
+    const result = await boundedQuery('SELECT public.public_access_allowed() AS is_open', true)
     if (controller.signal.aborted || result.rows.length !== 1 || result.rows[0]?.is_open !== true) throw new Error('Public access unavailable')
     let checking = false, checkStarted = false
     const timer = setInterval(() => {
@@ -90,16 +116,7 @@ export async function acquirePublicAccessLease(pool: pg.Pool): Promise<PublicAcc
             // A polling query can be stuck behind a broken connection. Do not
             // queue COMMIT behind it or return that client to the pool.
             if (checking && checkStarted) { dispose(true); return }
-            const commitDeadline = performance.now() + 10_000
-            let commitTimer: ReturnType<typeof setTimeout> | undefined
-            try {
-              const timeout = new Promise<never>((_, reject) => {
-                commitTimer = setTimeout(() => reject(new Error('Public access unavailable')), 10_000)
-                commitTimer.unref()
-              })
-              await Promise.race([client.query('COMMIT'), timeout])
-              if (performance.now() >= commitDeadline) throw new Error('Public access unavailable')
-            } finally { if (commitTimer) clearTimeout(commitTimer) }
+            await boundedQuery('COMMIT', false)
             dispose(false)
           } catch {
             controller.abort()
@@ -115,7 +132,9 @@ export async function acquirePublicAccessLease(pool: pg.Pool): Promise<PublicAcc
     return Object.freeze(lease)
   } catch {
     controller.abort()
-    try { await client.query('ROLLBACK'); dispose(false) } catch { dispose(true) }
+    // A failed setup query may still be in flight. Destroying the client avoids
+    // queuing a rollback behind it or returning an uncertain transaction.
+    dispose(true)
     throw new Error('Public access unavailable')
   }
 }

@@ -545,11 +545,14 @@ transaction-scoped advisory lock prevented a later shared lock from entering.
 That result does not validate Neon pooling, resource limits, deadlock handling,
 or the application response lifecycle; all public readers and removal writers
 would have to use the same reviewed lock convention.
-The prototype also aborts a public response when a liveness check has not
-returned within ten seconds, even if the database connection does not report an
-error. This bounds a stalled check while the Node event loop is running; it does
-not prove an independent network fence or immediate failure detection. Release
-destroys a client with a check still in flight and bounds the wait for commit.
+Each guard setup query and the final commit have a ten-second local deadline;
+failed setup discards the client instead of waiting for a rollback. The pool
+must separately bound connection acquisition. The prototype also aborts a public
+response when a liveness check has not returned within ten seconds, even if the
+database connection reports no error. This bounds a stalled check while the Node
+event loop is running; it does not prove an independent network fence or
+immediate failure detection. Release destroys a client with a check still in
+flight and bounds the wait for commit.
 In a local synthetic stalled-query probe, the server held the advisory lock for
 about ten seconds after the client was destroyed, until the configured statement
 timeout. Destroying a client alone is not evidence that a remote database has
