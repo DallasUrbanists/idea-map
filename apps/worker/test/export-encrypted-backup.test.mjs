@@ -57,7 +57,7 @@ test('a dump warning fails the export without exposing diagnostic contents', asy
   await assert.rejects(result.done, error => error.message === 'Database export failed or reported a warning' && !error.message.includes('synthetic'))
 })
 
-function provider(bucketMetadata = metadata, failWeekly = false, failCompletion = false, mismatchedWeekly = false, ambiguousCompletion = false) {
+function provider(bucketMetadata = metadata, failWeekly = false, failCompletion = false, mismatchedWeekly = false, ambiguousCompletion = false, stallUpload = false) {
   const states = []
   const manifests = []
   const bucket = { async getMetadata() { return [bucketMetadata] }, file(name) {
@@ -77,7 +77,10 @@ function provider(bucketMetadata = metadata, failWeekly = false, failCompletion 
       state.options = options
       return new Writable({
         write(chunk, encoding, callback) { state.bytes += chunk.toString(); callback(failWeekly && name.includes('/weekly/') ? new Error('synthetic upload failure') : undefined) },
-        final(callback) { state.finalized = true; file.metadata = { name, generation: '123', metageneration: '1', size: String(Buffer.byteLength(state.bytes) + (mismatchedWeekly && name.includes('/weekly/') ? 1 : 0)), crc32c: 'AAAAAA==' }; callback() },
+        final(callback) {
+          if (stallUpload) return
+          state.finalized = true; file.metadata = { name, generation: '123', metageneration: '1', size: String(Buffer.byteLength(state.bytes) + (mismatchedWeekly && name.includes('/weekly/') ? 1 : 0)), crc32c: 'AAAAAA==' }; callback()
+        },
         destroy(error, callback) { state.destroyed = true; callback(error) },
       })
     } }
@@ -175,6 +178,14 @@ test('stalled bucket and completion requests fail without reporting a completed 
   await assert.rejects(exportEncryptedBackup(backupConfiguration(env), { storage: { bucket: () => bucket }, providerTimeoutMs: 20,
     now: new Date('2026-11-02T10:00:00Z'), start: () => source() }), /timed out/)
   assert.ok(fake.states.every(state => state.finalized)) // The provider may still create a marker after the timeout.
+})
+
+test('a stalled archive upload is destroyed and never creates a completion marker', async () => {
+  const fake = provider(metadata, false, false, false, false, true)
+  await assert.rejects(exportEncryptedBackup(backupConfiguration(env), { storage: fake.storage, transferTimeoutMs: 20,
+    now: new Date('2026-11-02T10:00:00Z'), start: () => source() }), /timed out/)
+  assert.ok(fake.states.every(state => state.destroyed && !state.finalized))
+  assert.equal(fake.manifests.length, 0)
 })
 
 test('different archive metadata prevents a completion record', async () => {

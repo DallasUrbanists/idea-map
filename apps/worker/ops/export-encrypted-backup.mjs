@@ -78,6 +78,8 @@ export async function exportEncryptedBackup(config, options = {}) {
   if (!Number.isFinite(now.getTime())) throw new Error('Invalid backup time')
   const providerTimeoutMs = options.providerTimeoutMs ?? 15_000
   if (!Number.isInteger(providerTimeoutMs) || providerTimeoutMs < 1 || providerTimeoutMs > 15_000) throw new Error('Invalid backup timeout')
+  const transferTimeoutMs = options.transferTimeoutMs ?? 30 * 60 * 1000
+  if (!Number.isInteger(transferTimeoutMs) || transferTimeoutMs < 1 || transferTimeoutMs > 30 * 60 * 1000) throw new Error('Invalid backup timeout')
   const date = now.toISOString().slice(0, 10)
   const id = randomUUID()
   const kinds = now.getUTCDay() === 1 || options.forceWeekly === true ? ['daily', 'weekly'] : ['daily']
@@ -104,10 +106,19 @@ export async function exportEncryptedBackup(config, options = {}) {
   const uploadDone = uploads.map(upload => finished(upload).then(() => ({ ok: true }), error => { dump.child.kill(); tee.destroy(error); return { ok: false, error } }))
   for (const upload of uploads) tee.pipe(upload, { end: false })
   const transfer = pipeline(dump.child.stdout, tee)
+  let transferTimedOut = false
+  let transferTimer = setTimeout(() => {
+    transferTimedOut = true
+    try { dump.child.kill() } catch { /* The child may already have exited. */ }
+    tee.destroy()
+    for (const upload of uploads) upload.destroy(new Error('Backup transfer timed out'))
+  }, transferTimeoutMs)
   try {
     await Promise.all([transfer, dump.done])
     for (const upload of uploads) upload.end()
     const results = await Promise.all(uploadDone)
+    clearTimeout(transferTimer)
+    transferTimer = undefined
     const failed = results.find(result => !result.ok)
     if (failed) throw failed.error
     const generations = files.map((file, index) => {
@@ -145,8 +156,9 @@ export async function exportEncryptedBackup(config, options = {}) {
     dump.child.kill()
     for (const upload of uploads) upload.destroy()
     await Promise.allSettled([transfer, dump.done, ...uploadDone])
+    if (transferTimedOut) throw new Error('Backup transfer timed out')
     throw error
-  }
+  } finally { if (transferTimer) clearTimeout(transferTimer) }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
