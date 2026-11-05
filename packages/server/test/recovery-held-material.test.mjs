@@ -19,9 +19,10 @@ after(() => {
   else process.env.STORAGE_EMULATOR_HOST = originalEmulator
 })
 
-function fake({ wrongChecksum = false, missingHeader = false, failWrite = false, missingHold = false, changeHoldDuringRead = false, stallMetadata = false } = {}) {
+function fake({ wrongChecksum = false, missingHeader = false, failWrite = false, missingHold = false, changeHoldDuringRead = false, stallMetadata = false, delayStreamEnd = false } = {}) {
   const objects = new Map()
   let reads = 0
+  let metadataReads = 0
   const storage = { bucket(name) { return {
     async getMetadata() { return [{ name, projectNumber: target.projectNumber,
       iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
@@ -44,6 +45,7 @@ function fake({ wrongChecksum = false, missingHeader = false, failWrite = false,
             callback()
           } })
       }, async getMetadata() {
+        metadataReads++
         if (stallMetadata) return new Promise(() => {})
         const object = objects.get(path)
         const request = file.interceptors[0].request({ uri: '/synthetic', qs: {} })
@@ -60,6 +62,7 @@ function fake({ wrongChecksum = false, missingHeader = false, failWrite = false,
         }
         const stream = Readable.from([object.body])
         if (changeHoldDuringRead) stream.once('end', () => { object.metadata.metageneration = '2' })
+        if (delayStreamEnd) stream.once('end', () => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400) })
         process.nextTick(() => stream.emit('response', { toJSON: () => ({ headers: missingHeader ? {} : {
           'x-goog-stored-content-encoding': 'identity', 'x-goog-hash': `crc32c=${object.metadata.crc32c}`,
         } }) }))
@@ -68,7 +71,7 @@ function fake({ wrongChecksum = false, missingHeader = false, failWrite = false,
       return file
     },
   } } }
-  return { storage, objects, reads: () => reads }
+  return { storage, objects, reads: () => reads, metadataReads: () => metadataReads }
 }
 
 test('private held material is create-only and read by exact generation and digest', async () => {
@@ -103,6 +106,10 @@ test('ambiguous writes, missing checksums, and invalid inputs fail closed withou
   const stalled = fake({ stallMetadata: true })
   const stalledSaved = await writeUnverifiedHeldMaterial(stalled.storage, target, artifact, contents)
   await assert.rejects(readUnverifiedHeldMaterial(stalled.storage, target, artifact, stalledSaved, 20), /could not be verified/)
+  const delayed = fake({ delayStreamEnd: true })
+  const delayedSaved = await writeUnverifiedHeldMaterial(delayed.storage, target, artifact, contents)
+  await assert.rejects(readUnverifiedHeldMaterial(delayed.storage, target, artifact, delayedSaved, 250), /could not be verified/)
+  assert.equal(delayed.metadataReads(), 1) // Do not start a new provider request after the deadline.
 })
 
 test('the selected bytes and reference cannot change while storage is pending', async () => {

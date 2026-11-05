@@ -104,9 +104,10 @@ export async function readUnverifiedHeldMaterial(storage: Storage, target: Targe
     const heldMetadata = async () => {
       let metadataTimer: ReturnType<typeof setTimeout> | undefined
       try {
+        const remaining = remainingTime(deadline)
         const [metadata] = await Promise.race([
           file.getMetadata(),
-          new Promise<never>((_, reject) => { metadataTimer = setTimeout(() => reject(new Error('Held metadata timed out')), remainingTime(deadline)) }),
+          new Promise<never>((_, reject) => { metadataTimer = setTimeout(() => reject(new Error('Held metadata timed out')), remaining) }),
         ])
         if (metadata.name !== path || metadata.bucket !== destination.bucket || metadata.generation !== expected.generation ||
             metadata.size !== String(expected.size) || metadata.temporaryHold !== true ||
