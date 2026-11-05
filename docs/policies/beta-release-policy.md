@@ -73,6 +73,13 @@ Operators should keep unused providers and optional processing disabled.
 The separate review of Gemini use, data handling, terms and operating limits
 remains a prerequisite for enabling that processing.
 
+The [beta participant notice policy](beta-participant-notice-policy.md) defines
+welcome and submission notices. The [beta Terms of Use](beta-terms-of-use-policy.md)
+apply to beta-mode submissions. The form, API and consent records must match an
+immutable beta terms version, while the initial terms and prior consent remain
+unchanged. The [beta acceptance procedure](../test-procedures/beta-acceptance.md#notice-and-consent)
+checks these requirements before beta activation.
+
 ## Later work
 
 The following work does not block this beta unless the release explicitly
@@ -92,12 +99,6 @@ enables or promises it:
 Contributors should retain the existing acceptance criteria for those features.
 A later release must satisfy its own publication, privacy, accessibility and
 operational requirements before enabling them.
-
-The [proposed participant notice](beta-participant-notice.md) preserves review
-copy for the welcome and submission contexts. The [proposed beta terms](beta-terms-proposal.md)
-are staged for a future rollout; the [current Terms of Use](terms-of-use-policy.md)
-remain the active runtime consent until a new immutable version and its supporting
-form, API and consent handling are implemented and accepted.
 
 ## Launch acceptance
 

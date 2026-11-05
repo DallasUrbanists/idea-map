@@ -119,13 +119,10 @@ Reviewers should verify what users are told before sharing content:
 - [ ] Record the maintainer's decision about independent terms/privacy review
   and any remaining conditions, without publishing privileged advice.
 
-The [current Terms of Use](../policies/terms-of-use-policy.md) match the initial
-runtime terms snapshot. The [proposed beta terms](../policies/beta-terms-proposal.md)
-are staged for later rollout and are not active consent. Before beta submissions
-use them, add a new immutable terms version and update the form, API, retained
-consent and tests together. Keep the initial snapshot and previously recorded
-consent unchanged. Planning documentation can be merged before those beta
-activation steps are complete.
+The [beta Terms of Use](../policies/beta-terms-of-use-policy.md) govern
+beta-mode submissions. Reviewers should verify that the form, API and retained
+consent identify and match the same immutable beta terms version, while the
+initial terms snapshot and prior consent records remain unchanged.
 
 ## Record the decision
 

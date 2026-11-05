@@ -1,11 +1,11 @@
-> **Proposed beta terms:** This is planning copy for a future beta rollout.
-> It is not the active runtime consent text. The current
-> [Terms of Use](terms-of-use-policy.md) remain in effect. Before beta
-> submissions use this wording, maintainers must create a new immutable terms
-> version and align the form, API, retained consent and tests. Existing consent
-> and the initial terms snapshot remain unchanged.
+# Open MVP beta Terms of Use
 
-# Terms of Use
+These Terms of Use apply to submissions made under the open MVP beta publication
+mode. The application must serve this wording as a new immutable terms version;
+the form, API and retained consent must identify and match that exact version.
+The service must preserve the initial terms snapshot and prior consent records.
+The [beta acceptance procedure](../test-procedures/beta-acceptance.md#notice-and-consent)
+checks these requirements before beta activation.
 
 These terms explain what you can expect when you use Idea Map and what you're
 agreeing to when you share an idea. Dallas Urbanists operates Idea Map; you can

@@ -83,7 +83,8 @@ and how maintainers operate services and release changes:
 | Document | Purpose |
 | --- | --- |
 | [Open MVP beta release policy](policies/beta-release-policy.md) | Define beta scope, immediate posting, retained safeguards and later work |
-| [Proposed beta terms](policies/beta-terms-proposal.md) | Review wording staged for a future beta terms version; current runtime consent remains unchanged |
+| [Beta Terms of Use](policies/beta-terms-of-use-policy.md) | Terms for beta-mode submissions and versioned consent |
+| [Beta participant notice policy](policies/beta-participant-notice-policy.md) | Public posting, submission and rights notices for beta participants |
 | [API policy](policies/api-policy.md) | Authorization, validation, privacy, consent enforcement, pagination, and retries |
 | [Moderation policy](policies/moderation-policy.md) | Content rules, approval timing, intervention, publication, and appeals |
 | [Privacy Policy](policies/privacy-policy.md) | Personal-data handling, providers, retention, deletion, and requests |
