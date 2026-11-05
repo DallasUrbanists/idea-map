@@ -42,3 +42,25 @@ test('a completed liveness check does not leave a deadline that aborts a healthy
   await lease.release()
   assert.equal(destroyed, false)
 })
+
+test('a late liveness response aborts even before a delayed timer runs', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] })
+  let now = 0
+  t.mock.method(performance, 'now', () => now)
+  const client = new EventEmitter()
+  let finishCheck, destroyed
+  client.release = value => { destroyed = value }
+  client.query = async sql => {
+    if (sql.includes('pg_catalog.pg_locks')) return new Promise(resolve => { finishCheck = resolve })
+    if (sql.includes('public_access_allowed')) return { rows: [{ is_open: true }] }
+    return { rows: [] }
+  }
+  const lease = await acquirePublicAccessLease({ connect: async () => client })
+  t.mock.timers.tick(250)
+  now = 10_001
+  finishCheck({ rows: [{ is_open: true, closing: false }] })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(lease.signal.aborted, true)
+  await assert.rejects(lease.release(), /Public access unavailable/)
+  assert.equal(destroyed, true)
+})
