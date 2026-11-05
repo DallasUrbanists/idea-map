@@ -512,9 +512,10 @@ and exact artifact generations with one hold; a version-three confirmation can
 reference the stored manifest. The caller must read that exact generation before
 reconciliation checks the manifest's digest, environment, operation, idea and
 hold IDs. An unwired verifier can also read each listed generation and check its
-size and digest. It reads at most four artifacts concurrently, limits their total
-to 128 MiB, and bounds waiting to two minutes. Missing, altered, oversized, or
-unavailable artifacts fail verification. A revision entry can represent only
+size and digest. It reads at most four artifacts concurrently, limits the
+manifest and artifact bytes together to 128 MiB, and bounds waiting to two
+minutes. Missing, altered, oversized, or unavailable artifacts fail
+verification. A revision entry can represent only
 part of a revision, and the manifest does not establish what the authorized
 scope requires or guarantee future availability. The primitives do not
 authenticate the scope, capture all evidence, implement retention, legal-hold
@@ -524,8 +525,8 @@ separate `held-material` prefix before any live integration.
 An unwired sequence check finds the recorded hold placements and verifies each
 available version-three capture. It reports placements without captures and
 other decisions requiring review; it does not authenticate the journal or hold
-authority. It checks at most 100 placements and 512 MiB of selected artifacts
-within two minutes, with the per-capture limits still applying.
+authority. It checks at most 100 placements and 512 MiB of manifests and selected
+artifacts within two minutes, with the per-capture limits still applying.
 The retention and disposition work in
 [#56](https://github.com/DallasUrbanists/idea-map/issues/56) owns application-data
 lifecycle integration. Coordinate its guarded mutation paths and scoped evidence

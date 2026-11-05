@@ -120,10 +120,14 @@ test('verification reads every selected generation but never asserts hold covera
       authorizationReference: 'synthetic authority' },
     { artifactId: manifestId, generation: manifestRef.generation, size: manifestRef.size, sha256: manifestRef.sha256 })
   assert.deepEqual(await verifyUnverifiedHeldCapture(storage, target, intent, confirmation),
-    { checkedArtifacts: 2, totalBytes: contents.length + secondBytes.length, coverageVerified: false })
+    { checkedArtifacts: 2, totalBytes: manifest.length + contents.length + secondBytes.length, coverageVerified: false })
   const readsBeforeBudget = reads()
   await assert.rejects(verifyUnverifiedHeldCapture(storage, target, intent, confirmation, 120_000, contents.length), /could not be verified/)
-  assert.equal(reads() - readsBeforeBudget, 1) // The manifest is checked before fetching artifacts.
+  assert.equal(reads() - readsBeforeBudget, 0) // The manifest alone exceeds the budget.
+  await assert.rejects(verifyUnverifiedHeldCapture(storage, target, intent, confirmation, 120_000, manifest.length), /could not be verified/)
+  assert.equal(reads() - readsBeforeBudget, 1) // Artifacts exceed the remaining budget.
+  assert.equal((await verifyUnverifiedHeldCapture(storage, target, intent, confirmation, 120_000,
+    manifest.length + contents.length + secondBytes.length)).totalBytes, manifest.length + contents.length + secondBytes.length)
   const sequenceTarget = { environment: 'dev', projectNumber: '123456789', secretId: 'synthetic-journal', epochId: mediaId }
   const nonce = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
   const base = { environment: 'dev', epochId: sequenceTarget.epochId }
@@ -142,7 +146,7 @@ test('verification reads every selected generation but never asserts hold covera
       payload: { data: Buffer.from(bytes).toString('base64'), dataCrc32c: String(Buffer.from(crc.toString(), 'base64').readUInt32BE(0)) } } }
   } }
   assert.deepEqual(await verifySequenceHeldCaptures(sequenceReader, sequenceTarget, '4', nonce, storage, target),
-    { checkedCaptures: 1, checkedArtifacts: 2, totalBytes: contents.length + secondBytes.length, incompletePlacements: 0,
+    { checkedCaptures: 1, checkedArtifacts: 2, totalBytes: manifest.length + contents.length + secondBytes.length, incompletePlacements: 0,
       reviewOperations: 1, unmatchedConfirmations: 0, coverageVerified: false, authorityVerified: false })
   const confirmationFrame = entries.splice(2, 1)[0]
   assert.deepEqual(await verifySequenceHeldCaptures(sequenceReader, sequenceTarget, '3', nonce, storage, target),

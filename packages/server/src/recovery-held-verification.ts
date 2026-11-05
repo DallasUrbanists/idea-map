@@ -34,9 +34,12 @@ export async function verifyUnverifiedHeldCapture(storage: Storage, target: Targ
         decision.decision.kind !== 'hold_placement' || decision.operationId !== record.operationId) throw new Error('Held manifest is missing')
     summarizeUnverifiedRecovery([intent, confirmation], destination.environment)
     const reference = record.heldManifest
+    // The manifest is also downloaded from storage and must fit in the same
+    // budget as the artifact bytes it describes.
+    if (reference.size > maxTotalBytes) throw new Error('Held capture is too large')
     const bytes = await readUnverifiedHeldMaterial(storage, destination, reference.artifactId, reference, remaining())
     const { manifest } = matchUnverifiedHeldManifest(intent, confirmation, bytes, destination.environment)
-    const totalBytes = manifest.entries.reduce((total, entry) => total + entry.size, 0)
+    const totalBytes = manifest.entries.reduce((total, entry) => total + entry.size, reference.size)
     if (totalBytes > maxTotalBytes) throw new Error('Held capture is too large')
     let next = 0, stopped = false
     const check = async () => {
