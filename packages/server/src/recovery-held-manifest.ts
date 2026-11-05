@@ -81,9 +81,10 @@ export function matchUnverifiedHeldManifest(intentBytes: Uint8Array, confirmatio
 
 /** Copy and validate the bounded selection before any asynchronous storage read. */
 export function snapshotUnverifiedHeldSources(sources: HeldSource[]): HeldSource[] {
-  if (!Array.isArray(sources) || sources.length < 1 || sources.length > 10_000) throw new Error('Invalid held source inventory')
-  const seen = new Set<string>(), selected: HeldSource[] = []
+  if (!Array.isArray(sources)) throw new Error('Invalid held source inventory')
   const length = sources.length
+  if (!Number.isSafeInteger(length) || length < 1 || length > 10_000) throw new Error('Invalid held source inventory')
+  const seen = new Set<string>(), selected: HeldSource[] = []
   for (let index = 0; index < length; index++) {
     if (!Object.hasOwn(sources, index)) throw new Error('Invalid held source inventory')
     const source = sources[index]
