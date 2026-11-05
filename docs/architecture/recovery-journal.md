@@ -296,6 +296,37 @@ reconciled against durable state; it must not be treated as permission to open.
 The initial closed state and restored databases require independent authorization
 and coverage verification, not an empty list of pending removals.
 
+One possible implementation uses a durable closure record for each removal,
+recovery, and operator fence. Each record needs an immutable identity and an
+explicit kind, so a retry can find the same closure and resolving a removal
+cannot remove a different fence. The transaction that records a new removal
+would lock the singleton gate row, create its closure and pending decision, and
+close the gate before committing. A separate recovery or operator closure must
+take the same gate-row lock before recording its own cause and closing access.
+If the row is missing, these operations fail closed rather than recreating an
+open gate.
+
+Resolving a removal would take that same lock, verify its durable confirmation
+and the applicable journal coverage, and clear only that removal's closure. It
+could open the gate only if no closure of any kind remains and the independently
+authorized access baseline is still valid. The check and update must commit in
+the same transaction as clearing the closure. A concurrent new closure either
+commits first and prevents reopening, or waits and closes the gate in its own
+transaction. A retry after a lost commit response must read the operation and
+gate state under the lock; an absent closure alone does not establish that the
+gate is open or that the journal is complete. Access to create, resolve, and
+inspect each kind of closure needs separate reviewed authorization.
+Coverage verification must also account for every authorized journal writer and
+keep its independently established fence valid through the reopen commit. The
+closure table and a successful readback cannot establish that coverage.
+
+These records cannot by themselves protect a restored database: a backup may
+contain an open gate and no record of a later closure. Recovery must first fence
+public traffic outside the restored database, establish a fresh authorized
+baseline and reconcile the independent journal before releasing that fence. The
+scheme is a design for further implementation and testing; the current schema
+does not store closure causes or automatically reopen the gate.
+
 This boundary must coordinate requests already in flight, including responses
 that have read content but have not finished delivery. An unreadable or missing
 gate state must deny access, and all public serving paths must honor it. A
