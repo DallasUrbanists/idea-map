@@ -3,7 +3,9 @@ import { test } from 'node:test'
 import { CRC32C } from '@google-cloud/storage'
 import { encodeRecoveryIntent } from '../dist/recovery-journal-record.js'
 import { encodeRecoverySequenceEntry } from '../dist/recovery-sequence.js'
-import { appendAndVerifyRecoverySequenceVersion, appendRecoverySequenceVersion, inspectRecoverySequenceVersionOutsideScanLimit, readRecoverySequenceVersion, readUnverifiedRecoverySequence } from '../dist/recovery-sequence-storage.js'
+import { appendAndVerifyRecoverySequenceVersion, appendRecoverySequenceVersion, inspectRecoverySequenceVersionOutsideScanLimit, readRecoverySequenceVersion, readUnverifiedRecoverySequence, readUnverifiedRecoverySequenceFrames } from '../dist/recovery-sequence-storage.js'
+import { unverifiedRolloverCheckpoint } from '../dist/recovery-sequence-rollover.js'
+import { readUnverifiedSequenceRollover } from '../dist/recovery-sequence-rollover-storage.js'
 import { suppressKnownRemovalsFromSequence } from '../dist/recovery-suppression.js'
 
 const target = { environment: 'dev', epochId: '11111111-1111-4111-8111-111111111111',
@@ -22,10 +24,10 @@ function crc(bytes) {
   const value = new CRC32C(); value.update(bytes)
   return String(Buffer.from(value.toString(), 'base64').readUInt32BE(0))
 }
-function fake() {
+function fake(source = target) {
   const versions = [], calls = []
   let lost = false, corrupt = false
-  const parent = `projects/${target.projectNumber}/secrets/${target.secretId}`
+  const parent = `projects/${source.projectNumber}/secrets/${source.secretId}`
   return { versions, calls, loseNext() { lost = true }, corruptNext() { corrupt = true }, transport: {
     async request(method, path, body, signal) {
       calls.push({ method, path })
@@ -64,6 +66,58 @@ test('numbered versions preserve exact decisions through ambiguous append retrie
   assert.equal(sequence.coverageVerified, false)
   assert.deepEqual(sequence.summary.removals, ['44444444-4444-4444-8444-444444444444'])
   assert.ok(f.calls.filter(call => call.method === 'GET').every(call => !call.path.includes('latest')))
+})
+
+test('rollover reads both exact sequences and retains unresolved removals without claiming coverage', async () => {
+  const old = fake()
+  for (const bytes of [baseline, decision, fence]) await appendRecoverySequenceVersion(old.transport, target, bytes)
+  const previous = { ...target, fenceVersion: '3', fenceNonce: nonce }
+  const previousRead = await readUnverifiedRecoverySequenceFrames(old.transport, target, '3', nonce)
+  assert.equal(previousRead.coverageVerified, false)
+  assert.equal(previousRead.frames.length, 3)
+  const checkpoint = unverifiedRolloverCheckpoint(previous, previousRead.frames)
+  const next = { ...target, epochId: '77777777-7777-4777-8777-777777777777', secretId: 'synthetic-next',
+    fenceVersion: '3', fenceNonce: '88888888-8888-4888-8888-888888888888' }
+  const nextSource = { ...next }
+  const successor = fake(nextSource)
+  const nextBase = { environment: 'dev', epochId: next.epochId }
+  const nextOperation = '99999999-9999-4999-8999-999999999999'
+  const nextIdea = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const nextIntent = encodeRecoveryIntent({ operationId: nextOperation, environment: 'dev', ideaId: nextIdea,
+    actorId: '55555555-5555-4555-8555-555555555555', authorizedAt: '2026-11-03T12:02:00.000Z',
+    decision: { kind: 'removal', classification: 'other', reason: 'synthetic private reason' } })
+  const nextEntries = [encodeRecoverySequenceEntry({ ...nextBase, kind: 'baseline', checkpointDigest: checkpoint.checkpointDigest }),
+    encodeRecoverySequenceEntry({ ...nextBase, kind: 'decision', recordId: nextOperation, data: Buffer.from(nextIntent).toString('base64') }),
+    encodeRecoverySequenceEntry({ ...nextBase, kind: 'fence', nonce: next.fenceNonce })]
+  for (const bytes of nextEntries) await appendRecoverySequenceVersion(successor.transport, nextSource, bytes)
+  const mutablePrevious = { ...previous }, mutableNext = { ...next }
+  const changingReader = { async request(...args) {
+    mutablePrevious.secretId = 'changed-old'; mutableNext.secretId = 'changed-next'; mutableNext.environment = 'prod'
+    return old.transport.request(...args)
+  } }
+  const result = await readUnverifiedSequenceRollover(changingReader, mutablePrevious, successor.transport, mutableNext)
+  assert.equal(result.coverageVerified, false)
+  assert.equal(result.earlierEpochsIncluded, false)
+  assert.deepEqual(result.summary.removals, ['44444444-4444-4444-8444-444444444444', nextIdea])
+  assert.equal(result.records.length, 2)
+  assert.ok([...old.calls, ...successor.calls].filter(call => call.method === 'GET').every(call => !call.path.includes('latest')))
+  successor.versions[1] = undefined
+  await assert.rejects(readUnverifiedSequenceRollover(old.transport, previous, successor.transport, next), error =>
+    error.message === 'Rollover sequence could not be verified' && !error.message.includes('private'))
+})
+
+test('rollover validates both targets before reading and shares one bounded deadline', async () => {
+  const old = fake(), successor = fake()
+  const previous = { ...target, fenceVersion: '3', fenceNonce: nonce }
+  const next = { ...previous, epochId: '77777777-7777-4777-8777-777777777777' }
+  await assert.rejects(readUnverifiedSequenceRollover(old.transport, previous, successor.transport, next), /Invalid rollover request/)
+  assert.equal(old.calls.length, 0)
+  assert.equal(successor.calls.length, 0)
+  let signal
+  const stalled = { async request(_method, _path, _body, requestSignal) { signal = requestSignal; return new Promise(() => {}) } }
+  await assert.rejects(readUnverifiedSequenceRollover(stalled, previous, successor.transport, { ...next, secretId: 'synthetic-next' }, 20), /could not be verified/)
+  assert.equal(signal.aborted, true)
+  assert.equal(successor.calls.length, 0)
 })
 
 test('missing, corrupt, disabled, or incorrectly named versions do not establish a sequence', async () => {

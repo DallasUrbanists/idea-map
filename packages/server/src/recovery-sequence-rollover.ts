@@ -3,23 +3,29 @@ import { decodeRecoveryRecord } from './recovery-journal-record.js'
 import { summarizeUnverifiedRecovery } from './recovery-journal-plan.js'
 import { compareUnverifiedRecoverySequence } from './recovery-sequence.js'
 
-type Descriptor = { environment: 'dev' | 'prod', epochId: string, projectNumber: string, secretId: string,
+export type RolloverDescriptor = { environment: 'dev' | 'prod', epochId: string, projectNumber: string, secretId: string,
   fenceVersion: string, fenceNonce: string }
 type Frame = { version: string, payload: Uint8Array }
 const uuid4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
-function snapshot(descriptor: Descriptor, frames: Frame[]) {
+/** Copy and validate the exact source and fence before contacting a provider. */
+export function validatedRolloverDescriptor(descriptor: RolloverDescriptor): RolloverDescriptor {
   if (!descriptor || !['dev', 'prod'].includes(descriptor.environment) ||
       typeof descriptor.epochId !== 'string' || !uuid4.test(descriptor.epochId) ||
       typeof descriptor.projectNumber !== 'string' || !/^[1-9][0-9]{5,19}$/.test(descriptor.projectNumber) ||
       typeof descriptor.secretId !== 'string' || !/^[a-zA-Z0-9_-]{1,255}$/.test(descriptor.secretId) ||
       typeof descriptor.fenceNonce !== 'string' || !uuid4.test(descriptor.fenceNonce) ||
       typeof descriptor.fenceVersion !== 'string' || !/^[1-9][0-9]{0,4}$/.test(descriptor.fenceVersion) ||
-      Number(descriptor.fenceVersion) > 10_000 || !Array.isArray(frames) || frames.length !== Number(descriptor.fenceVersion)) {
+      Number(descriptor.fenceVersion) > 10_000) {
     throw new Error('Invalid rollover sequence')
   }
-  const target = { environment: descriptor.environment, epochId: descriptor.epochId, projectNumber: descriptor.projectNumber,
+  return { environment: descriptor.environment, epochId: descriptor.epochId, projectNumber: descriptor.projectNumber,
     secretId: descriptor.secretId, fenceVersion: descriptor.fenceVersion, fenceNonce: descriptor.fenceNonce }
+}
+
+function snapshot(descriptor: RolloverDescriptor, frames: Frame[]) {
+  const target = validatedRolloverDescriptor(descriptor)
+  if (!Array.isArray(frames) || frames.length !== Number(target.fenceVersion)) throw new Error('Invalid rollover sequence')
   let total = 0
   const copied = frames.map(frame => {
     if (!frame || typeof frame.version !== 'string' || !(frame.payload instanceof Uint8Array) || frame.payload.byteLength > 24_576) {
@@ -48,7 +54,7 @@ function digestSequence(sequence: ReturnType<typeof snapshot>) {
  * This does not authenticate the source, establish a writer fence, prove the
  * sequence complete, or authorize destruction of any earlier versions.
  */
-export function unverifiedRolloverCheckpoint(descriptor: Descriptor, frames: Frame[]) {
+export function unverifiedRolloverCheckpoint(descriptor: RolloverDescriptor, frames: Frame[]) {
   try {
     return { checkpointDigest: digestSequence(snapshot(descriptor, frames)), coverageVerified: false as const }
   } catch { throw new Error('Rollover checkpoint could not be verified') }
@@ -59,8 +65,8 @@ export function unverifiedRolloverCheckpoint(descriptor: Descriptor, frames: Fra
  * every writer or version was covered. Earlier epochs are not included in the
  * returned records, which remain private.
  */
-export function compareUnverifiedSequenceRollover(previous: Descriptor, previousFrames: Frame[],
-  next: Descriptor, nextFrames: Frame[]) {
+export function compareUnverifiedSequenceRollover(previous: RolloverDescriptor, previousFrames: Frame[],
+  next: RolloverDescriptor, nextFrames: Frame[]) {
   try {
     const old = snapshot(previous, previousFrames), successor = snapshot(next, nextFrames)
     if (old.target.environment !== successor.target.environment || old.target.projectNumber !== successor.target.projectNumber ||

@@ -187,6 +187,9 @@ identity, find unknown versions or forks, drain writers, prove coverage, or perm
 deleting prior versions. Its result includes records from only those two epochs;
 earlier epochs still need separate verified recovery handling. This comparison
 does not perform rollover or solve the 10,000-version boundary by itself.
+An unwired reader can retrieve the supplied epochs by exact version number under
+one deadline before comparing that link. A missing or unreadable version rejects
+the read; its private output likewise does not establish authenticated coverage.
 
 Review the expected number of enabled and disabled Secret Manager versions,
 retries, service quotas, retention and safe rollover before provisioning. Do not

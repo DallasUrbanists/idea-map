@@ -128,8 +128,8 @@ export async function appendAndVerifyRecoverySequenceVersion(writer: RecoverySeq
   } catch { throw new Error('Recovery sequence outcome is uncertain') }
 }
 
-/** Read every explicit version through a selected fence, without asserting coverage. */
-export async function readUnverifiedRecoverySequence(transport: RecoverySequenceTransport, target: Target,
+/** Read exact private frames and compare a selected fence, without asserting coverage. */
+export async function readUnverifiedRecoverySequenceFrames(transport: RecoverySequenceTransport, target: Target,
   fenceVersion: string, fenceNonce: string, timeoutMs = 120_000) {
   targetPath(target)
   if (!validVersion(fenceVersion) || typeof fenceNonce !== 'string' || !uuid4.test(fenceNonce) ||
@@ -161,6 +161,12 @@ export async function readUnverifiedRecoverySequence(transport: RecoverySequence
     if (results.some(result => result.status === 'rejected')) throw new Error('Recovery sequence read failed')
     const result = compareUnverifiedRecoverySequence(frames, destination.environment, destination.epochId, fenceVersion, fenceNonce)
     remaining()
-    return result
+    return { frames, sequence: result, coverageVerified: false as const }
   } catch { throw new Error('Recovery sequence could not be verified') }
+}
+
+/** Read every explicit version through a selected fence, without asserting coverage. */
+export async function readUnverifiedRecoverySequence(transport: RecoverySequenceTransport, target: Target,
+  fenceVersion: string, fenceNonce: string, timeoutMs = 120_000) {
+  return (await readUnverifiedRecoverySequenceFrames(transport, target, fenceVersion, fenceNonce, timeoutMs)).sequence
 }
