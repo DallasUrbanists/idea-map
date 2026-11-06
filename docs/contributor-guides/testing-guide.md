@@ -501,8 +501,8 @@ separate databases for the job tests.
 
 ## UI changes
 
-Contributors should follow the [component review gate](component-review.md) for
-new patterns and their accessibility and visual evidence.
+Contributors should follow [Before you contribute](../../apps/web/stories/foundations/ComponentReview.mdx)
+in Storybook for component review and accessibility and visual evidence.
 
 You should look for an existing Storybook example before adding a new one. Check
 the states your change affects, such as loading, empty results, or errors. Try
