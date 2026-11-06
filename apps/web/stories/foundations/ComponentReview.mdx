@@ -1,0 +1,29 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as InputStories from '../Input.stories.js'
+
+<Meta title="Foundations/Component review" />
+
+# Component review
+
+New patterns stay **Draft** until a design reviewer explicitly accepts the
+reviewed revision. Contributors can use the production Input error example below
+to practice checking a visible label, an error, and recovery. The example is
+review evidence, not a new accepted submission flow.
+
+<Canvas of={InputStories.Error} sourceState="none" />
+
+## Focused evidence
+
+Contributors should check keyboard and focus behavior, accessible names and error
+associations, contrast, reduced motion, and relevant narrow and wider states.
+Automated checks do not replace a real screen-reader walkthrough, physical touch
+testing, or a design review. Authors should record the revision, selected states,
+methods, results, visual evidence, and any unperformed checks in the pull request.
+
+## Draft until reviewed
+
+A green test or screenshot alone does not accept a pattern. The design reviewer
+should record an explicit decision for the reviewed revision; unresolved findings
+and missing evidence remain visible. The
+<a href="https://github.com/DallasUrbanists/idea-map/blob/main/docs/contributor-guides/component-review.md" target="_top">component review guide</a>
+describes the gate and evidence.

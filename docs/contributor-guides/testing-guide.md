@@ -501,6 +501,9 @@ separate databases for the job tests.
 
 ## UI changes
 
+Contributors should follow the [component review gate](component-review.md) for
+new patterns and their accessibility and visual evidence.
+
 You should look for an existing Storybook example before adding a new one. Check
 the states your change affects, such as loading, empty results, or errors. Try
 the keyboard and a small screen as well.
