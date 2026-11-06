@@ -448,6 +448,7 @@ For map-shell, adaptive navigation, and nonmodal tray changes, start with the
 focused contracts and browser stories:
 
 ```sh
+pnpm --filter @idea-map/web exec nuxt prepare
 node --test scripts/map-navigation.test.mjs scripts/map-layout.test.mjs scripts/tray-state.test.mjs scripts/map-canvas.test.mjs scripts/map-patterns-ssr.test.mjs
 pnpm --filter @idea-map/web test:storybook-docs layout.spec.mjs map-shell.spec.mjs tray.spec.mjs
 pnpm --filter @idea-map/web build:storybook
