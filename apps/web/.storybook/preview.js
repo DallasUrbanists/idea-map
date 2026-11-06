@@ -58,6 +58,7 @@ export const parameters = {
       order: [
         "Foundations",
         [
+          "Overview",
           "Principles",
           "Tokens",
           "Color",

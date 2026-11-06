@@ -231,11 +231,15 @@ test('typography tables show the font tokens with their intended sizes', async (
 test('button and tooltip usage pages show variant examples', async ({ page }) => {
   await page.goto('/iframe.html?id=components-button--usage&viewMode=docs')
   await expect(page.getByRole('heading', { name: 'Button usage' })).toBeVisible()
-  for (const name of ['Primary', 'Secondary', 'Warning', 'Transparent', 'Icons and accessible names', 'Loading and disabled']) {
-    await expect(page.locator('h2').filter({ hasText: name })).toBeVisible()
+  for (const [name, button] of [
+    ['Primary', 'Save idea'], ['Secondary', 'Preview'], ['Badge action', 'Browse ideas'],
+    ['Warning', 'Review before continuing'], ['Transparent', 'Show details'],
+    ['Icons and accessible names', 'Add idea'], ['Loading and disabled', 'Submit unavailable'],
+  ]) {
+    const heading = page.locator('h2').filter({ hasText: name })
+    await expect(heading).toBeVisible()
+    await expect(page.getByRole('button', { name: button, exact: true })).toBeVisible()
   }
-  await expect(page.locator('.docs-story')).toHaveCount(6)
-  await expect(page.getByRole('button', { name: 'Add idea' })).toBeVisible()
 
   await page.goto('/iframe.html?id=components-tooltip--usage&viewMode=docs')
   await expect(page.getByRole('heading', { name: 'Tooltip usage' })).toBeVisible()
@@ -363,6 +367,8 @@ test('usage preview cards follow toolbar changes and retain the selected theme a
     }
     await page.getByRole('button', { name: /Color theme for the component preview/ }).click()
     await page.getByRole('option', { name: 'dark', exact: true }).click()
+    await expect(frame.locator('html')).toHaveAttribute('data-theme', 'dark')
+    await expect(page).toHaveURL(/globals=theme:dark/)
     await page.reload()
     await expect(frame.locator('html')).toHaveAttribute('data-theme', 'dark')
     await expect(previews.first()).toHaveCSS('background-color', 'rgb(38, 49, 62)')
