@@ -15,12 +15,12 @@ withDefaults(defineProps<{ contentId?: string }>(), { contentId: 'main-content' 
 </template>
 
 <style scoped>
-.page-layout { min-height: 100dvh; color: var(--color-text); background: var(--color-surface); font: var(--font-body) / var(--line-body) var(--font-family-body); }
+.page-layout { display: flex; flex-direction: column; min-height: 100dvh; color: var(--color-text); background: var(--color-surface); font: var(--font-body) / var(--line-body) var(--font-family-body); }
 .skip-link { position: fixed; inset: var(--gap-compact) auto auto var(--gap-compact); z-index: 200; padding: var(--gap-compact); color: var(--color-text); background: var(--color-surface); transform: translateY(-200%); }
 .skip-link:focus { transform: none; outline: 3px solid var(--color-focus); }
-.page-header { padding: var(--gap-standard); border-bottom: 1px solid var(--color-border-soft); }
-.page-body { display: flex; min-width: 0; }
-.page-navigation { flex: none; }
+.page-header { flex: none; padding: var(--gap-standard); border-bottom: 1px solid var(--color-border-soft); }
+.page-body { display: flex; flex: 1; min-width: 0; }
+.page-navigation { display: flex; flex: none; }
 .page-main { flex: 1 1 auto; min-width: 0; padding: var(--gap-spread); }
 .page-aside { flex: 0 1 var(--size-pane-wide); min-width: 0; padding: var(--gap-spread); border-inline-start: 1px solid var(--color-border-soft); }
 @media (max-width: 760px) {

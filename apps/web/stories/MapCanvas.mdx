@@ -1,0 +1,22 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './MapCanvas.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Map canvas usage
+
+MapCanvas owns one Google Maps instance for its mounted lifetime. Put it in MapShell's stable map slot, not inside a conditional/keyed foreground view. Google Maps is a real external provider; synthetic idea markers are application fixtures, not provider data.
+
+<Canvas of={Stories.Default} sourceState="none" story={{ inline: false, height: '650px' }} />
+
+## Configuration and contract
+
+Configure an existing restricted development browser key with `STORYBOOK_GOOGLE_MAPS_API_KEY` in the root local `.env`. Optional `STORYBOOK_GOOGLE_MAPS_MAP_ID` chooses an existing development map ID; otherwise the Google-documented testing ID is used. Restart Storybook after changing configuration. Do not use a production/server key, publish credentials, or provision cloud resources as part of component work. Live maps load automatically in configured map stories and can incur provider usage. Static builds exclude live settings unless `STORYBOOK_PUBLISH_LIVE_MAPS=true` is explicitly provided for an approved publication.
+
+Props are `apiKey` (empty by default), optional `mapId`, `markers` (unique id/title/valid position), nullable `selectedId`, initial `center` (Dallas), controlled `zoom` (13), and `occlusion` (top/right/bottom/left pixel insets). Events are `select(id)`, `camera-change({center, zoom})`, `map-click(position)`, `ready`, and `error`. Exposed `reveal(position)`, `searchPlaces(query)`, `showPlace(place | null)`, `recenter()`, and `setMapType('roadmap'|'satellite')` are explicit intents. Updating camera observations or occlusion must not cause continuous recentering.
+
+Side panes overlay a full-width renderer, leaving the map visible above the pane and behind the search bar. Left occlusion offsets only Google's native logo/link container, not the canvas; keep that provider-DOM selector covered by live attribution checks when updating the SDK. Bottom sheets resize the renderer with the tray and extend the map slightly beneath its rounded corners. The native footer and logo are offset above the tray edge, and narrow layouts separate the footer row from the logo and camera control. These adjustments use provider-DOM selectors; verify attribution and camera controls against the live SDK when updating it. A reveal intent uses the SDK's padded `fitBounds` to approach the selected idea at the map's maximum zoom. Google decides whether to animate each transition. Place selection uses `panTo` at the current zoom and a temporary native marker. The SDK hosts the zoom indicator beside its footer. Selected markers enlarge the SDK pin, not the positioned marker element, so their map coordinates remain anchored during zoom. The adapter removes its markers/listeners on disposal and ignores late initialization after unmount. Missing configuration, authorization/network/loading failures, and retry have explicit visible states.
+
+## Test boundary
+
+A Vue injection key, `MAP_ADAPTER_FACTORY`, supplies deterministic SDK-boundary fixtures. The **Interaction fixture** story is visibly labeled and makes no Google requests. Fixture tests prove component state/lifecycle/interaction contracts, not live Google API authorization or rendering. Record live non-production verification separately. Real text search requires Places API (New) on the existing development project and sends submitted queries to Google. It may incur provider charges. There is no backend content fetch or automatic geolocation request.

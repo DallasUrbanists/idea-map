@@ -1,0 +1,34 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './MapShell.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Map shell usage
+
+Use MapShell as a viewport-sized stacking context for one persistent map, adaptive navigation, foreground surfaces, and map controls. It is distinct from the in-flow document PageLayout. The map slot is never keyed by the active view or breakpoint.
+
+<Canvas of={Stories.Default} sourceState="none" story={{ inline: false, height: '650px' }} />
+
+```html
+<MapShell :foreground-open="open" presentation="auto" @occlusion="padding = $event">
+  <template #map><MapCanvas :occlusion="padding" /></template>
+  <template #navigation><NavigationRail :items="destinations" :current="view" /></template>
+  <template #search><MapSearchBar v-model="query" :destinations="destinations" /></template>
+  <template #foreground="{ placement, maxHeight, onGeometry }">
+    <Tray v-model:open="open" label="Idea details" :placement="placement"
+      :max-height="maxHeight" @geometry="onGeometry">...</Tray>
+  </template>
+</MapShell>
+```
+
+## Component contract
+
+Optional `presentation` is `auto` (default), `desktop`, or `app`; `foregroundOpen` defaults to false and `label` defaults to Map workspace. `controlsPosition` places floating controls at `bottom` (default) or below search at `top`. Slots are `map`, `navigation`, `search`, `foreground`, `controls`, and `feedback`. The `map` slot receives `occlusion`; `foreground` receives `placement`, `maxHeight`, and the `onGeometry` callback for Tray's geometry event. `controls` receives `compact`. Events are `occlusion` (pixel insets) and `presentation` (`app` or `desktop`). The shell provides one named main landmark and a skip link.
+
+Automatic desktop presentation requires 1200 CSS px and a fine primary pointer. Touch-first layouts retain app navigation; an app viewport with both dimensions at least 600 px and landscape proportions uses a side pane, while portrait and compact-height phone layouts use a bottom sheet. This is a viewport/input heuristic, not device detection. Explicit overrides support large tablets and testing. Visual-viewport height, safe-area offsets, and container measurements keep the shell usable during keyboard/viewport changes.
+
+Empty foreground space passes pointer events to the map. Tray surfaces opt into interaction. The shell reports the tray's target bounds and drag state, including the closed reopening grip, and positions controls above the sheet and provider-footer space. The map canvas follows the tray edge with the same motion, extending slightly beneath open rounded corners while keeping attribution visible. In compact-height viewports the control stack can scroll rather than cover the search bar. The map owner decides when to reveal a location. Geometry changes do not implicitly recenter a manually moved map. Keep active view, history, camera, drafts, and remembered sheet position outside layout selection so resizing/rotation does not discard them.
+
+## Composition boundaries
+
+Side panes overlay the full-width map, including beneath the search bar. The map canvas offsets its native provider logo/link beside the pane rather than shifting the renderer; bottom-sheet insets keep its footer above the tray edge. None of these changes replace the map instance. Modal Dialog and teleported menus remain above the shell; only true modal tasks trap focus. The integrated **Components / Layout patterns** examples define Close versus Back and demonstrate synthetic application flows. Application routing, SSR content/SEO, authorization, reload recovery, and durable drafts remain separate integration work.

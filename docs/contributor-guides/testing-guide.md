@@ -442,6 +442,50 @@ For Storybook documentation, run `pnpm --filter @idea-map/web test:storybook-doc
 to check foundation pages in both themes and at narrow widths. The test starts
 and stops its own Storybook server and needs no database or Firebase services.
 
+### Persistent-map pattern checks
+
+For map-shell, adaptive navigation, and nonmodal tray changes, start with the
+focused contracts and browser stories:
+
+```sh
+node --test scripts/map-navigation.test.mjs scripts/map-layout.test.mjs scripts/tray-state.test.mjs scripts/map-canvas.test.mjs scripts/map-patterns-ssr.test.mjs
+pnpm --filter @idea-map/web test:storybook-docs layout.spec.mjs map-shell.spec.mjs tray.spec.mjs
+pnpm --filter @idea-map/web build:storybook
+```
+
+The browser harness disables live Google configuration and injects a labeled SDK
+fixture and a separate Vite optimization cache. The cache prevents a developer's
+concurrent catalog server from replacing the test server's optimized React/MDX
+modules. These tests make no claims about real provider authorization or map
+rendering. The adapter tests cover SDK lifecycle and cleanup without requesting
+Google. Follow [the map preview workflow](development-guide.md#preview-map-patterns)
+for a separate non-production live check. Verify actual tiles/attribution, marker
+selection, pan/zoom while details remain fixed, and a single map across Close,
+Back, settings and orientation changes. Do not use production data or keys.
+
+To check selected-marker alignment during zoom against a second native marker,
+start a locally configured Storybook using that workflow, then run in PowerShell:
+
+```powershell
+$env:STORYBOOK_LIVE_MAPS_TEST_URL = 'http://127.0.0.1:6006/iframe.html?id=components-layout-patterns--default&viewMode=story'
+pnpm --filter @idea-map/web test:storybook-docs map-live.spec.mjs --workers=1
+Remove-Item Env:STORYBOOK_LIVE_MAPS_TEST_URL
+```
+
+The live test is skipped when the URL is unset. To additionally exercise a real
+Places query and temporary marker, set `$env:STORYBOOK_LIVE_PLACES_TEST = '1'`
+before the test command and remove it afterward with
+`Remove-Item Env:STORYBOOK_LIVE_PLACES_TEST`. This requires Places API (New) on
+the existing development project. These checks use the existing development map
+configuration and can incur provider usage; they do not replace manual checks.
+
+Preserve the existing modal Dialog and modal-edge-panel checks: nonmodal trays
+must not weaken modal focus containment. Check pointer cancellation, flick versus
+slow snapping, short/long/changing content, body scrolling, accessible handle
+controls, keyboard focus, nested Escape, safe areas, small/zoomed viewports,
+reduced motion, and dark/forced-color modes. Record manual screen-reader,
+physical touch-device, and live-provider gaps separately.
+
 ## Dialog checks
 
 You should check dialog server-side rendering (SSR), keyboard/focus behavior,

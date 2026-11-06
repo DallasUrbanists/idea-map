@@ -65,7 +65,7 @@ and controlled value follow the same contract as the single-line field.
 
 ## Component contract
 
-Required props are `label` and string `modelValue`. Optional props are `id`, `hint`, `error`, `required`, `disabled`, `multiline`, and `type` (`text` by default, `email`, `password`, `search`, `tel`, or `url`). Events are `update:modelValue(string)` and `blur(FocusEvent)`. Native attributes such as `name`, `autocomplete`, `maxlength`, and `readonly` reach the control. There are no slots. The parent owns validation timing and submission.
+Required props are `label` and string `modelValue`. Optional props are `id`, `hint`, `error`, `required`, `disabled`, `multiline`, and `type` (`text` by default, `email`, `password`, `search`, `tel`, or `url`). Events are `update:modelValue(string)` and `blur(FocusEvent)`. Native attributes such as `name`, `autocomplete`, `maxlength`, and `readonly` reach the control. Optional `appearance` is `field` (default) or `search-bar`. The search-bar appearance removes the inner field surface and visually hides, but retains, its associated label for composition inside MapSearchBar's unified floating surface; ordinary forms should keep the default visible label. There are no slots. The parent owns validation timing and submission.
 
 ## Foundations and reference
 

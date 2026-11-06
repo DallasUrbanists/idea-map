@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, useId } from 'vue'
+import AnimatedIcon from './AnimatedIcon.vue'
 
 defineOptions({ inheritAttrs: false })
 const props = withDefaults(defineProps<{
@@ -12,7 +13,8 @@ const props = withDefaults(defineProps<{
   error?: string
   required?: boolean
   disabled?: boolean
-}>(), { type: 'text' })
+  appearance?: 'field' | 'search-bar'
+}>(), { type: 'text', appearance: 'field' })
 const emit = defineEmits<{ 'update:modelValue': [value: string]; blur: [event: FocusEvent] }>()
 const generatedId = useId()
 const controlId = computed(() => props.id || generatedId)
@@ -20,7 +22,7 @@ const describedBy = computed(() => [props.hint && `${controlId.value}-hint`, pro
 </script>
 
 <template>
-  <div class="field input-appearance">
+  <div :class="['field', 'input-appearance', { 'search-bar-appearance': appearance === 'search-bar' }]">
     <label :for="controlId">{{ label }}<span v-if="required"> (required)</span></label>
     <div class="control">
     <component :is="multiline ? 'textarea' : 'input'" v-bind="$attrs" :id="controlId"
@@ -28,7 +30,7 @@ const describedBy = computed(() => [props.hint && `${controlId.value}-hint`, pro
       :aria-invalid="error ? true : undefined" :aria-describedby="describedBy"
       @input="emit('update:modelValue', ($event.target as HTMLInputElement | HTMLTextAreaElement).value)"
       @blur="emit('blur', $event)" />
-      <svg v-if="type === 'search' && !multiline" class="search-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10" cy="10" r="6" /><path d="m15 15 6 6" /></svg>
+      <AnimatedIcon v-if="type === 'search' && !multiline && appearance !== 'search-bar'" class="search-icon" name="search" />
     </div>
     <p v-if="hint" :id="`${controlId}-hint`" class="hint">{{ hint }}</p>
     <p v-if="error" :id="`${controlId}-error`" class="error">Error: {{ error }}</p>
@@ -56,4 +58,8 @@ p { margin: 0; font-size: var(--font-small); overflow-wrap: anywhere; }
 .input-appearance input::placeholder, .input-appearance textarea::placeholder { color: var(--color-text-muted); opacity: 1; }
 .input-appearance input[type="search"] { padding-inline-start: calc(var(--gap-standard) * 2 + var(--size-inline-glyph)); }
 .search-icon { width: var(--size-inline-glyph); height: var(--size-inline-glyph); margin-inline-start: var(--gap-standard); pointer-events: none; color: var(--color-text-muted); z-index: 1; }
+.search-bar-appearance { gap: 0; }
+.search-bar-appearance label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.input-appearance.search-bar-appearance input { border: 0; background: transparent; padding: var(--gap-compact); border-radius: var(--radius-pill); }
+.search-bar-appearance .search-icon { display: none; }
 </style>

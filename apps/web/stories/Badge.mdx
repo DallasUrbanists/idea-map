@@ -5,7 +5,7 @@ import * as Stories from './Badge.stories.js'
 
 # Badge usage
 
-You can use a badge for a short object label, such as Draft or Review in progress. A badge is static text with a pill shape; actions belong in a Button, and selectable filters belong in a SegmentedControl.
+You can use a badge for a short object label, such as Draft or Review in progress. A badge is static text with a pill shape; actions belong in a Button, including its `badge` variant, and selectable filters belong in a SegmentedControl.
 
 ## Label
 
@@ -24,9 +24,7 @@ You can put a decorative icon in the icon slot. The visible words carry the mean
 ```html
 <Badge>
   <template #icon>
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M4 12a8 8 0 1 0 3-6M4 3v5h5" />
-    </svg>
+    <AnimatedIcon name="history" />
   </template>
   Review in progress
 </Badge>

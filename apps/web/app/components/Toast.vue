@@ -2,6 +2,7 @@
 import { onMounted, onBeforeUnmount, useId, watch, nextTick } from 'vue'
 import { ToastProvider, ToastRoot, ToastTitle, ToastDescription, ToastAction, ToastClose, ToastViewport } from 'reka-ui'
 import Button from './Button.vue'
+import AnimatedIcon from './AnimatedIcon.vue'
 const props = withDefaults(defineProps<{
   open: boolean
   title: string
@@ -36,7 +37,7 @@ watch(() => props.open, async open => {
 <template>
   <ToastProvider label="Notification" :duration="tone === 'loading' ? Infinity : duration">
     <ToastRoot :open="open" type="background" :class="['toast', 'corner-control shadow-floating', tone, { pill }]" @update:open="emit('update:open', $event)">
-      <span v-if="tone !== 'neutral'" class="tone" aria-hidden="true">{{ { success: '✓', warning: '!', error: '×', info: 'i', loading: '…' }[tone] }}</span>
+      <span v-if="tone !== 'neutral'" class="tone" aria-hidden="true"><AnimatedIcon :key="tone" :name="tone === 'loading' ? 'spinner' : tone" /></span>
       <div class="body"><ToastTitle class="title">{{ title }}</ToastTitle><ToastDescription v-if="description" class="description">{{ description }}</ToastDescription></div>
       <ToastAction v-if="actionLabel" :alt-text="actionLabel" as-child><Button variant="secondary" @click="emit('action')">{{ actionLabel }}</Button></ToastAction>
       <ToastClose as-child><Button variant="transparent" aria-label="Dismiss notification">Dismiss</Button></ToastClose>

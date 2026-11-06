@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuItemIndicator } from 'reka-ui'
 import Button from './Button.vue'
+import AnimatedIcon from './AnimatedIcon.vue'
 withDefaults(defineProps<{
   label: string
   items: readonly { value: string; label: string; disabled?: boolean; checked?: boolean }[]
@@ -15,7 +16,7 @@ const open = ref(false)
 <template>
   <div v-if="inline" class="menu-inline" role="group" :aria-label="label">
     <button v-for="item in items" :key="item.value" type="button" class="menu-item" :disabled="item.disabled" :aria-pressed="item.checked"
-      @click="item.checked === undefined ? emit('select', item.value) : emit('check', item.value, !item.checked)"><span>{{ item.label }}</span><span v-if="item.checked" aria-hidden="true">✓</span></button>
+      @click="item.checked === undefined ? emit('select', item.value) : emit('check', item.value, !item.checked)"><span>{{ item.label }}</span><AnimatedIcon v-if="item.checked" name="success" /></button>
   </div>
   <DropdownMenuRoot v-else v-model:open="open" :modal="false">
     <DropdownMenuTrigger as-child><slot name="trigger"><Button variant="secondary">{{ label }}</Button></slot></DropdownMenuTrigger>
@@ -23,7 +24,7 @@ const open = ref(false)
       <DropdownMenuContent class="menu-panel corner-control shadow-floating" :aria-label="label" :side="side" align="end" :side-offset="8" :collision-padding="8">
         <template v-for="item in items" :key="item.value">
           <DropdownMenuCheckboxItem v-if="item.checked !== undefined" class="menu-item" :model-value="item.checked" :disabled="item.disabled" @select.prevent @update:model-value="emit('check', item.value, $event)">
-            <span>{{ item.label }}</span><DropdownMenuItemIndicator aria-hidden="true">✓</DropdownMenuItemIndicator>
+            <span>{{ item.label }}</span><DropdownMenuItemIndicator aria-hidden="true"><AnimatedIcon name="success" /></DropdownMenuItemIndicator>
           </DropdownMenuCheckboxItem>
           <DropdownMenuItem v-else class="menu-item" :disabled="item.disabled" @select="emit('select', item.value)">{{ item.label }}</DropdownMenuItem>
         </template>

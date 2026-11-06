@@ -14,6 +14,7 @@ The following contents links navigate within this guide:
 
 - [One-time setup for each checkout](#one-time-setup-for-each-checkout)
 - [Start of each work session](#start-of-each-work-session)
+- [Preview map patterns](#preview-map-patterns)
 - [End of each work session](#end-of-each-work-session)
 - [Run the app in Docker instead](#run-the-app-in-docker-instead)
     - [One-time setup](#one-time-setup)
@@ -136,6 +137,49 @@ downloads emulator files. A newly migrated database contains no ideas because
 migrations do not populate example content. The
 [manual authentication guide](testing-guide.md#authentication-testing) explains
 how to test sign-in and use the email action links.
+
+## Preview map patterns
+
+You can explore the persistent-map layout in Storybook without starting the
+application database or authentication services. Complete checkout setup first.
+
+1. To use the live basemap, obtain an existing approved, restricted
+    **non-production browser key** for Google Maps JavaScript. Set
+    `STORYBOOK_GOOGLE_MAPS_API_KEY` in the root local `.env`. Optional
+    `STORYBOOK_GOOGLE_MAPS_MAP_ID` uses an existing development map ID; otherwise
+    Google's documented testing map ID is used. Do not paste values into chat,
+    source, logs, or commits. This workflow does not provision resources or change
+    billing, API permissions, or key restrictions.
+2. Run `pnpm dev:storybook` from the repository root and open
+    **Components / Layout patterns / Default**. Restart Storybook after changing
+    map configuration. Live map stories load Google automatically and may incur
+    provider usage; ordinary control stories do not load it.
+3. Use **Viewport size** in Canvas to choose a phone or tablet and rotate it.
+    The explicit Phone/Tablet/Desktop stories also select the intended
+    presentation; viewport resizing alone cannot identify the device's input
+    capabilities. Tablet app navigation retains the contextual search bar.
+4. Choose **Browse ideas**, open an idea, and pan/zoom the exposed map. The tray
+    stays open. Use Back to restore the prior view or Close to return directly to
+    the map. Search for a place or idea: synthetic idea matches appear first,
+    followed by Google Places results. Selecting a place closes the tray and adds
+    a temporary marker at the current zoom. Submitting a query sends it to Google;
+    the existing development project must have Places API (New) enabled and the
+    request may incur charges. Open New idea through the app menu or desktop rail;
+    its draft remains in memory across navigation. No backend submission, account
+    data, or automatic location request is involved.
+5. If the key is absent or the provider fails, expect **Map unavailable** and an
+    actionable retry message. The **Interaction fixture (synthetic SDK)** story
+    demonstrates deterministic interactions without Google requests and labels
+    itself accordingly; it does not establish live-provider readiness.
+6. Stop only the Storybook process you started with Ctrl+C. If no Docker services
+    were started for this catalog-only workflow, no Docker shutdown is needed.
+
+The Storybook Vite configuration loads only the named public Maps settings from
+root local env files; it does not expose server settings. Static builds omit live
+map configuration unless `STORYBOOK_PUBLISH_LIVE_MAPS=true` is explicitly set for
+a separately approved catalog publication. Automated catalog tests set
+`STORYBOOK_MAPS_TEST_MODE=1` and use injected adapters, even when a local Maps key
+exists. Record actual live-provider validation separately.
 
 ## End of each work session
 
