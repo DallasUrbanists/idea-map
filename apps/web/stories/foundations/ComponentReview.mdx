@@ -1,0 +1,114 @@
+import { Meta } from '@storybook/addon-docs/blocks'
+
+<Meta title="Foundations/Before you contribute" />
+
+# Before you contribute
+
+Ready to share a component? Use Storybook to check how it looks and works, and
+gather notes and screenshots for design review.
+
+## Ready checklist
+
+Contributors should answer **yes** to every question before requesting design
+review. If a check doesn't apply, answer yes and record why; if you can't verify
+it, record the gap and complete it before continuing. Check the affected states
+at representative screen sizes rather than every story on every device.
+
+The following table explains how to check your component in Storybook.
+
+<div role="region" aria-label="Review checklist" tabIndex="0" style={{ maxWidth: '100%', overflowX: 'auto' }}>
+<table>
+  <caption>Review checklist</caption>
+  <thead><tr><th scope="col">Review question</th><th scope="col">How to check</th></tr></thead>
+  <tbody>
+    <tr><th scope="row">Can you reach every control with a keyboard?</th><td>Press Tab and Shift+Tab to move through the component. Check that you can reach every available control without a mouse.</td></tr>
+    <tr><th scope="row">Does the keyboard move through controls in a sensible order?</th><td>Press Tab through the component. Check that focus follows the order in which you would use the controls.</td></tr>
+    <tr><th scope="row">Can you see which control the keyboard is on?</th><td>Press Tab through each control. Check that a visible focus indicator appears on the active control.</td></tr>
+    <tr><th scope="row">Can you use each control with a keyboard?</th><td>Focus each control and use Enter, Space, or arrow keys as appropriate. Check that it performs the same action as a pointer.</td></tr>
+    <tr><th scope="row">Can you close an open panel or menu with a keyboard?</th><td>If the component opens a panel or menu, try its close control and Escape where supported. Check that each supported way closes it.</td></tr>
+    <tr><th scope="row">Does focus return to the right place after closing?</th><td>If a control opens a panel or menu, open and close it with the keyboard. Check that focus returns to the opening control.</td></tr>
+    <tr><th scope="row">Does the component work after you interrupt an action?</th><td>If an action can be interrupted, start it and cancel or dismiss it. Check that you can still use the component.</td></tr>
+    <tr><th scope="row">Can you repeat an action without problems?</th><td>Open, use, and close the component more than once. Check that it behaves consistently and doesn't lose focus or get stuck.</td></tr>
+    <tr><th scope="row">Do controls have names that explain what they do?</th><td>Right-click each control, choose Inspect, and open the accessibility panel in your browser's developer tools. Check that its accessible name describes the action.</td></tr>
+    <tr><th scope="row">Do assistive technologies recognize each control?</th><td>Inspect each control in the browser's accessibility panel. Check that its role matches its purpose, such as button or checkbox.</td></tr>
+    <tr><th scope="row">Are control states communicated correctly?</th><td>Inspect controls in the browser's accessibility panel while changing their states. Check that states such as expanded, checked, or disabled match what you see.</td></tr>
+    <tr><th scope="row">Are labels and errors connected to their fields?</th><td>Inspect each field in the browser's accessibility panel. Check that its accessible name matches its label and its description includes any error.</td></tr>
+    <tr><th scope="row">Can a screen-reader user understand and use the component?</th><td>Where relevant, use a screen reader such as NVDA or VoiceOver to navigate and activate the controls. Check that names, states, errors, and results are announced clearly.</td></tr>
+    <tr><th scope="row">Is the text easy to distinguish from its background?</th><td>Use a contrast checker on text and its actual background in each affected theme and state. Check for at least 4.5:1 contrast, or 3:1 for text at least 24 pixels tall or 18.67 pixels when bold.</td></tr>
+    <tr><th scope="row">Can you distinguish control edges and focus indicators?</th><td>Use a contrast checker on essential control boundaries and focus indicators against adjacent colors in each affected theme and state. Check for at least 3:1 contrast.</td></tr>
+    <tr><th scope="row">Does the component respect reduced-motion settings?</th><td>Turn on reduced motion in your device's accessibility settings and use the component. Check that nonessential animation stops or is reduced.</td></tr>
+    <tr><th scope="row">Can you understand changes without animation?</th><td>With reduced motion on, repeat actions that change the component. Check that the result is still clear without relying on movement.</td></tr>
+    <tr><th scope="row">Does the component fit on a narrow screen?</th><td>Open the affected story at a narrow viewport, such as 320 pixels wide. Check that content remains readable and controls are reachable without unintended page overflow.</td></tr>
+    <tr><th scope="row">Does the component work on a wider screen?</th><td>Open the affected story at a representative desktop width. Check that content and controls remain usable.</td></tr>
+    <tr><th scope="row">Can you still use the component when zoomed in?</th><td>Increase browser zoom to 200% and use the controls. Check that content remains readable and controls remain reachable.</td></tr>
+    <tr><th scope="row">Can the component handle long content?</th><td>Use a story or synthetic example with long text. Check that text is readable and controls aren't clipped or covered.</td></tr>
+    <tr><th scope="row">Can you use the component by touch?</th><td>Where relevant, try it on a physical touch device. Check that controls can be reached and activated without unintended actions.</td></tr>
+    <tr><th scope="row">Is your review evidence ready?</th><td>Record the revision, affected stories and states, exact commands and results. Prepare synthetic screenshots or recordings showing the relevant sizes and themes.</td></tr>
+    <tr><th scope="row">Is each new pattern marked Draft?</th><td>Check the Storybook documentation and prepare the pull request to show <strong>Draft</strong>. Keep the pattern Draft until the reviewed revision is accepted.</td></tr>
+  </tbody>
+</table>
+</div>
+
+**💡Tip: Check with AI.** You can use the prompt template below to ask your AI coding
+assistant to evaluate your new or updated components against the checklist. Make sure
+to modify the placeholder with the affected components and paths, and review the
+assistant's output for accuracy before proceeding.
+
+```text
+Review [component names or paths] against every question in the Ready checklist
+in apps/web/stories/foundations/ComponentReview.mdx. Report yes, no, or unverified
+for each question, with evidence and any checks you couldn't perform. Recommend
+fixes for each gap, but don't implement fixes or change files without explicit approval.
+```
+
+## Request design review
+
+Once every checklist answer is yes, contributors should follow these
+steps to request a review from project maintainer [@hexel](https://github.com/Hexel) on GitHub:
+
+1. If you haven't already, create a working branch from the latest `main` before
+    making your change.
+2. Commit your changes with a message that describes the change.
+3. Push the branch to your repository.
+4. Open a pull request against `main` and use the pull-request template to record
+    the exact committed revision, Draft status, checks, results, and visual evidence.
+5. Tag [@hexel](https://github.com/Hexel) in the pull request and request design review.
+
+**💡Tip: Request review with AI.** You can use the prompt template below to ask
+your AI coding assistant to prepare and push a pull request with the review evidence.
+Make sure to modify the placeholder with the affected components and paths, and review
+the assistant's output for accuracy before proceeding.
+
+```text
+Check [component names or paths] against every question in the Ready checklist
+in apps/web/stories/foundations/ComponentReview.mdx. Report evidence for each
+answer, and identify checks you couldn't perform without claiming they passed.
+If any answer is no or unverified, stop and report the gaps without making
+changes. If every answer is yes, follow the Request design review steps in
+that document: create a branch from main if needed, commit with a descriptive
+message, push, open a pull request against main using the template and review
+evidence, and tag @hexel for design review. Preserve existing work, follow
+required approvals, and use an existing pull request if appropriate.
+```
+
+## Questions & answers
+
+Not sure what to include or when a component is ready? These answers can help
+as you prepare your work for review.
+
+<div role="region" aria-label="Questions and answers" tabIndex="0" style={{ maxWidth: '100%', overflowX: 'auto' }}>
+<table>
+  <caption>Questions and answers</caption>
+  <thead><tr><th scope="col">Question</th><th scope="col">Answer</th></tr></thead>
+  <tbody>
+    <tr><th scope="row">Are automated checks enough?</th><td>Automated checks can find problems, but they don't prove that a screen reader or touch device works well, that every color has enough contrast, or that the design is approved. Try the relevant checks yourself, too.</td></tr>
+    <tr><th scope="row">What should I share about my checks?</th><td>List automated and manual checks separately, with their results. Include the tools, browser, screen size, theme, input method, and any screen reader or physical device you used.</td></tr>
+    <tr><th scope="row">What if I couldn't do a check?</th><td>Record what you couldn't check and who will follow up. Complete applicable checks before requesting review.</td></tr>
+    <tr><th scope="row">What does Draft mean?</th><td>A Draft pattern is ready for review but isn't yet accepted for use in the app. Keep it Draft until the design reviewer accepts the reviewed revision.</td></tr>
+    <tr><th scope="row">Do existing accepted components become Draft?</th><td>No, not just because this review process exists. If you change reviewed behavior, update the status and evidence and return the changed pattern to Draft until it's reviewed again.</td></tr>
+    <tr><th scope="row">Where can I find commands for UI checks?</th><td>The <a href="https://github.com/DallasUrbanists/idea-map/blob/main/docs/contributor-guides/testing-guide.md#ui-changes" target="_top">testing guide</a> lists focused checks for user interfaces.</td></tr>
+    <tr><th scope="row">Do screenshots or passing tests mean the design is accepted?</th><td>No. Screenshots and recordings help the reviewer, but they aren't approved visual baselines; a code review or passing test alone doesn't accept the design either.</td></tr>
+    <tr><th scope="row">How is a design accepted?</th><td>The design reviewer records an explicit decision linked to the reviewed revision. Unresolved findings should stay visible with that decision.</td></tr>
+  </tbody>
+</table>
+</div>

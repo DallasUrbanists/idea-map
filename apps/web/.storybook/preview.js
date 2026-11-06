@@ -66,6 +66,7 @@ export const parameters = {
           "Size and space",
           "Containers",
           "Theming",
+          "Before you contribute",
         ],
         "Components",
       ],

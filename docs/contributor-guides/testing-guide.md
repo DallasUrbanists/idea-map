@@ -501,6 +501,9 @@ separate databases for the job tests.
 
 ## UI changes
 
+Contributors should follow [Before you contribute](../../apps/web/stories/foundations/ComponentReview.mdx)
+in Storybook for component review and accessibility and visual evidence.
+
 You should look for an existing Storybook example before adding a new one. Check
 the states your change affects, such as loading, empty results, or errors. Try
 the keyboard and a small screen as well.

@@ -26,6 +26,7 @@ for project work:
 | [Development guide](contributor-guides/development-guide.md) | Setup, configuration, native/container sessions, shutdown, and troubleshooting |
 | [Cloud Run release guide](contributor-guides/cloud-run-release.md) | Build evidence, deploy, promote, and recover web and worker revisions |
 | [Testing guide](contributor-guides/testing-guide.md) | Required checks, package/database tests, and manual/automated authentication checks |
+| [Before you contribute](../apps/web/stories/foundations/ComponentReview.mdx) | Storybook component review, accessibility evidence, and visual acceptance |
 | [Operations monitoring](contributor-guides/operations-monitoring.md) | Inspect aggregate backlog, delivery, and queue signals with read-only identities |
 | [Backup and recovery](contributor-guides/backup-recovery.md) | Export encrypted database archives and rehearse an isolated restore |
 | [Reuse rights guide](contributor-guides/reuse-rights-guide.md) | Check permissions, attribution, and notices for material used or distributed |
