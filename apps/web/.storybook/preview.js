@@ -56,9 +56,9 @@ export const parameters = {
     storySort: {
       method: "alphabetical",
       order: [
-        "Catalog",
         "Foundations",
         [
+          "Overview",
           "Principles",
           "Tokens",
           "Color",

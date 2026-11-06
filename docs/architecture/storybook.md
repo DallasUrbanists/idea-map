@@ -43,7 +43,7 @@ scrollbar in a fixed-height Usage preview. The manager's viewport-size host does
 not flex-shrink: phone/tablet preset heights remain exact even when the addon
 panel leaves less space, and the surrounding preview scrolls instead.
 
-The catalog starts with **Catalog / Overview**, which groups links by Foundations,
+The catalog starts with **Foundations / Overview**, which groups links by Foundations,
 Controls, Overlays, Ideas, Discussion, and Submission and identifies missing
 application components. **Foundations** contains design documentation, and
 **Components** contains individual controls and composed examples. Document props,
