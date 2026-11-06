@@ -27,8 +27,9 @@ async function run(action: 'login' | 'register' | 'google' | 'reset' | 'verify' 
 <template>
   <main>
     <h1>Account</h1>
-    <p role="status" aria-live="polite">{{ message || authError }}</p>
-    <template v-if="signedIn">
+    <p role="status" aria-live="polite">{{ message }}</p>
+    <p role="status" aria-live="polite">{{ ready ? authError : '' }}</p>
+    <template v-if="ready && signedIn">
       <p>Signed in as {{ signedIn }}</p>
       <button :disabled="!ready || busy || !client" @click="run('verify')">Send verification email</button>
       <button :disabled="!ready || busy || !client" @click="run('logout')">Sign out on this device</button>
@@ -41,7 +42,7 @@ async function run(action: 'login' | 'register' | 'google' | 'reset' | 'verify' 
       <button :disabled="!ready || busy || !client">Sign in</button>
       <button type="button" :disabled="!ready || busy || !client" @click="run('register')">Create account</button>
       <button type="button" :disabled="!ready || busy || !client || !client.googleAvailable" @click="run('google')">Continue with Google</button>
-      <p v-if="client && !client.googleAvailable">Google sign-in is unavailable.</p>
+      <p v-if="ready && client && !client.googleAvailable">Google sign-in is unavailable.</p>
       <button type="button" :disabled="!ready || busy || !client || !email" @click="run('reset')">Reset password</button>
     </form>
   </main>

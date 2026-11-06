@@ -17,6 +17,7 @@ test('registration, verification claims, session renewal/retry, reset, and devic
   const base = `http://127.0.0.1:${port}`
   const server = spawn(process.execPath, ['apps/web/.output/server/index.mjs'], { env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), NUXT_SESSION_ORIGIN: base, NUXT_AUTH_PROVIDER_MODE: 'offline', NUXT_PUBLIC_AUTH_PROVIDER_MODE: 'emulator-popup', NUXT_FIREBASE_PROJECT_ID: 'demo-idea-map', FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099', NUXT_PUBLIC_FIREBASE_API_KEY: 'fake-key', NUXT_PUBLIC_FIREBASE_AUTH_DOMAIN: 'localhost', NUXT_PUBLIC_FIREBASE_PROJECT_ID: 'demo-idea-map', NUXT_PUBLIC_FIREBASE_AUTH_EMULATOR: 'http://127.0.0.1:9099' }, stdio: 'ignore' })
   let browser
+  let passwordReset = false
   const accounts = trackAuthTestAccounts()
   const email = `browser-${randomUUID()}@example.test`
   const googleEmail = `google-${randomUUID()}@example.test`
@@ -26,7 +27,8 @@ test('registration, verification claims, session renewal/retry, reset, and devic
     for (let i = 0; i < 80; i++) { try { await fetch(`${base}/api/health`); ready = true; break } catch { await delay(250) } }
     assert.ok(ready)
     browser = await chromium.launch({ headless: true })
-    const page = await browser.newPage()
+    const page = await browser.newPage({ viewport: { width: 320, height: 700 } })
+    const isSessionLogin = response => response.url() === base + '/api/session' && response.request().method() === 'POST' && response.request().postDataJSON().action === 'login'
     page.context().on('response', response => {
       if (!response.url().startsWith('http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:') || !response.ok()) return
       if (!/accounts:(signUp|signInWithIdp)\?/.test(response.url())) return
@@ -40,12 +42,31 @@ test('registration, verification claims, session renewal/retry, reset, and devic
     assert.equal(await page.evaluate(() => document.activeElement?.id), 'email')
     await page.keyboard.press('Tab')
     assert.equal(await page.evaluate(() => document.activeElement?.id), 'password')
+    assert.equal(await page.locator('body').evaluate(body => body.scrollWidth <= window.innerWidth), true)
     await page.locator('#email').fill(email)
     await page.locator('#password').fill('example-password')
-    await page.getByRole('button', { name: 'Create account' }).click()
+    await page.keyboard.press('Tab')
+    assert.equal(await page.getByRole('button', { name: 'Sign in', exact: true }).evaluate(button => button === document.activeElement), true)
+    await page.keyboard.press('Tab')
+    assert.equal(await page.getByRole('button', { name: 'Create account' }).evaluate(button => button === document.activeElement), true)
+    await page.keyboard.press('Enter')
     await page.getByText(`Signed in as ${email}`).waitFor({ timeout: 15000 })
     assert.ok((await page.context().cookies()).some(c => c.name === '__session' && c.httpOnly))
     await page.getByText('Check your email for a verification link.').waitFor()
+    // A previous success message must not hide a later session refresh failure.
+    await page.route('**/api/session', async route => {
+      if (route.request().method() === 'POST') await route.fulfill({ status: 503, body: 'Temporary outage' })
+      else await route.continue()
+    }, { times: 1 })
+    const failedAfterRegistration = page.waitForResponse(isSessionLogin)
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+    assert.equal((await failedAfterRegistration).status(), 503)
+    await page.getByText('Your server session could not be refreshed. Retrying automatically, or sign out.').waitFor()
+    assert.equal(await page.getByText('Check your email for a verification link.').isVisible(), true)
+    const recoveredAfterRegistration = page.waitForResponse(isSessionLogin)
+    await page.evaluate(() => window.dispatchEvent(new Event('online')))
+    assert.equal((await recoveredAfterRegistration).status(), 200)
+    await page.getByText('Your server session could not be refreshed. Retrying automatically, or sign out.').waitFor({ state: 'hidden' })
     const messages = await (await fetch('http://127.0.0.1:9099/emulator/v1/projects/demo-idea-map/oobCodes')).json()
     const verification = messages.oobCodes.find(code => code.email === email && code.requestType === 'VERIFY_EMAIL')
     assert.ok(verification)
@@ -57,7 +78,6 @@ test('registration, verification claims, session renewal/retry, reset, and devic
     // The original tab still has a newly minted, unverified token in persistence.
     // Reload must refresh its claims without a second sign-in or a four-minute wait.
     assert.deepEqual(await (await page.request.get(base + '/api/session')).json(), { registered: true, emailVerified: true })
-    const isSessionLogin = response => response.url() === base + '/api/session' && response.request().method() === 'POST' && response.request().postDataJSON().action === 'login'
     let loginRequests = 0
     page.on('request', request => {
       if (request.url() === base + '/api/session' && request.method() === 'POST' && request.postDataJSON().action === 'login') loginRequests++
@@ -109,6 +129,22 @@ test('registration, verification claims, session renewal/retry, reset, and devic
     await page.locator('#email').fill(email)
     await page.getByRole('button', { name: 'Reset password' }).click()
     await page.getByText('If the address can be used, a reset email will be sent.').waitFor()
+    const resetMessages = await (await fetch('http://127.0.0.1:9099/emulator/v1/projects/demo-idea-map/oobCodes')).json()
+    const reset = resetMessages.oobCodes.find(code => code.email === email && code.requestType === 'PASSWORD_RESET')
+    assert.ok(reset)
+    const resetResult = await fetch('http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:resetPassword?key=fake-key', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ oobCode: reset.oobCode, newPassword: 'new-example-password' }),
+    })
+    passwordReset = resetResult.ok
+    assert.equal(resetResult.status, 200)
+    await page.locator('#password').fill('example-password')
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+    await page.getByText('Unable to complete that action. Check your details and try again.').waitFor()
+    await page.locator('#password').fill('new-example-password')
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+    await page.getByText(`Signed in as ${email}`).waitFor({ timeout: 15000 })
+    await page.getByRole('button', { name: 'Sign out on this device' }).click()
+    await page.getByRole('button', { name: 'Sign in', exact: true }).waitFor()
     const popupPromise = page.waitForEvent('popup')
     await page.getByRole('button', { name: 'Continue with Google' }).click()
     const popup = await popupPromise
@@ -123,6 +159,16 @@ test('registration, verification claims, session renewal/retry, reset, and devic
   } finally {
     try {
       const responses = await Promise.all(pendingResponses)
+      if (passwordReset) {
+        // Password reset can revoke the captured token. Obtain a current token
+        // even if a later assertion failed so cleanup still targets this account.
+        try {
+          const signIn = await fetch('http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-key', {
+            method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: 'new-example-password', returnSecureToken: true }),
+          })
+          if (signIn.ok) accounts.add(email, (await signIn.json()).idToken)
+        } catch { /* Attempt cleanup with the last captured token. */ }
+      }
       await accounts.cleanup()
       if (responses.some(Boolean)) throw new Error('Could not capture an Auth emulator response for cleanup')
     } finally {
@@ -143,7 +189,7 @@ test('offline browser authentication uses the emulator and disables the networke
     NUXT_PUBLIC_FIREBASE_PROJECT_ID: 'demo-idea-map', NUXT_PUBLIC_FIREBASE_AUTH_EMULATOR: 'http://127.0.0.1:9099' }, stdio: 'ignore' })
   const accounts = trackAuthTestAccounts()
   const email = `offline-${randomUUID()}@example.test`
-  const responses = [], remoteRequests = []
+  const responses = [], remoteRequests = [], hydrationErrors = []
   let browser
   try {
     let ready = false
@@ -151,6 +197,7 @@ test('offline browser authentication uses the emulator and disables the networke
     assert.ok(ready)
     browser = await chromium.launch({ headless: true })
     const page = await browser.newPage()
+    page.on('console', message => { if (/hydration.*mismatch/i.test(message.text())) hydrationErrors.push(message.text()) })
     page.on('request', request => {
       const url = new URL(request.url())
       if (['http:', 'https:'].includes(url.protocol) && !['127.0.0.1', 'localhost'].includes(url.hostname)) remoteRequests.push(url.origin)
@@ -166,9 +213,12 @@ test('offline browser authentication uses the emulator and disables the networke
     await page.locator('#password').fill('example-password')
     await page.getByRole('button', { name: 'Create account' }).click()
     await page.getByText(`Signed in as ${email}`).waitFor({ timeout: 15000 })
+    await page.reload()
+    await page.getByText(`Signed in as ${email}`).waitFor({ timeout: 15000 })
     assert.ok((await Promise.all(responses)).every(result => result === null))
     assert.equal(accounts.size, 1)
     assert.deepEqual(remoteRequests, [])
+    assert.deepEqual(hydrationErrors, [])
   } finally {
     try {
       const captured = await Promise.all(responses)
