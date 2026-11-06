@@ -7,6 +7,11 @@ body {
   text-wrap: pretty;
 }
 
+/* Isolated story iframes must not reserve inline text-baseline space. */
+.docs-story iframe[id^="iframe--"] {
+  display: block;
+}
+
 .sbdocs table th,
 .sbdocs table td {
   text-align: left;

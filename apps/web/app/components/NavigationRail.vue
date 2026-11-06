@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AnimatedIcon from './AnimatedIcon.vue'
 withDefaults(defineProps<{
   label?: string
   current: string
@@ -10,7 +11,7 @@ withDefaults(defineProps<{
 <template>
   <nav :class="['nav-rail', { capsule }]" :aria-label="label">
     <a v-for="item in items" :key="item.value" :href="item.href" :aria-current="current === item.value ? 'page' : undefined">
-      <span class="indicator" aria-hidden="true"><slot name="icon" :item="item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 10 9-7 9 7v11H3Z M9 21v-8h6v8" /></svg></slot></span>
+      <span class="indicator" aria-hidden="true"><slot name="icon" :item="item"><AnimatedIcon name="home" /></slot></span>
       <span>{{ item.label }}</span>
     </a>
   </nav>

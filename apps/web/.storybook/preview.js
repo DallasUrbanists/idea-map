@@ -1,5 +1,6 @@
 import "@fontsource-variable/figtree";
 import { addons } from "storybook/preview-api";
+import { INITIAL_VIEWPORTS } from "storybook/viewport";
 import { DOCS_PREPARED, UPDATE_GLOBALS } from "storybook/internal/core-events";
 import "../src/styles/tokens.css";
 import "./preview.css";
@@ -50,6 +51,7 @@ if (import.meta.hot) {
 }
 
 export const parameters = {
+  viewport: { options: INITIAL_VIEWPORTS },
   options: {
     storySort: {
       method: "alphabetical",

@@ -73,12 +73,13 @@ import heartReveal from '../../assets/lordicon-collection-839425/system-solid-20
 <lord-icon :src="heartReveal" trigger="in" current-color aria-hidden="true"></lord-icon>
 ```
 
-For icons with these states, play Reveal once as the icon enters view and Pinch
-once per press. Do not loop either animation. To play Pinch after Reveal, load
-the corresponding `hover-pinch` file and play it on activation; these exports
-are separate files. Not every icon has both. Respect reduced-motion preferences. Decorative
-icons are hidden from assistive technology; give an icon-only control an
-accessible name.
+The shared `AnimatedIcon` component uses these catalog exports. It plays Reveal
+when the icon first enters view and plays the matching hover animation when its
+button or link is hovered or focused. These exports are separate files; not every
+icon has both. Reduced-motion preferences suppress playback. Decorative icons
+are hidden from assistive technology; give an icon-only control an accessible
+name. Use an appropriate catalog icon when available; retain a non-catalog icon
+only when the collection has no suitable match.
 
 Use a 20px square icon in standard controls, 16px in compact controls, and 24px
 in large controls. Keep the icon centered and preserve the control's touch target;

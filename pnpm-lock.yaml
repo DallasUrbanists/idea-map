@@ -26,6 +26,9 @@ importers:
       '@fontsource-variable/figtree':
         specifier: ^5.3.0
         version: 5.3.0
+      '@googlemaps/js-api-loader':
+        specifier: 2.1.3
+        version: 2.1.3
       '@iconify-json/fluent-emoji':
         specifier: ^1.2.7
         version: 1.2.7
@@ -69,6 +72,9 @@ importers:
       '@storybook/vue3-vite':
         specifier: 10.6.5
         version: 10.6.5(storybook@10.6.5(@types/react@19.3.0)(react@19.3.1))(typescript@5.9.3)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(vue@3.5.44(typescript@5.9.3))
+      '@types/google.maps':
+        specifier: 3.66.9
+        version: 3.66.9
       '@vitejs/plugin-vue':
         specifier: 6.0.10
         version: 6.0.10(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(vue@3.5.44(typescript@5.9.3))
@@ -1112,6 +1118,9 @@ packages:
     resolution: {integrity: sha512-M3kA6UA2Tjp5aznCrgKcm9CzOjiQyRMnquqalqXAeS5wvkqqZxN8wpNjjHafOSYs6lQ82U7f2i8we4eTfIrpkA==}
     engines: {node: '>=22'}
 
+  '@googlemaps/js-api-loader@2.1.3':
+    resolution: {integrity: sha512-1t6umwRufEGzIPjHPjPeuuY1dCal0zU2bZeomkf4OA0MprFdlKCnXY3zeFkzDaCvKjwbFubeapm61P5+EbrAoA==}
+
   '@grpc/grpc-js@1.13.6':
     resolution: {integrity: sha512-S9U8ioEds9fo8zCt4K8CyWHLJPg63FBgZo/hYUPVTiKppwsx/ykTnFg4g4/70beoa/DYao9uROQRcoahVH8PVQ==}
     engines: {node: '>=12.10.0'}
@@ -2090,6 +2099,9 @@ packages:
 
   '@types/estree@1.0.9':
     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
+
+  '@types/google.maps@3.66.9':
+    resolution: {integrity: sha512-6OmfZjuSMDG5oTzW6f2JM1by1rUrdCMBxtru2OJXfX44N3DqQSh8lEgwZbrHjoswYiapRf30vUCHjTs9sKDJdQ==}
 
   '@types/jsonwebtoken@9.0.10':
     resolution: {integrity: sha512-asx5hIG9Qmf/1oStypjanR7iKTv0gXQ1Ov/jfrX6kS/EO0OFni8orbmGCn0672NHR3kXHwpAwR+B368ZGN/2rA==}
@@ -6129,6 +6141,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@googlemaps/js-api-loader@2.1.3':
+    dependencies:
+      '@types/google.maps': 3.66.9
+
   '@grpc/grpc-js@1.13.6':
     dependencies:
       '@grpc/proto-loader': 0.7.15
@@ -7146,6 +7162,8 @@ snapshots:
   '@types/estree@1.0.10': {}
 
   '@types/estree@1.0.9': {}
+
+  '@types/google.maps@3.66.9': {}
 
   '@types/jsonwebtoken@9.0.10':
     dependencies:

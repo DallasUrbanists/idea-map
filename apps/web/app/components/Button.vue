@@ -4,7 +4,7 @@ import Tooltip from './Tooltip.vue'
 
 defineOptions({ inheritAttrs: false })
 withDefaults(defineProps<{
-  variant?: 'primary' | 'secondary' | 'warning' | 'transparent'
+  variant?: 'primary' | 'secondary' | 'warning' | 'transparent' | 'badge'
   type?: 'button' | 'submit' | 'reset'
   disabled?: boolean
   loading?: boolean
@@ -93,6 +93,17 @@ defineSlots<{ default(): unknown; icon?(): unknown; loading?(): unknown }>()
   background: var(--color-accent);
   color: var(--color-accent-text);
   border-color: var(--color-accent);
+}
+
+.badge {
+  flex: none;
+  border-radius: var(--radius-pill);
+  border-color: transparent;
+  background: var(--accent-tint);
+  color: var(--color-accent);
+  box-shadow: var(--shadow-grounded);
+  font-size: var(--font-small);
+  white-space: nowrap;
 }
 
 .warning {

@@ -1,0 +1,38 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './Tray.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Tray usage
+
+Use Tray for nonmodal foreground content that shares interaction with the map. Unlike `Dialog placement="tray"`, this component has no scrim, focus trap, automatic outside dismissal, or background inerting. A named aside contains a fixed heading and independently scrollable body. Closed content is inert.
+
+<Canvas of={Stories.Default} sourceState="none" story={{ inline: false, height: '650px' }} />
+
+## Controlled states and content
+
+```html
+<Tray v-model:open="open" v-model:maximize="maximized"
+  label="Idea details" placement="bottom" :medium-height="320" :max-height="520">
+  <template #head><h1>Idea details</h1></template>
+  <p>Keep the map interactive beside this content.</p>
+</Tray>
+```
+
+Required props are Boolean `open` and accessible `label`. Optional `maximize` defaults to false; `placement` defaults to `bottom`; `mediumHeight` and `maxHeight` default to 320 and 520 px. Maximum height is clamped to available viewport/container space. `canDragOpen` and `canDragClose` default to true and govern gesture/handle directions; `busy` disables gesture/action controls. The owner can still request an explicit close. `showClose` defaults to true; set it false only when a persistent, reachable close action is supplied elsewhere (the map search bar does this). The `head` slot replaces the heading; the default slot holds content. Events are `update:open`, `update:maximize`, native `scroll`, and `geometry` (target visible bounds in viewport coordinates and a `dragging` flag). A closed bottom tray retains a 44px reopening grip when opening is enabled; a closed side tray has zero width. Exposed `element` and `contentElement` refs support owner-managed focus/scroll restoration.
+
+Short content uses its natural height and does not acquire an artificial maximum state or unnecessary scrolling. The bottom grip sits inside the tray, with a 44px hit target and a compact gap above the bar. The tray surface and body resize together; the map shell follows the same transition. Bottom trays have closed/medium/max positions. Slow release snaps to the nearest allowed position; a directional flick moves one position. Handle clicks toggle open/closed, Arrow Up/Down move one position, Home closes and End expands where allowed. The heading has explicit expand/reduce and close controls with 44 px targets. Reduced motion removes sliding transitions.
+
+Wheel scrolling can expand a medium tray before scrolling its body, and reduce a maximum tray when scrolling upward from the body top. Nested scrollable content can consume its own scroll. Dragging starts only from the handle; cancellation/capture loss restores the original position. Map gestures outside the tray never change its state.
+
+## Short content and side placement
+
+<Canvas of={Stories.ShortContent} sourceState="none" story={{ inline: false, height: '650px' }} />
+
+`placement="side"` fills its positioned container with a bounded left pane and uses open/closed states only. It does not change the remembered bottom-sheet `maximize` value. The shell, not Tray, decides pane width, rail offset, and responsive placement. Escape/Back navigation is owned by the active-view controller so nested menus and modals dismiss first.
+
+<Canvas of={Stories.Side} sourceState="none" story={{ inline: false, height: '650px' }} />
+
+## Behavioral reference
+
+The independent implementation follows the owned predecessor's [Tray source](https://github.com/DallasUrbanists/improvement-map/blob/cf94245161e4a35740b62ccb86a653edd04ec925/src/components/Tray.vue) and [stories](https://github.com/DallasUrbanists/improvement-map/blob/cf94245161e4a35740b62ccb86a653edd04ec925/src/components/Tray.stories.js): content-aware sizing, directional permissions, nearest-position snapping, recent-sample flicks, click suppression, and independent scrolling. It uses current Idea Map tokens and adds accessible handle targets, keyboard controls, safe viewport sizing, and side placement. The predecessor story prose mentions a backdrop, but its actual implementation does not render one; that contradictory prose is not adopted.

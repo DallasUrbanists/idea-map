@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import Button from './Button.vue'
+import AnimatedIcon from './AnimatedIcon.vue'
 withDefaults(defineProps<{
   variant?: 'surface' | 'inline' | 'compact'
   message: string
@@ -13,9 +14,7 @@ const emit = defineEmits<{ retry: [] }>()
 
 <template>
   <div :class="['error-state', 'corner-card shadow-grounded', variant]" role="group" :aria-label="message">
-    <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M12 3 2 21h20L12 3Z M12 9v5 M12 17v1" />
-    </svg>
+    <AnimatedIcon class="icon" name="warning" />
     <div class="body">
       <p class="message">{{ message }}</p>
       <p v-if="description" class="description">{{ description }}</p>

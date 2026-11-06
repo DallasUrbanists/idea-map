@@ -33,6 +33,16 @@ surrounding documentation, including system-theme changes without a reload.
 Isolated Canvas iframes inherit the owning documentation's theme without
 reloading their examples. A story's explicit theme override takes precedence.
 
+For device previews, open a component's story in Canvas and use **Viewport size**
+in the toolbar. The catalog enables Storybook's built-in viewport tool with its
+phone and tablet presets, rotation, and reset controls. Storybook does not show
+the viewport tool on Usage documentation pages; **Components / Layout patterns**
+includes an **Open device preview** link to its Canvas story. Isolated story
+iframes are block elements so inline baseline spacing does not create an empty
+scrollbar in a fixed-height Usage preview. The manager's viewport-size host does
+not flex-shrink: phone/tablet preset heights remain exact even when the addon
+panel leaves less space, and the surrounding preview scrolls instead.
+
 The catalog has two top-level groups: **Foundations** for documentation and
 **Components** for individual controls and composed examples. Document props,
 events, slots, and meaningful examples before creating another overlapping
@@ -58,6 +68,53 @@ validation and asynchronous recovery. **Components / Dialog** demonstrates the
 dialog wrapper and its focus behavior.
 The [Lordicon reuse record](lordicons.md) identifies the icon artwork and its
 attribution and sharing conditions.
+
+## Persistent-map layouts
+
+The map-first catalog composes one persistent Google Maps canvas beneath its
+navigation and foreground views. It is a component/layout reference, not an
+adoption of that shell in the application's routes. Synthetic ideas represent
+places: marker and result selection open the same Idea details view. Saved
+ideas, New idea, profile, and settings use synthetic state. Submitted search
+queries combine synthetic ideas with Google Places text search; the catalog does
+not call application backends.
+
+Desktop presentation uses a left navigation rail and a bounded left pane.
+Automatic desktop presentation requires at least 1200 CSS px and a fine primary
+pointer; touch-first layouts retain app-style navigation. Consumers can override
+presentation explicitly. App presentation uses contextual search-bar actions,
+a portrait bottom tray, and a landscape-tablet left pane. Close returns directly
+to the map; Back restores the preceding view. Camera, query, draft fields, and
+remembered sheet position survive those transitions while the shell is mounted.
+
+Ordinary trays are nonmodal: they have no scrim, do not trap focus or dismiss on
+map interaction, and allow simultaneous map panning and content interaction.
+The existing `Dialog`, including its `placement="tray"` modal edge-panel option,
+retains its focus containment and scrim for focused tasks. A modal may cover the
+map temporarily but must not replace it. The general `PageLayout` remains a
+document layout rather than becoming a map shell.
+
+Bottom trays retain the predecessor's content-aware closed/medium/max states,
+nearest-position drag snapping, directional flicks, fixed header, independent
+body scrolling, and reduced-motion behavior. The 44 px grip target sits inside
+the tray; the surface and map edge move together and preserve map pixels at the
+rounded corners. The fading map-action row uses keyboard-scrollable badge
+buttons. Current controls provide keyboard alternatives. Side panes use open/closed states and
+preserve the remembered bottom-sheet position when orientation changes. Idea
+selection uses the SDK's padded fit to reveal its location at the maximum map
+zoom; the SDK determines whether a transition animates. Place selection uses a
+same-zoom pan and a temporary marker. Subsequent manual camera movement does not
+close the tray or trigger automatic recentering.
+
+The provider boundary owns a single map instance per mounted shell and a single
+SDK loader per document. Only map-layout stories initialize the real provider.
+Explicit, non-production public browser configuration enables live maps; missing
+configuration and provider failures remain visible rather than silently showing
+a synthetic map. Places text search requires the existing project's Places API
+(New) and transmits submitted queries to Google; provider results are labeled and
+attributed separately. CI uses a deterministic injected adapter, with live-provider
+validation reported separately. Do not provision resources, expose server
+settings, request geolocation automatically, or obscure provider attribution.
 
 ## Validation boundary
 

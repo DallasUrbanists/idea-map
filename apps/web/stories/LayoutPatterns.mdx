@@ -1,0 +1,52 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './LayoutPatterns.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Layout patterns
+
+You can build a map-first workspace in which Ideas act like Places: choosing a marker or result opens details above the same map. The map stays mounted while you search, open saved ideas, draft a new idea, or visit profile/settings. These catalog journeys use synthetic application data and a real Google Maps basemap when development configuration is available; they do not adopt the shell in application routes or call account/submission services.
+
+<a href="./?path=/story/components-layout-patterns--default" target="_top">Open device preview</a>: use **Viewport size** in the Canvas toolbar to select a phone or tablet, rotate it, or reset to the available space. Storybook shows this control in Canvas, not on Usage documentation pages.
+
+<Canvas of={Stories.Default} sourceState="none" story={{ inline: false, height: '650px' }} />
+
+## Persistent map and adaptive navigation
+
+`MapShell` keeps `MapCanvas` in a stable base slot. Desktop presentation uses a left rail and a bounded left pane. Automatic desktop mode needs at least 1200 CSS px and a fine primary pointer; the `presentation` override can select `app` or `desktop` explicitly. App presentation uses a portrait bottom sheet or a landscape-tablet left pane, without adding a bottom navigation bar. A compact-height landscape phone does not become a tablet merely because it is wide.
+
+The search bar's leading control opens search history at the map root and becomes Back inside foreground views. Its trailing profile/menu control becomes Close while a view is open. Back restores the preceding view and list position; Close returns directly to the map while preserving camera, query, remembered sheet position, and in-memory draft fields. The app menu exposes Explore, Search, New idea, Saved ideas, Profile, and Settings.
+
+Selecting an idea uses Google Maps camera movement to reveal its marker at the closest allowed zoom in the exposed map region. Google determines whether each transition is animated. Map panning, zooming, and keyboard access remain available while details stay fixed and open; manual movement does not trigger recentering. The full-width search bar sits above the map on desktop and mobile. The live map uses Google's expandable camera controls, and the zoom indicator sits beside its footer. Badge actions below search scroll horizontally when needed and fade as they appear or disappear. On a maximized bottom sheet, the action row is hidden to leave room for the camera controls; reduce or close the sheet to show it again. Side panes overlay the full-width map so it remains visible above the tray and behind search. The bottom tray, its content, and the map edge move together; the map extends slightly behind rounded corners while attribution stays visible. Neither approach recreates the map. Profile/settings are foreground surfaces, not replacement pages.
+
+### Scrollable pill actions
+
+The **Scrollable pill actions** story demonstrates multiple badge-style map actions. Scroll the row horizontally or focus it and use the arrow keys, Home, and End. Its entries navigate within the synthetic catalog flow. `MapActionBar` accepts an `items` array of `{ value, label }`, a `visible` flag, and emits `select(value)`; its buttons use the `badge` variant.
+
+<Canvas of={Stories.ScrollableActions} sourceState="none" story={{ inline: false, height: '650px' }} />
+
+## Nonmodal trays and modal tasks
+
+Use the separate `Tray` component for ordinary details/results/pages. It has no scrim, focus trap, or click-outside dismissal. Bottom trays retain content-aware closed/medium/max states, directional drag/flick snapping, a fixed header, and independent body scrolling. Buttons and handle keyboard controls provide alternatives to gestures. Side panes use open/closed states and preserve the remembered bottom position across rotation. See **Components / Tray** for the controlled contract and the predecessor behavioral reference.
+
+Use `Dialog` only for focused modal tasks such as confirmation. A modal may temporarily block the map and trap focus, but the underlying map instance remains mounted. Escape dismisses a nested menu/dialog before navigating out of its containing view.
+
+## Live map configuration and test fixtures
+
+Configure an existing, restricted non-production browser key as `STORYBOOK_GOOGLE_MAPS_API_KEY` in the root local `.env`; do not paste it into stories, source control, or chat. Optional `STORYBOOK_GOOGLE_MAPS_MAP_ID` selects an existing development map ID; the documented Google `DEMO_MAP_ID` is used otherwise. Restart Storybook after changing configuration. Missing configuration and provider failures display an explicit recovery state, not a pretend basemap.
+
+Submitting a nonempty query searches the synthetic ideas first and Google Places second. Selecting a place closes the results, pans at the current zoom, and shows a temporary marker; another query or opening a view removes it. Searches are sent to Google and need Places API (New) enabled for the existing development key; unavailable Places results show an error without hiding idea matches. Live stories initialize Google automatically and can incur provider usage. Static catalog builds omit live configuration unless explicitly enabled with `STORYBOOK_PUBLISH_LIVE_MAPS=true` for a separately approved publication. The **Interaction fixture (synthetic SDK)** story is clearly labeled, does not contact Google, and supplies deterministic interaction tests; it is not evidence that a live provider works. No application backend writes, automatic geolocation, or durable drafts are included.
+
+## Document layout compatibility
+
+<Canvas of={Stories.DocumentLayout} sourceState="none" story={{ inline: false, height: '650px' }} />
+
+You can provide `header`, `navigation`, default content, and an optional `aside` slot to `PageLayout`. The layout provides a skip link and a focusable main landmark. It fills at least the viewport height: the body uses the space below the header, and the navigation rail, main content, and aside stretch together on wide screens. On narrow screens the regions stack, and long content grows the page rather than being clipped. The `contentId` prop defaults to `main-content`; you should supply a unique ID when a page contains more than one layout. Navigation uses ordinary links and reflows at narrow widths.
+
+## Dialog and tray
+
+You can set `placement="tray"` on the existing `Dialog` component for an edge panel. The default `dialog` placement remains centered. Both placements require `title`, `description`, and a focusable `trigger` slot. The modal traps focus, closes with Escape or its close control, and restores focus to the trigger. The tray becomes a bottom panel on small screens and scrolls when its contents exceed the viewport.
+
+## Menus and notifications
+
+You should use the existing Menu and Toast components for their keyboard, dismissal, and notification behavior. You can find their item, event, and timeout contracts in the **Components / Menu** and **Components / Toast** pages. Screen-reader, physical touch-device, and nested-overlay behavior require review in each consumer.

@@ -1,0 +1,20 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './MapSearchBar.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Map search bar usage
+
+Use a contextual search bar above the persistent map. It composes the existing Input, Button, and Menu rather than owning search services or navigation history.
+
+<Canvas of={Stories.Default} sourceState="none" />
+
+At the map root the leading control opens search history and the trailing profile control opens the app menu. With a foreground view open, the leading control becomes Back and the trailing control becomes Close. Back restores the previous view; Close returns directly to the map. The owner implements these distinct transitions.
+
+<Canvas of={Stories.ForegroundOpen} sourceState="none" />
+
+## Component contract
+
+Required props are string `modelValue` and `destinations` (unique `value` and visible `label`). Optional Boolean `foregroundOpen`, `canGoBack`, and `historyOpen` default to false. `panelId` connects search/history controls to the content region. Events are `update:modelValue(string)`, `search`, `history`, `back`, `close`, and `navigate(value)`. Search submission does not itself call Places, geocoding, or an application endpoint.
+
+The composed Input uses its `search-bar` appearance: its associated label remains available to assistive technology, while the surrounding bar supplies the unified floating surface. Essential actions have 44 px targets and accessible names; native menu keyboard/dismissal behavior remains owned by Menu. Keep the entered query independent from the current idea title.

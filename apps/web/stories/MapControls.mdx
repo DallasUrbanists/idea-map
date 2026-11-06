@@ -33,7 +33,7 @@ The zoom buttons disable at minZoom and maxZoom. You can set locating during a l
 
 ## Component contract
 
-Required numeric `zoom` is controlled by `update:zoom(number)`. Optional props are `minZoom` (1), `maxZoom` (20), `following`, `locating`, `error`, and `layers` (items with unique `value`, visible `label`, Boolean `checked`, and optional `disabled`). Events are `recenter`, `layer(value, checked)`, and `attribution`. The parent should supply finite ordered zoom bounds and own geolocation permission, attribution content, and map announcements. The stack contains three buttons with at least 44 px targets; layers use the shared Menu.
+Required numeric `zoom` is controlled by `update:zoom(number)`. Optional props are `minZoom` (1), `maxZoom` (20), `following`, `locating`, `error`, and `layers` (items with unique `value`, visible `label`, Boolean `checked`, and optional `disabled`). Events are `recenter`, `layer(value, checked)`, and `attribution`. The parent should supply finite ordered zoom bounds and own geolocation permission, attribution content, and map announcements. The stack contains three buttons with at least 44 px targets; layers use the shared Menu. Optional `compact` (false) arranges zoom/recenter controls horizontally and hides the decorative zoom readout for a narrow exposed map area. Optional `showAttribution` (true) controls the supplemental attribution action only; set it false only when the actual map provider's required attribution remains visible and reachable.
 
 ## Foundations and reference
 
