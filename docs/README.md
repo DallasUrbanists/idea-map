@@ -26,7 +26,8 @@ for project work:
 | [Development guide](contributor-guides/development-guide.md) | Setup, configuration, native/container sessions, shutdown, and troubleshooting |
 | [Cloud Run release guide](contributor-guides/cloud-run-release.md) | Build evidence, deploy, promote, and recover web and worker revisions |
 | [Testing guide](contributor-guides/testing-guide.md) | Required checks, package/database tests, and manual/automated authentication checks |
-| [Operations monitoring](contributor-guides/operations-monitoring.md) | Inspect aggregate backlog and delivery signals with a read-only database identity |
+| [Operations monitoring](contributor-guides/operations-monitoring.md) | Inspect aggregate backlog, delivery, and queue signals with read-only identities |
+| [Backup and recovery](contributor-guides/backup-recovery.md) | Export encrypted database archives and rehearse an isolated restore |
 | [Reuse rights guide](contributor-guides/reuse-rights-guide.md) | Check permissions, attribution, and notices for material used or distributed |
 | [SSR staging guide](contributor-guides/ssr-staging.md) | Operate and validate the isolated server-rendering staging environment |
 | [Pull-request review guide](contributor-guides/pull-request-review-guide.md) | Check behavior, documentation, and evidence, and leave actionable feedback |
@@ -64,7 +65,7 @@ details about each platform in these guides:
 | Runtime and workspace | [Node.js/TypeScript](architecture/nodejs-typescript.md), [pnpm](architecture/pnpm.md), [Vue/Nuxt](architecture/vue-nuxt.md) |
 | user interface and browser verification | [Reka](architecture/reka.md), [Storybook](architecture/storybook.md), [Playwright](architecture/playwright.md) |
 | Infrastructure | [Docker](architecture/docker.md), [Google Cloud](architecture/google-cloud.md), [Terraform](architecture/terraform.md), [Hosting cache](architecture/hosting-cache.md) |
-| Identity and data | [Firebase](architecture/firebase.md), [PostgreSQL/PostGIS/Drizzle](architecture/postgresql-postgis-drizzle.md), [Neon](architecture/neon.md) |
+| Identity and data | [Firebase](architecture/firebase.md), [PostgreSQL/PostGIS/Drizzle](architecture/postgresql-postgis-drizzle.md), [Neon](architecture/neon.md), [Recovery decision journal](architecture/recovery-journal.md) |
 | External services | [Resend](architecture/resend.md), [Streetmix](architecture/streetmix.md) |
 | Presentation | [Presentation contracts](architecture/presentation.md): roles, commands, state delivery, and recovery |
 | Drafts | [Dictation recovery model](architecture/dictation-recovery.md): separate transcripts and safe draft changes |

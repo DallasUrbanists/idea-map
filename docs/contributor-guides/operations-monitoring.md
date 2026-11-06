@@ -1,14 +1,25 @@
-# Inspect database operations signals
+# Inspect operations signals
 
-Operators can use the database snapshot to inspect aggregate dispatch backlog,
-overdue work, and email delivery events without printing job or message details.
-The snapshot is a point-in-time diagnostic; it does not configure monitoring or
-alerts. Use an isolated database with synthetic data for testing.
+Operators can inspect aggregate database and queue activity without exposing
+job or message details, and review service costs across providers.
 
 The following contents links navigate within this guide:
 
+- [When to use this guide](#when-to-use-this-guide)
 - [Prepare the snapshot](#prepare-the-snapshot)
 - [Interpret the snapshot](#interpret-the-snapshot)
+- [Inspect the provider queue](#inspect-the-provider-queue)
+- [Prepare a development notification channel](#prepare-a-development-notification-channel)
+- [Prepare scheduled collection](#prepare-scheduled-collection)
+- [Inspect provider metrics](#inspect-provider-metrics)
+- [Review costs across providers](#review-costs-across-providers)
+
+## When to use this guide
+
+Operators can inspect aggregate dispatch backlog, overdue work, email delivery
+events, public-access gate state, and provider queue age without printing job or
+message details. These snapshots are point-in-time diagnostics; they do not
+configure monitoring or alerts. Use isolated resources and synthetic data for testing.
 
 ## Prepare the snapshot
 
@@ -16,9 +27,16 @@ Complete the [development setup](development-guide.md#one-time-setup-for-each-ch
 and build the workspace with `pnpm build`. The database must have the current
 migrations. Provide `OPERATIONS_DATABASE_URL` through an approved secret-handling
 method in the command's environment; the command does not load the root `.env`.
-Use an already-authorized, read-only database identity with `SELECT` on `jobs`,
-`outbox`, and `email_delivery_events`. These table grants also allow direct
-access to their rows, so restrict the identity and its credentials accordingly.
+Use an already-authorized, read-only database identity with `SELECT` on only
+the columns needed by the snapshot: `jobs.id`, `jobs.state`,
+`jobs.scheduled_at`; `outbox.job_id`, `outbox.published_at`,
+`outbox.dispatch_attempts`, `outbox.created_at`; and
+`email_delivery_events.event_type`, `email_delivery_events.created_at`; and
+`public_access_gate.singleton`, `public_access_gate.is_open`. It also
+needs schema usage, database connection, and permission to execute
+`pg_database_size` and `public.public_access_allowed()`. These grants allow
+direct access to those individual column values, including job IDs and timing,
+so restrict the identity and credentials.
 Access to a hosted or production database requires separate authorization.
 
 From the repository root, run:
@@ -54,9 +72,279 @@ messages, and depend on the webhook receiving and storing provider events. Zero
 does not prove delivery or webhook health. Compare provider evidence and
 investigate gaps separately.
 
-This snapshot does not measure availability, provider queue age, disk or
-storage growth, backup freshness, cost, or alert delivery. It does not run on a
+`public_access_open` combines the database gate with the guard's check for
+recorded closures and unresolved decisions. `false` indicates that public idea
+and media requests should be blocked; `null` means the gate row is missing. A
+`true` result does not prove journal coverage, effective routing, or successful
+responses. A missing guard function or execute grant fails the snapshot. The
+process health endpoint does not check the gate.
+
+`database_size_bytes` is the database's current size as a decimal string. It is
+a point-in-time PostgreSQL measurement, not a growth rate or the provider's
+total billed storage; Neon branch history and other branches need separate
+review. Query time and provider behavior need testing on representative data.
+
+This snapshot does not measure availability, provider queue age, physical disk or
+storage growth, backup freshness, or alert delivery. It does not run on a
 schedule. Before relying on operational monitoring, configure and test those
 signals and notifications for the authorized environment and assign an owner.
-Query cost and the five-second timeout should be assessed against representative
-data volumes and the database connection budget before scheduling collection.
+Assess the five-second query timeout and connection usage against representative
+data volumes and the existing connection limits before scheduling collection.
+
+## Inspect the provider queue
+
+After building the workspace, configure `OPERATIONS_TASK_QUEUE` with the exact
+queue resource name and use an authorized identity with `cloudtasks.tasks.list`
+on that queue. From the repository root, run:
+
+```sh
+node apps/worker/dist/queue-snapshot-cli.js
+```
+
+The command requests the basic task view and only creation and schedule times;
+it emits aggregate counts and ages, not task identifiers or bodies. It fails
+instead of reporting a partial result if listing or pagination fails. The
+listing has one 30-second deadline, including credential acquisition. A timed-out
+transport may still have a request or credential operation in flight, so monitor
+process termination separately. Restrict the identity and avoid publishing the
+output because aggregate activity can be sensitive. Hosted access requires
+separate authorization.
+
+`oldest_seconds` is the age since creation of the oldest listed task, including
+tasks scheduled for the future. `due` and `oldest_due_seconds` refer to the
+current scheduled attempt; a retry can change its schedule. The listing is not
+a transactional snapshot and can change while pages are read, so these values
+are estimates. Cloud Tasks truncates creation times to seconds and schedule
+times to microseconds; see the [task resource reference](https://cloud.google.com/tasks/docs/reference/rest/v2/projects.locations.queues.tasks).
+The reader rejects malformed or non-normalized provider timestamps rather than
+interpreting an ambiguous page as healthy. A healthy result does not prove task
+delivery or configure an alert. Review collection limits and provider metrics
+before scheduling it.
+
+## Prepare a development notification channel
+
+The foundation has an optional development-only email channel for synthetic
+monitoring. It is disabled by default and does not attach itself to any alert.
+Before planning it, inspect existing notification channels and their ownership so
+the foundation does not duplicate a channel owned elsewhere. Confirm the exact
+development project, recipient, state backend, and cleanup plan. Channel creation
+or notification delivery requires explicit authorization; choosing a recipient
+alone does not authorize either action.
+
+Set `enable_development_email_channel` and supply
+`development_notification_email` using an approved private variable mechanism.
+Do not commit the address or expose it in public logs. Terraform treats the input
+as sensitive, but its state and the monitoring service still contain the address;
+restrict their access and review the plan's redaction before using it. Review a
+credentialed plan and obtain authorization before applying it. The option is
+rejected in production, and the channel cannot be forcibly deleted while in use.
+
+After an approved creation, retrieve `development_email_channel_name` from the
+same authorized state and add that resource name to the separately reviewed
+`monitoring_notification_channels` input for chosen alerts. Creating a channel
+does not establish verification, successful delivery, or alert behavior. Test
+synthetic delivery only after separate approval, and review dependent alert
+policies before any authorized cleanup.
+
+## Prepare scheduled collection
+
+The existing foundation can optionally define a Cloud Run job that reuses the
+worker image to assess these two snapshots. The collector runs independently of
+the worker service, so it can report on that service's backlog while the service
+is unavailable. Its separate service account and read-only database role avoid
+adding queue-list and operations-database access to the worker's credentials.
+This option adds a job, scheduler, and service identities to the foundation; it
+does not add a queue or
+database. The collector and its alerts start disabled; the scheduler starts
+paused.
+
+The collector's service account receives queue-scoped `cloudtasks.tasks.list`
+and access to an existing operations-only database secret. That database identity
+needs the column-scoped read-only grants described above; they permit reading
+individual values, so review and restrict it. Secret Manager grants access to the
+secret rather than a single version, even though the job pins a version.
+
+Before a separately authorized plan, review existing jobs, alert policies,
+inherited permissions, notification channels, and the connection budget. Use
+an immutable worker image containing `dist/operations-monitor-cli.js`, and
+prepare an operations-only database secret rather than reusing web, worker, or
+backup credentials. Set `enable_operations_monitor`,
+`operations_monitor_image`, `operations_database_secret_id`,
+`operations_database_secret_version`, `operations_monitor_schedule`,
+`operations_database_capacity_bytes`, and all four `operations_thresholds`.
+The database capacity is a positive decimal byte threshold. The other thresholds
+are whole numbers:
+`outbox_seconds`, `overdue_seconds`, and `queue_seconds` are ages in seconds;
+`email_events` is a count for each type of event during the preceding 24 hours.
+The threshold is breached when the corresponding value reaches it. The queue
+threshold applies separately to creation age and current-attempt overdue age;
+the emitted signals distinguish them. Creation age includes future-scheduled
+tasks, and the outbox age includes future work;
+choose thresholds with the deployment's schedules in mind. Email events are not
+unique messages, and a zero count does not verify delivery or webhook health.
+The database capacity signal compares the current size with the byte threshold;
+it does not calculate growth or include all provider history and branches.
+
+Optionally set `enable_operations_alert` and the existing
+`monitoring_notification_channels` to prepare notifications for threshold
+breaches, a closed public-access gate, or a collection error. A missing gate is
+an invalid assessment and reports collection failure. Each successful collection
+also logs the database's byte size as a decimal string. It does not log task IDs
+or message details. Restrict access to the aggregate measurement and apply the
+reviewed log retention policy. For investigation, use the point-in-time commands
+above. The alert rate is limited, and repeated
+events do not guarantee repeated notifications. A failure before the program
+starts, a paused or missed trigger, missing log data, and an unavailable
+notification channel can prevent that alert.
+
+Optionally set `enable_operations_database_growth_alert` and a positive
+`operations_database_growth_percent` to derive a distribution metric from those
+size measurements and alert on growth over one day. It uses the same collector
+and notification channels. The metric starts only after creation; verify the
+first sample and the full comparison window. The metric converts the decimal
+value to a floating-point number, so it is approximate for very large sizes.
+Missing or delayed samples, a zero baseline, overlapping collections, and the
+monitoring service's alignment and ten-minute smoothing can affect the result.
+Confirm a usable time series and test growth, no growth, and missing data in an
+authorized synthetic environment before relying on notifications. This measures
+only the database queried by the collector; Neon branch history and other
+provider storage need separate monitoring. The capacity alert still compares
+the original byte count exactly.
+
+The separately enabled `enable_operations_freshness_alert` creates a log-based
+completion metric and an alert for two hours without a completed assessment.
+The metric starts collecting only after creation. A metric-absence alert needs
+at least one successful measurement after setup or a change; it cannot warn
+that the first assessment never ran. Resource deletion or shutdown can also
+prevent a missing-data incident, and delayed or missing log data can cause false
+alerts. Review who can write matching log entries; the signal is not
+tamper-proof. Verify the first data point, monitor the job and scheduler separately,
+and test missing, delayed, and restored signals with synthetic data in an
+authorized environment before relying on freshness notifications.
+
+Test both collection-failure and breach notifications with synthetic data
+before relying on this configuration. Do not unpause the trigger
+until those checks, provider permissions, thresholds, and overlapping-execution
+limits have been reviewed. One task per execution does not prevent concurrent
+executions; include them in the database connection budget.
+
+## Inspect provider metrics
+
+In an authorized environment, use the provider consoles to inspect the existing
+service, queue, database, and buckets. Confirm the environment and resource
+names before selecting them. Do not assume a missing time series means zero.
+
+- Check the deployed web endpoint from outside its runtime and compare the
+  result with Cloud Run request and error metrics. The application's
+  `/api/health` endpoint reports process health; it does not check the database
+  or prove the full user path works.
+- Use [Cloud Tasks metrics](https://cloud.google.com/tasks/docs/monitor) for
+  queue depth, failed attempts, and attempt delays. These complement the queue
+  age snapshot; attempt delay is not the age of the oldest queued task.
+- Inspect database size and compute metrics in Neon. Compare trends with the
+  intended limits and the [connection guidance](../architecture/neon.md#connection-budget).
+- In Cloud Monitoring, inspect `storage.googleapis.com/storage/v2/total_bytes`
+  for each relevant bucket, grouped by object type. The [bucket size metric](https://cloud.google.com/storage/docs/getting-bucket-size)
+  is measured daily, may be delayed, and does not report empty buckets; it is
+  not proof that a particular backup or deleted version exists or expired.
+
+These observations do not establish alert delivery or a regular review. Configure
+and test monitoring and notification ownership separately before relying on it.
+
+The foundation can optionally create a Cloud Monitoring HTTPS check for an
+approved public hostname. It requests `/api/health` every five minutes, verifies
+the certificate and JSON status field, and logs failed checks. A separate
+opt-in alert uses existing notification channels; it reports multiple checker
+failures sustained for ten minutes. Both options start disabled and create no
+notification channels.
+
+Before a separately authorized plan or apply, inspect existing checks and
+alerts to avoid duplicates and confirm that the hostname routes to the intended
+environment. Configure `enable_public_uptime_check` and
+`public_uptime_hostname` in the reviewed foundation configuration. To prepare
+the alert, review existing channels and set `enable_public_uptime_alert` and
+`monitoring_notification_channels` to their full resource names. Use the
+`projects/PROJECT_ID/notificationChannels/CHANNEL_ID` form with this
+environment's project ID, even if the provider shows its project number. Test the
+check and notification delivery using synthetic data and an authorized failure
+scenario, and measure detection delay including metric alignment and provider
+latency. Independently verify that the check exists and produces data after
+setup and configuration changes. A passing process health check does not establish
+database or end-to-end availability.
+
+The foundation can also alert on the 99th percentile of observed task-attempt
+dispatch delays over five minutes. To prepare it, review existing alerts and
+channels, set `enable_queue_delay_alert`, and set a positive whole-number
+`queue_delay_threshold_ms`. The option starts disabled and uses the same
+reviewed `monitoring_notification_channels`. The Monitoring resource identifies
+the project and queue name but does not include the queue's region; verify that
+the name does not also identify a different queue in another region of the same
+project. Percentiles from small numbers of attempts can be unstable, and the
+provider can delay metric availability. This alert only sees attempted
+dispatches: a stopped queue may produce no samples, and a passing result does not
+measure the oldest waiting task or outbox age. Check data freshness, schedule
+the separate age signals, and test thresholds and notification delivery in an
+authorized isolated environment before relying on the alert.
+
+The same foundation can optionally alert when a reviewed uploads, public, or
+backup bucket in the selected project exceeds its byte threshold. Monitoring a
+bucket does not make this Terraform root its owner or grant access to it. Before
+configuration, independently verify each bucket's project, purpose, existing
+alert policies, and Terraform ownership; do not adopt a separately managed
+bucket. Supply the three distinct reviewed names in `bucket_names`, set
+`enable_storage_capacity_alerts`, provide positive whole-byte values for all
+three keys in `storage_capacity_threshold_bytes`, and reuse the reviewed
+`monitoring_notification_channels`. The option starts disabled. The policy sums
+reported storage classes and object types for each bucket; it measures capacity,
+not the rate of growth. The daily and sometimes delayed metric has no series for
+an empty bucket, and missing series can understate the total. Verify that data
+arrives and independently inspect growth and Neon storage. Test each threshold
+and notification in an authorized isolated environment before relying on the
+policies.
+
+The foundation can also alert on percentage growth in each bucket's reported
+storage series. Set `enable_storage_growth_alerts` and supply a positive
+`storage_growth_threshold_percent` for each of the same three bucket keys.
+The option starts disabled and uses the reviewed notification channels. Each
+series represents a storage class and object type; the alert compares that
+series with its value over the preceding 24-hour alignment period. It does not
+calculate the percentage change of the whole bucket. The provider smooths the
+data and can report infinite growth from a zero baseline. New or missing series,
+small baselines, daily measurement, and delayed values can produce gaps or
+noisy alerts. Review capacity and actual growth separately, and test the
+thresholds, missing data, and notification delivery in an authorized isolated
+environment before relying on this signal.
+
+For an authorized Neon environment, use the provider's existing
+[monitoring dashboard](https://neon.com/blog/announcing-monitoring-and-organizations)
+to inspect database-size samples over time. Record the environment, time window,
+units, and missing or stale samples when comparing growth. Database size does
+not account for every retained branch or history copy, so inspect those provider
+signals separately. The optional collector growth alert above does not cover those
+other provider signals; verify their available history and notification paths
+before relying on unattended monitoring.
+
+## Review costs across providers
+
+Assign a platform operator and a review interval for each deployed environment.
+Use the same completed usage window for each comparison and record it in the
+approved private operations record. List which services contribute to the total,
+including shared resources and any unallocated usage. [Cloud infrastructure and cost model](https://github.com/DallasUrbanists/idea-map/wiki/Cloud-Infrastructure-and-Cost-Model)
+
+- Open Cloud Billing Reports with project-scoped access. Select the exact
+  environment project and usage window, then group by service. Review Cloud
+  Run, Cloud Storage, Scheduler, Tasks, and any other enabled services. Record
+  credits and billing delay separately from measured usage. [Cloud Billing Reports](https://docs.cloud.google.com/billing/docs/how-to/reports)
+- Open the approved Neon project's usage view. Record the plan, compute
+  usage, transfer and storage, including retained history or test branches
+  that account for part of the provider total. [Neon billing and usage](https://neon.com/docs/introduction/monitor-usage)
+- For the remaining enabled providers, record the usage and charges that can
+  be attributed to this environment. Keep provider totals separate when an
+  account combines environments and the allocation is uncertain.
+
+Compare each signal with its reviewed budget or quota and the preceding
+window. Record the owner, observation time, lag, missing coverage, and any
+change that needs follow-up. Check existing budget alerts and their verified
+recipients using authorized access. Treat budget alerts as notifications and
+review spending controls separately. Keep amounts, account identifiers, and
+credentials in the private record.

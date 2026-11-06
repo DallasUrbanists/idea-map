@@ -298,9 +298,10 @@ pnpm dev:fixtures:seed
 Run the command again to verify the existing fixtures. One idea and its revision
 are approved; the other is private and waiting for review. Their coordinates
 are fictional. The fixture does not implement the map, list, or submission
-workflows. Use the published idea ID `22000000-0000-4000-8000-000000000011`
-when checking the existing page at
-`/suggestion/22000000-0000-4000-8000-000000000011`.
+workflows. The published idea ID is `22000000-0000-4000-8000-000000000011`.
+Public reads start fenced on a newly migrated database. Use the isolated
+published-page test to exercise the suggestion route with a synthetic
+fixture and a test-owned access gate. [Test the published page](testing-guide.md#database-tests)
 
 To remove only these fixtures, run:
 

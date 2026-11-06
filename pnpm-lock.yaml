@@ -84,6 +84,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@google-cloud/storage':
+        specifier: ^8.4.0
+        version: 8.4.0(supports-color@10.2.2)
       '@idea-map/server':
         specifier: workspace:*
         version: link:../../packages/server

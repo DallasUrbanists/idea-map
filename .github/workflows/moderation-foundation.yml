@@ -39,8 +39,15 @@ jobs:
           pnpm typecheck
           pnpm build
           pnpm test:web
+      - name: Synthetic backup and restore rehearsal
+        run: |
+          cp .env.example .env
+          pnpm test:recovery-rehearsal
+          docker build -f Dockerfile.backup -t idea-map-backup-ci .
+          docker run --rm --network none --entrypoint sh idea-map-backup-ci -c 'test "$(id -u)" -ne 0 && test -r /etc/ssl/certs/ca-certificates.crt && pg_dump --version'
       - name: Provider-fake and authentication checks
         run: |
+          pnpm --filter @idea-map/server test:recovery-journal
           pnpm --filter @idea-map/server test:cloud-tasks
           pnpm --filter @idea-map/server test:moderation-schedule
           pnpm --filter @idea-map/worker test
@@ -61,7 +68,10 @@ jobs:
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_moderator_removals
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_escalation_transfers
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_database
+          docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_public_gate
+          docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_public_web
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_worker
+          docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_operations
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_registered_drafts
           docker exec "${{ job.services.postgres.id }}" createdb -U idea_map idea_map_test_delivery
       - name: Migrate registered-draft test database
@@ -80,6 +90,21 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_database
         run: pnpm --filter @idea-map/server test:database
+      - name: Public access lease
+        env:
+          DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_public_gate
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_public_gate
+        run: |
+          pnpm --filter @idea-map/server db:migrate
+          pnpm --filter @idea-map/server test:public-access-lease
+      - name: Public access web responses
+        env:
+          DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_public_web
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_public_web
+        run: |
+          pnpm --filter @idea-map/server db:migrate
+          docker exec -i "${{ job.services.postgres.id }}" psql -v ON_ERROR_STOP=1 -U idea_map -d idea_map_test_public_web < packages/server/test/ssr-fixture.sql
+          pnpm test:web:published
       - name: Moderation transactions
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_moderation
@@ -140,6 +165,13 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_worker
         run: pnpm --filter @idea-map/worker test:integration
+      - name: Operations snapshot
+        env:
+          DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_operations
+          TEST_DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_operations
+        run: |
+          pnpm --filter @idea-map/server db:migrate
+          pnpm --filter @idea-map/worker test:operations
       - name: Migrate task delivery test database
         env:
           DATABASE_URL: postgres://idea_map:local-only@127.0.0.1:5432/idea_map_test_delivery

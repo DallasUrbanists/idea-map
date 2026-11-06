@@ -1,10 +1,11 @@
 import { runtimeDatabasePool } from './runtime-database.js'
+import type pg from 'pg'
 
 export interface PublicIdea { readonly title: string; readonly description: string }
 
 /** Read only the approved public projection. No contact or owner columns are selected. */
-export async function readPublishedIdea(databaseUrl: string, id: string): Promise<PublicIdea | null> {
-  const pool = runtimeDatabasePool(databaseUrl)
+export async function readPublishedIdea(databaseUrl: string, id: string, client?: pg.PoolClient): Promise<PublicIdea | null> {
+  const pool = client ?? runtimeDatabasePool(databaseUrl)
   const result = await pool.query<{ title: string | null; description: string | null }>(`
     SELECT revision.content->>'title' AS title, revision.content->>'description' AS description
     FROM ideas AS idea

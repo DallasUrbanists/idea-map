@@ -4,6 +4,8 @@ import { test } from 'node:test'
 import pg from 'pg'
 import { readPublishedIdea } from '../dist/published-ideas.js'
 import { runtimeDatabasePool } from '../dist/runtime-database.js'
+import { acquirePublicAccessLease } from '../dist/public-access-lease.js'
+import { readGuardedPublishedIdea } from '../dist/index.js'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || new URL(url).hostname !== '127.0.0.1' || new URL(url).pathname !== '/idea_map_test_worker') {
@@ -35,10 +37,21 @@ test('the staging web role reads only the public application result and cannot u
     assert.equal(await readPublishedIdea(runtimeUrl.toString(), '22222222-2222-4222-8222-222222222222'), null)
     assert.equal(await readPublishedIdea(runtimeUrl.toString(), '33333333-3333-4333-8333-333333333333'), null)
 
+    await admin.query('UPDATE public.public_access_gate SET is_open=true WHERE singleton=true')
+    const lease = await acquirePublicAccessLease(runtimeDatabasePool(runtimeUrl.toString()))
+    try {
+      assert.deepEqual(await readGuardedPublishedIdea('11111111-1111-4111-8111-111111111111', lease),
+        { title: 'A safer crossing', description: 'A synthetic public idea.' })
+      assert.equal(await readGuardedPublishedIdea('22222222-2222-4222-8222-222222222222', lease), null)
+    } finally { await lease.release() }
+    await admin.query('UPDATE public.public_access_gate SET is_open=false WHERE singleton=true')
+    await assert.rejects(acquirePublicAccessLease(runtimeDatabasePool(runtimeUrl.toString())), /Public access unavailable/)
+
     const runtime = new pg.Client({ connectionString: runtimeUrl.toString() })
     try {
       await runtime.connect()
-      for (const statement of ['SELECT id FROM public.contacts', 'SELECT id FROM public.jobs', 'UPDATE public.outbox SET published_at = now()']) {
+      for (const statement of ['SELECT id FROM public.contacts', 'SELECT id FROM public.jobs', 'UPDATE public.outbox SET published_at = now()',
+        'SELECT is_open FROM public.public_access_gate', 'UPDATE public.public_access_gate SET is_open = true']) {
         await assert.rejects(runtime.query(statement), { code: '42501' })
       }
     } finally { await runtime.end() }
@@ -47,6 +60,7 @@ test('the staging web role reads only the public application result and cannot u
       if (usedPool) await runtimeDatabasePool(runtimeUrl.toString()).end()
       if (ownsFixtures) {
         await admin.query('BEGIN')
+        await admin.query('UPDATE public.public_access_gate SET is_open=false WHERE singleton=true')
         await admin.query("DELETE FROM approved_revisions WHERE idea_id IN ('11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222', '33333333-3333-4333-8333-333333333333')")
         await admin.query("DELETE FROM idea_revisions WHERE id IN ('aaaaaaaa-1111-4111-8111-111111111111', 'aaaaaaaa-2222-4222-8222-222222222222', 'aaaaaaaa-3333-4333-8333-333333333333')")
         await admin.query("DELETE FROM ideas WHERE id IN ('11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222', '33333333-3333-4333-8333-333333333333')")

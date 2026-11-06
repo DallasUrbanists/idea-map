@@ -135,13 +135,20 @@ resource "google_cloud_run_v2_service" "runtime" {
 }
 
 resource "google_storage_bucket" "media" {
-  for_each                    = var.manage_media_buckets ? local.buckets : {}
+  for_each = merge(
+    var.manage_media_buckets ? local.buckets : {},
+    var.manage_backup_bucket_separately ? { backups = var.bucket_names.backups } : {}
+  )
   name                        = each.value
   location                    = var.region
   uniform_bucket_level_access = true
   public_access_prevention    = "enforced"
   force_destroy               = false
   versioning { enabled = true }
+  dynamic "soft_delete_policy" {
+    for_each = each.key == "backups" ? [1] : []
+    content { retention_duration_seconds = 604800 }
+  }
   dynamic "cors" {
     for_each = each.key == "uploads" && length(var.upload_allowed_origins) > 0 ? [1] : []
     content {

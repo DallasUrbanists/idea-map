@@ -55,11 +55,18 @@ nearby region alone does not tell you how long an application request takes.
 ## Connection budget
 
 The web process keeps a pool of at most two clients for each distinct database
-URL. With one URL and one process per instance, the configured two web instances
-therefore use at most four clients in ordinary single-revision operation. The
-worker has a one-instance limit and a pool of at most one client per instance.
-Include that pool and overlapping or replacement worker revisions in the
-budget before use. Request concurrency is not a database connection limit.
+URL. Journaled removal uses a separate one-client pool for each of its
+preparation and coordinator URLs, so occupied public readers cannot consume
+the reserved connections. Journaled hold placement uses up to two clients
+for each of those URLs in its ordinary pools.
+
+For one process per instance, budget up to two clients for public reads, two
+additional clients for journaled removal, and four more for hold placement.
+With both paths enabled, two instances can use up to 16 clients before
+accounting for overlapping revisions or surge. The worker has a one-instance
+limit and a pool of at most one client per instance. Include the worker,
+operators and replacement revisions in the budget. Request concurrency and
+database connections have separate limits.
 
 Operators should calculate capacity separately for each Neon compute and include
 all databases, roles, services, processes, pools, direct clients, and concurrent
@@ -94,16 +101,18 @@ compute, including the long-lived development and disposable test databases:
 
 | Allowance | Client or backend connections |
 | --- | ---: |
-| Web pools, two revisions at two instances with two clients each | 8 |
-| Additional web surge, four instances with two clients each | 8 |
+| Web pools, two revisions at two instances with three clients each | 12 |
+| Additional web surge, four instances with three clients each | 12 |
 | Retained idle pooler backends beyond live web demand | 16 |
 | Other development roles and services | 12 |
 | Direct migration, monitoring, and recovery clients | 8 |
-| Unallocated headroom | 56 |
+| Unallocated headroom | 48 |
 | Total ordinary PostgreSQL slots | 108 |
 
-The web allowances are application-to-pooler clients; the remaining rows reserve
-PostgreSQL backends. Budget each client as if it needs a backend, including the
+The web allowances in this example use three clients per instance. Recalculate
+both web rows before enabling journaled removal or hold placement with their
+separate roles. The remaining rows reserve PostgreSQL backends. Budget each
+client as if it needs a backend, including the
 additional retained idle allowance, and count each connection only once. The
 worker pool is not separately allocated in this table; recalculate the other
 allowances, retained backend connections, and headroom before connecting it.
@@ -167,3 +176,10 @@ objectives independently of a provider's default restore window. Operators
 should verify available restore behavior and rehearse an isolated restore,
 including backup retention and removed-content exclusions. Provider recovery
 features must not be assumed to replace the application's backup procedure.
+Neon history, child and restore-created branches, and manual or scheduled
+snapshots can retain older database states independently of the Cloud Storage
+exports. Review their actual configuration, access, expiry, and legal holds as
+part of the [backup and recovery procedure](../contributor-guides/backup-recovery.md#inspect-retention).
+A point-in-time or snapshot restore requires an independent access fence and
+reconciliation before it can serve traffic; the older database cannot prove
+that later removals and holds were preserved.

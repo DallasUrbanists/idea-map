@@ -32,6 +32,666 @@ run "bounded_private_foundation" {
     condition     = alltrue([for bucket in google_storage_bucket.media : bucket.public_access_prevention == "enforced" && bucket.force_destroy == false])
     error_message = "All buckets must prevent public access and forced deletion."
   }
+  assert {
+    condition     = google_storage_bucket.media["backups"].soft_delete_policy[0].retention_duration_seconds == 604800
+    error_message = "The foundation backup bucket must explicitly retain soft-deleted objects for seven days."
+  }
+}
+
+run "public_uptime_is_opt_in" {
+  command = plan
+  assert {
+    condition     = length(google_monitoring_uptime_check_config.public_health) == 0 && length(google_monitoring_alert_policy.public_health) == 0
+    error_message = "Public availability checks and alerts must not be created by default."
+  }
+}
+
+run "public_uptime_uses_reviewed_https_target" {
+  command = plan
+  variables {
+    enable_public_uptime_check = true
+    public_uptime_hostname     = "staging.synthetic.invalid"
+  }
+  assert {
+    condition = google_monitoring_uptime_check_config.public_health[0].monitored_resource[0].labels.host == "staging.synthetic.invalid" && (
+      google_monitoring_uptime_check_config.public_health[0].http_check[0].path == "/api/health" &&
+      google_monitoring_uptime_check_config.public_health[0].http_check[0].use_ssl &&
+      google_monitoring_uptime_check_config.public_health[0].http_check[0].validate_ssl &&
+      google_monitoring_uptime_check_config.public_health[0].http_check[0].port == 443 &&
+      google_monitoring_uptime_check_config.public_health[0].content_matchers[0].matcher == "MATCHES_JSON_PATH"
+    )
+    error_message = "The uptime check must use the reviewed hostname and verified HTTPS health endpoint."
+  }
+  assert {
+    condition = google_monitoring_uptime_check_config.public_health[0].content_matchers[0].content == "\"ok\"" && (
+      google_monitoring_uptime_check_config.public_health[0].content_matchers[0].json_path_matcher[0].json_path == "$.status" &&
+      google_monitoring_uptime_check_config.public_health[0].content_matchers[0].json_path_matcher[0].json_matcher == "EXACT_MATCH"
+    )
+    error_message = "The check must match the exact JSON status field."
+  }
+}
+
+run "public_alert_uses_existing_channels_and_exact_check" {
+  command = plan
+  variables {
+    enable_public_uptime_check       = true
+    enable_public_uptime_alert       = true
+    public_uptime_hostname           = "staging.synthetic.invalid"
+    monitoring_notification_channels = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
+  }
+  override_resource {
+    target          = google_monitoring_uptime_check_config.public_health[0]
+    override_during = plan
+    values          = { uptime_check_id = "synthetic-check" }
+  }
+  assert {
+    condition = toset(google_monitoring_alert_policy.public_health[0].notification_channels) == toset(["projects/synthetic-idea-map-dev/notificationChannels/123"]) && alltrue([
+      for condition in google_monitoring_alert_policy.public_health[0].conditions :
+      strcontains(condition.condition_threshold[0].filter, "synthetic-check")
+    ])
+    error_message = "The alert must target its own uptime check and use the reviewed existing channel."
+  }
+  assert {
+    condition = length([for condition in google_monitoring_alert_policy.public_health[0].conditions : condition if(
+      try(condition.condition_threshold[0].threshold_value, null) == 1 &&
+      try(condition.condition_threshold[0].duration, null) == "600s" &&
+      try(condition.condition_threshold[0].aggregations[0].cross_series_reducer, null) == "REDUCE_COUNT_FALSE"
+    )]) == 1
+    error_message = "The alert must detect multiple sustained checker failures."
+  }
+}
+
+run "public_alert_requires_check_and_channel" {
+  command = plan
+  variables { enable_public_uptime_alert = true }
+  expect_failures = [var.enable_public_uptime_alert]
+}
+
+run "public_alert_rejects_other_project_channel" {
+  command = plan
+  variables { monitoring_notification_channels = ["projects/other/notificationChannels/123"] }
+  expect_failures = [var.monitoring_notification_channels]
+}
+
+run "public_uptime_requires_hostname" {
+  command = plan
+  variables { enable_public_uptime_check = true }
+  expect_failures = [google_monitoring_uptime_check_config.public_health]
+}
+
+run "public_uptime_rejects_url" {
+  command = plan
+  variables { public_uptime_hostname = "https://staging.synthetic.invalid/path" }
+  expect_failures = [var.public_uptime_hostname]
+}
+
+run "storage_capacity_alerts_are_opt_in" {
+  command = plan
+  assert {
+    condition     = length(google_monitoring_alert_policy.bucket_capacity) == 0
+    error_message = "Storage capacity alerts must not be created by default."
+  }
+}
+
+run "storage_capacity_alerts_are_scoped" {
+  command = plan
+  variables {
+    enable_storage_capacity_alerts   = true
+    monitoring_notification_channels = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
+    storage_capacity_threshold_bytes = { uploads = 1000, public = 2000, backups = 3000 }
+  }
+  assert {
+    condition = length(google_monitoring_alert_policy.bucket_capacity) == 3 && alltrue([
+      for key, policy in google_monitoring_alert_policy.bucket_capacity :
+      one(policy.conditions).condition_threshold[0].filter == "metric.type=\"storage.googleapis.com/storage/v2/total_bytes\" AND resource.type=\"gcs_bucket\" AND resource.label.project_id=\"${var.project_id}\" AND resource.label.bucket_name=\"${var.bucket_names[key]}\"" &&
+      one(policy.conditions).condition_threshold[0].threshold_value == var.storage_capacity_threshold_bytes[key] &&
+      one(policy.conditions).condition_threshold[0].aggregations[0].cross_series_reducer == "REDUCE_SUM" &&
+      toset(policy.notification_channels) == toset(var.monitoring_notification_channels)
+    ])
+    error_message = "Each storage alert must use its exact bucket, reviewed threshold, and existing notification channel."
+  }
+}
+
+run "storage_capacity_alerts_require_reviewed_inputs" {
+  command = plan
+  variables { enable_storage_capacity_alerts = true }
+  expect_failures = [var.enable_storage_capacity_alerts]
+}
+
+run "storage_capacity_alerts_reject_invalid_threshold" {
+  command = plan
+  variables { storage_capacity_threshold_bytes = { backups = -1 } }
+  expect_failures = [var.storage_capacity_threshold_bytes]
+}
+
+run "storage_capacity_alerts_can_monitor_separately_owned_buckets" {
+  command = plan
+  variables {
+    manage_media_buckets             = false
+    enable_storage_capacity_alerts   = true
+    monitoring_notification_channels = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
+    storage_capacity_threshold_bytes = { uploads = 1000, public = 2000, backups = 3000 }
+  }
+  assert {
+    condition     = length(google_monitoring_alert_policy.bucket_capacity) == 3 && length(google_storage_bucket.media) == 0 && length(google_storage_bucket_iam_member.upload_creator) == 0
+    error_message = "Monitoring existing buckets must not take ownership or grant media access."
+  }
+}
+
+run "storage_capacity_alerts_reject_duplicate_bucket_names" {
+  command = plan
+  variables {
+    manage_media_buckets             = false
+    bucket_names                     = { uploads = "synthetic-uploads", public = "synthetic-uploads", backups = "synthetic-backups" }
+    enable_storage_capacity_alerts   = true
+    monitoring_notification_channels = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
+    storage_capacity_threshold_bytes = { uploads = 1000, public = 2000, backups = 3000 }
+  }
+  expect_failures = [var.enable_storage_capacity_alerts]
+}
+
+run "storage_growth_alerts_are_opt_in" {
+  command = plan
+  assert {
+    condition     = length(google_monitoring_alert_policy.bucket_growth) == 0
+    error_message = "Storage growth alerts must not be created by default."
+  }
+}
+
+run "storage_growth_alerts_are_scoped" {
+  command = plan
+  variables {
+    enable_storage_growth_alerts     = true
+    monitoring_notification_channels = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
+    storage_growth_threshold_percent = { uploads = 25, public = 30, backups = 40 }
+  }
+  assert {
+    condition = length(google_monitoring_alert_policy.bucket_growth) == 3 && alltrue([
+      for key, policy in google_monitoring_alert_policy.bucket_growth :
+      one(policy.conditions).condition_threshold[0].filter == "metric.type=\"storage.googleapis.com/storage/v2/total_bytes\" AND resource.type=\"gcs_bucket\" AND resource.label.project_id=\"${var.project_id}\" AND resource.label.bucket_name=\"${var.bucket_names[key]}\"" &&
+      one(policy.conditions).condition_threshold[0].threshold_value == var.storage_growth_threshold_percent[key] &&
+      one(policy.conditions).condition_threshold[0].aggregations[0].alignment_period == "86400s" &&
+      one(policy.conditions).condition_threshold[0].aggregations[0].per_series_aligner == "ALIGN_PERCENT_CHANGE" &&
+      toset(policy.notification_channels) == toset(var.monitoring_notification_channels)
+    ])
+    error_message = "Each growth alert must use its exact bucket, reviewed percentage, and existing notification channel."
+  }
+}
+
+run "storage_growth_alerts_require_reviewed_inputs" {
+  command = plan
+  variables { enable_storage_growth_alerts = true }
+  expect_failures = [var.enable_storage_growth_alerts]
+}
+
+run "storage_growth_alerts_reject_invalid_threshold" {
+  command = plan
+  variables { storage_growth_threshold_percent = { backups = 0 } }
+  expect_failures = [var.storage_growth_threshold_percent]
+}
+
+run "storage_growth_alerts_can_monitor_separately_owned_buckets" {
+  command = plan
+  variables {
+    manage_media_buckets             = false
+    enable_storage_growth_alerts     = true
+    monitoring_notification_channels = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
+    storage_growth_threshold_percent = { uploads = 25, public = 30, backups = 40 }
+  }
+  assert {
+    condition     = length(google_monitoring_alert_policy.bucket_growth) == 3 && length(google_storage_bucket.media) == 0 && length(google_storage_bucket_iam_member.upload_creator) == 0
+    error_message = "Monitoring existing buckets must not take ownership or grant media access."
+  }
+}
+
+run "storage_growth_alerts_reject_duplicate_bucket_names" {
+  command = plan
+  variables {
+    manage_media_buckets             = false
+    bucket_names                     = { uploads = "synthetic-uploads", public = "synthetic-uploads", backups = "synthetic-backups" }
+    enable_storage_growth_alerts     = true
+    monitoring_notification_channels = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
+    storage_growth_threshold_percent = { uploads = 25, public = 30, backups = 40 }
+  }
+  expect_failures = [var.enable_storage_growth_alerts]
+}
+
+run "queue_delay_alert_is_opt_in" {
+  command = plan
+  assert {
+    condition     = length(google_monitoring_alert_policy.queue_delay) == 0
+    error_message = "The queue delay alert must not be created by default."
+  }
+}
+
+run "queue_delay_alert_uses_reviewed_queue_and_threshold" {
+  command = plan
+  variables {
+    enable_queue_delay_alert         = true
+    queue_delay_threshold_ms         = 120000
+    monitoring_notification_channels = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
+  }
+  assert {
+    condition = one(google_monitoring_alert_policy.queue_delay[0].conditions).condition_threshold[0].filter == "resource.type=\"cloud_tasks_queue\" AND resource.labels.project_id=\"synthetic-idea-map-dev\" AND resource.labels.queue_id=\"idea-map-dev-queue\" AND metric.type=\"cloudtasks.googleapis.com/queue/task_attempt_delays\"" && (
+      one(google_monitoring_alert_policy.queue_delay[0].conditions).condition_threshold[0].threshold_value == 120000 &&
+      one(google_monitoring_alert_policy.queue_delay[0].conditions).condition_threshold[0].aggregations[0].per_series_aligner == "ALIGN_PERCENTILE_99" &&
+      toset(google_monitoring_alert_policy.queue_delay[0].notification_channels) == toset(var.monitoring_notification_channels)
+    )
+    error_message = "The alert must use the reviewed project, queue, delay threshold, and existing channels."
+  }
+}
+
+run "queue_delay_alert_requires_reviewed_inputs" {
+  command = plan
+  variables { enable_queue_delay_alert = true }
+  expect_failures = [var.enable_queue_delay_alert]
+}
+
+run "queue_delay_alert_rejects_fractional_threshold" {
+  command = plan
+  variables { queue_delay_threshold_ms = 1.5 }
+  expect_failures = [var.queue_delay_threshold_ms]
+}
+
+run "operations_monitor_is_opt_in" {
+  command = plan
+  assert {
+    condition = length(google_cloud_run_v2_job.operations_monitor) == 0 && length(google_cloud_scheduler_job.operations_monitor) == 0 && (
+      length(google_monitoring_alert_policy.operations_monitor) == 0 && length(google_service_account.operations_monitor) == 0 &&
+      length(google_logging_metric.operations_heartbeat) == 0 && length(google_monitoring_alert_policy.operations_freshness) == 0 &&
+      length(google_logging_metric.operations_database_size) == 0 && length(google_monitoring_alert_policy.operations_database_growth) == 0
+    )
+    error_message = "Operations collection must not create resources by default."
+  }
+}
+
+run "operations_monitor_uses_scoped_identity_and_paused_schedule" {
+  command = plan
+  variables {
+    enable_operations_monitor               = true
+    enable_operations_alert                 = true
+    enable_operations_freshness_alert       = true
+    enable_operations_database_growth_alert = true
+    operations_database_growth_percent      = 25
+    operations_monitor_image                = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/worker@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    operations_database_secret_id           = "synthetic-operations-only"
+    operations_database_secret_version      = "4"
+    operations_monitor_schedule             = "*/5 * * * *"
+    operations_thresholds                   = { outbox_seconds = 300, overdue_seconds = 600, queue_seconds = 900, email_events = 2 }
+    operations_database_capacity_bytes      = "2000000000"
+    monitoring_notification_channels        = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
+  }
+  override_resource {
+    target          = google_service_account.operations_monitor[0]
+    override_during = plan
+    values          = { email = "operations@synthetic.invalid" }
+  }
+  override_resource {
+    target          = google_service_account.operations_scheduler[0]
+    override_during = plan
+    values          = { email = "operations-trigger@synthetic.invalid" }
+  }
+  assert {
+    condition = toset(google_project_iam_custom_role.operations_queue_reader[0].permissions) == toset(["cloudtasks.tasks.list"]) && (
+      google_cloud_tasks_queue_iam_member.operations_monitor[0].name == "idea-map-dev-queue" &&
+      google_cloud_tasks_queue_iam_member.operations_monitor[0].member == "serviceAccount:operations@synthetic.invalid" &&
+      google_secret_manager_secret_iam_member.operations_database[0].secret_id == "synthetic-operations-only"
+    )
+    error_message = "The collector must use its own identity, scoped queue listing, and dedicated secret."
+  }
+  assert {
+    condition = google_cloud_run_v2_job.operations_monitor[0].template[0].task_count == 1 && (
+      google_cloud_run_v2_job.operations_monitor[0].template[0].template[0].max_retries == 0 &&
+      google_cloud_run_v2_job.operations_monitor[0].template[0].template[0].containers[0].command == tolist(["node", "dist/operations-monitor-cli.js"]) &&
+      one([for entry in google_cloud_run_v2_job.operations_monitor[0].template[0].template[0].containers[0].env : entry.value if entry.name == "OPERATIONS_DATABASE_CAPACITY_BYTES"]) == "2000000000" &&
+      google_cloud_scheduler_job.operations_monitor[0].paused &&
+      google_cloud_scheduler_job.operations_monitor[0].http_target[0].oauth_token[0].service_account_email == "operations-trigger@synthetic.invalid" &&
+      google_cloud_run_v2_job_iam_member.operations_scheduler[0].role == "roles/run.invoker"
+    )
+    error_message = "The collector must be bounded and its separate trigger must start paused."
+  }
+  assert {
+    condition = strcontains(one(google_monitoring_alert_policy.operations_monitor[0].conditions).condition_matched_log[0].filter, "idea-map-ops-dev") && (
+      strcontains(one(google_monitoring_alert_policy.operations_monitor[0].conditions).condition_matched_log[0].filter, "operations_collection_failed") &&
+      strcontains(one(google_monitoring_alert_policy.operations_monitor[0].conditions).condition_matched_log[0].filter, "operations_threshold_breached") &&
+      toset(google_monitoring_alert_policy.operations_monitor[0].notification_channels) == toset(var.monitoring_notification_channels)
+    )
+    error_message = "The alert must match only this collector's breach and failure events and use existing channels."
+  }
+  assert {
+    condition = strcontains(google_logging_metric.operations_heartbeat[0].filter, "operations_assessment_completed") && (
+      strcontains(one(google_monitoring_alert_policy.operations_freshness[0].conditions).condition_absent[0].filter, "idea-map-ops-heartbeat-dev") &&
+      one(google_monitoring_alert_policy.operations_freshness[0].conditions).condition_absent[0].duration == "7200s" &&
+      toset(google_monitoring_alert_policy.operations_freshness[0].notification_channels) == toset(var.monitoring_notification_channels)
+    )
+    error_message = "The freshness signal must track this collector's completed assessments and reviewed channels."
+  }
+  assert {
+    condition = google_logging_metric.operations_database_size[0].value_extractor == "EXTRACT(jsonPayload.database_size_bytes)" && (
+      strcontains(google_logging_metric.operations_database_size[0].filter, "operations_database_size_observed") &&
+      google_logging_metric.operations_database_size[0].metric_descriptor[0].value_type == "DISTRIBUTION" &&
+      one(google_monitoring_alert_policy.operations_database_growth[0].conditions).condition_threshold[0].threshold_value == 25 &&
+      one(google_monitoring_alert_policy.operations_database_growth[0].conditions).condition_threshold[0].aggregations[0].per_series_aligner == "ALIGN_SUM" &&
+      one(google_monitoring_alert_policy.operations_database_growth[0].conditions).condition_threshold[0].aggregations[0].cross_series_reducer == "REDUCE_MEAN" &&
+      one(google_monitoring_alert_policy.operations_database_growth[0].conditions).condition_threshold[0].aggregations[1].per_series_aligner == "ALIGN_PERCENT_CHANGE" &&
+      toset(google_monitoring_alert_policy.operations_database_growth[0].notification_channels) == toset(var.monitoring_notification_channels)
+    )
+    error_message = "Database growth must use this collector's samples and reviewed channels."
+  }
+}
+
+run "operations_database_growth_requires_collector_and_threshold" {
+  command = plan
+  variables { enable_operations_database_growth_alert = true }
+  expect_failures = [var.enable_operations_database_growth_alert]
+}
+
+run "operations_alert_requires_collector_and_channel" {
+  command = plan
+  variables { enable_operations_alert = true }
+  expect_failures = [var.enable_operations_alert]
+}
+
+run "operations_freshness_requires_collector_and_channel" {
+  command = plan
+  variables { enable_operations_freshness_alert = true }
+  expect_failures = [var.enable_operations_freshness_alert]
+}
+
+run "operations_monitor_requires_reviewed_inputs" {
+  command = plan
+  variables { enable_operations_monitor = true }
+  expect_failures = [google_cloud_run_v2_job.operations_monitor]
+}
+
+run "operations_monitor_rejects_incomplete_thresholds" {
+  command = plan
+  variables { operations_thresholds = { queue_seconds = 60 } }
+  expect_failures = [var.operations_thresholds]
+}
+
+run "operations_monitor_rejects_invalid_database_capacity" {
+  command = plan
+  variables { operations_database_capacity_bytes = "9223372036854775808" }
+  expect_failures = [var.operations_database_capacity_bytes]
+}
+
+run "operations_monitor_requires_database_capacity" {
+  command = plan
+  variables {
+    enable_operations_monitor          = true
+    operations_monitor_image           = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/worker@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    operations_database_secret_id      = "synthetic-operations-only"
+    operations_database_secret_version = "4"
+    operations_monitor_schedule        = "*/5 * * * *"
+    operations_thresholds              = { outbox_seconds = 300, overdue_seconds = 600, queue_seconds = 900, email_events = 2 }
+  }
+  expect_failures = [google_cloud_run_v2_job.operations_monitor]
+}
+
+run "operations_monitor_rejects_unpinned_secret" {
+  command = plan
+  variables { operations_database_secret_version = "latest" }
+  expect_failures = [var.operations_database_secret_version]
+}
+
+run "operations_monitor_rejects_shared_worker_secret" {
+  command = plan
+  variables {
+    enable_operations_monitor          = true
+    operations_monitor_image           = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/worker@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    operations_database_secret_id      = "shared-secret"
+    operations_database_secret_version = "4"
+    operations_monitor_schedule        = "*/5 * * * *"
+    operations_thresholds              = { outbox_seconds = 300, overdue_seconds = 600, queue_seconds = 900, email_events = 2 }
+    operations_database_capacity_bytes = "2000000000"
+    worker_database_secret_id          = "shared-secret"
+  }
+  expect_failures = [google_cloud_run_v2_job.operations_monitor]
+}
+
+run "operations_monitor_rejects_shared_web_secret" {
+  command = plan
+  variables {
+    enable_operations_monitor          = true
+    operations_monitor_image           = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/worker@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    operations_database_secret_id      = "shared-secret"
+    operations_database_secret_version = "4"
+    operations_monitor_schedule        = "*/5 * * * *"
+    operations_thresholds              = { outbox_seconds = 300, overdue_seconds = 600, queue_seconds = 900, email_events = 2 }
+    operations_database_capacity_bytes = "2000000000"
+    web_database_secret_id             = "shared-secret"
+    web_database_secret_version        = "1"
+  }
+  expect_failures = [google_cloud_run_v2_job.operations_monitor]
+}
+
+run "backup_job_is_opt_in" {
+  command = plan
+  assert {
+    condition = length(google_cloud_run_v2_job.backup) == 0 && length(google_cloud_scheduler_job.backup) == 0 && (
+      length(google_service_account.backup_writer) == 0 && length(google_project_iam_custom_role.backup_writer) == 0 &&
+      length(google_monitoring_alert_policy.backup_failure) == 0 && length(google_logging_metric.backup_heartbeat) == 0 &&
+      length(google_monitoring_alert_policy.backup_freshness) == 0
+    )
+    error_message = "Backup identities, job, and scheduler must not be created by default."
+  }
+}
+
+run "backup_job_uses_create_only_access_and_paused_schedule" {
+  command = plan
+  variables {
+    enable_backup_job                = true
+    backup_job_image                 = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/backup@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    backup_project_number            = "123456789"
+    backup_database_secret_id        = "synthetic-backup-only"
+    backup_database_secret_version   = "7"
+    backup_schedule                  = "0 */12 * * *"
+    enable_backup_failure_alert      = true
+    enable_backup_freshness_alert    = true
+    backup_freshness_seconds         = 46800
+    monitoring_notification_channels = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
+  }
+  override_resource {
+    target          = google_service_account.backup_writer[0]
+    override_during = plan
+    values          = { email = "backup-writer@synthetic.invalid" }
+  }
+  override_resource {
+    target          = google_service_account.backup_scheduler[0]
+    override_during = plan
+    values          = { email = "backup-trigger@synthetic.invalid" }
+  }
+  assert {
+    condition = toset(google_project_iam_custom_role.backup_writer[0].permissions) == toset(["storage.buckets.get", "storage.objects.create"]) && (
+      google_storage_bucket_iam_member.backup_writer[0].bucket == var.bucket_names.backups &&
+      google_storage_bucket_iam_member.backup_writer[0].member == "serviceAccount:backup-writer@synthetic.invalid" &&
+      strcontains(google_storage_bucket_iam_member.backup_writer[0].condition[0].expression, "/idea-map-v2/dev/daily/") &&
+      strcontains(google_storage_bucket_iam_member.backup_writer[0].condition[0].expression, "/idea-map-v2/dev/weekly/") &&
+      strcontains(google_storage_bucket_iam_member.backup_writer[0].condition[0].expression, "/idea-map-v2/dev/completion/") &&
+      !strcontains(google_storage_bucket_iam_member.backup_writer[0].condition[0].expression, "/recovery-journal/") &&
+      google_secret_manager_secret_iam_member.backup_database[0].secret_id == "synthetic-backup-only"
+    )
+    error_message = "The backup writer must have create-only access to the existing bucket and its dedicated secret."
+  }
+  assert {
+    condition = google_cloud_run_v2_job.backup[0].template[0].task_count == 1 && (
+      google_cloud_run_v2_job.backup[0].template[0].parallelism == 1 &&
+      google_cloud_run_v2_job.backup[0].template[0].template[0].max_retries == 0 &&
+      google_cloud_run_v2_job.backup[0].template[0].template[0].timeout == "2100s" &&
+      google_cloud_run_v2_job.backup[0].template[0].template[0].service_account == "backup-writer@synthetic.invalid"
+      ) && anytrue([
+        for entry in google_cloud_run_v2_job.backup[0].template[0].template[0].containers[0].env :
+        entry.name == "BACKUP_DATABASE_URL" && try(entry.value_source[0].secret_key_ref[0].version, "") == "7"
+    ])
+    error_message = "The job must use one bounded task and the pinned backup-only secret."
+  }
+  assert {
+    condition = google_cloud_scheduler_job.backup[0].paused && google_cloud_scheduler_job.backup[0].schedule == "0 */12 * * *" && (
+      google_cloud_scheduler_job.backup[0].http_target[0].oauth_token[0].service_account_email == "backup-trigger@synthetic.invalid" &&
+      strcontains(google_cloud_scheduler_job.backup[0].http_target[0].uri, "/jobs/idea-map-backup-dev:run") &&
+      google_cloud_run_v2_job_iam_member.backup_scheduler[0].role == "roles/run.invoker"
+    )
+    error_message = "The reviewed scheduler must start paused and invoke only the backup job."
+  }
+  assert {
+    condition = strcontains(one(google_monitoring_alert_policy.backup_failure[0].conditions).condition_matched_log[0].filter, "backup_export_failed") && (
+      strcontains(google_logging_metric.backup_heartbeat[0].filter, "backup_export_completed") &&
+      strcontains(one(google_monitoring_alert_policy.backup_freshness[0].conditions).condition_absent[0].filter, "idea-map-backup-heartbeat-dev") &&
+      one(google_monitoring_alert_policy.backup_freshness[0].conditions).condition_absent[0].duration == "46800s" &&
+      toset(google_monitoring_alert_policy.backup_failure[0].notification_channels) == toset(var.monitoring_notification_channels)
+    )
+    error_message = "Backup signals must watch the reviewed job's completed and failed exports using the existing channels."
+  }
+}
+
+run "backup_alert_requires_job_and_channels" {
+  command = plan
+  variables { enable_backup_failure_alert = true }
+  expect_failures = [var.enable_backup_failure_alert]
+}
+
+run "backup_freshness_requires_reviewed_window" {
+  command = plan
+  variables { enable_backup_freshness_alert = true }
+  expect_failures = [var.enable_backup_freshness_alert]
+}
+
+run "backup_freshness_rejects_daily_schedule" {
+  command = plan
+  variables {
+    enable_backup_job                = true
+    enable_backup_freshness_alert    = true
+    backup_job_image                 = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/backup@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    backup_project_number            = "123456789"
+    backup_database_secret_id        = "synthetic-backup-db"
+    backup_database_secret_version   = "1"
+    backup_schedule                  = "0 0 * * *"
+    backup_freshness_seconds         = 84600
+    monitoring_notification_channels = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
+  }
+  expect_failures = [var.enable_backup_freshness_alert]
+}
+
+run "backup_freshness_rejects_window_inside_job_timeout" {
+  command = plan
+  variables {
+    enable_backup_job                = true
+    enable_backup_freshness_alert    = true
+    backup_job_image                 = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/backup@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    backup_project_number            = "123456789"
+    backup_database_secret_id        = "synthetic-backup-db"
+    backup_database_secret_version   = "1"
+    backup_schedule                  = "0 */12 * * *"
+    backup_freshness_seconds         = 45300
+    monitoring_notification_channels = ["projects/synthetic-idea-map-dev/notificationChannels/123"]
+  }
+  expect_failures = [var.enable_backup_freshness_alert]
+}
+run "backup_freshness_rejects_invalid_window" {
+  command = plan
+  variables { backup_freshness_seconds = 85000 }
+  expect_failures = [var.backup_freshness_seconds]
+}
+
+run "backup_job_rejects_mutable_image" {
+  command = plan
+  variables { backup_job_image = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/backup:latest" }
+  expect_failures = [var.backup_job_image]
+}
+
+run "backup_job_rejects_other_project_image" {
+  command = plan
+  variables { backup_job_image = "us-central1-docker.pkg.dev/other-project/images/backup@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" }
+  expect_failures = [var.backup_job_image]
+}
+
+run "backup_job_rejects_unpinned_secret" {
+  command = plan
+  variables { backup_database_secret_version = "latest" }
+  expect_failures = [var.backup_database_secret_version]
+}
+
+run "backup_job_rejects_weekly_only_schedule" {
+  command = plan
+  variables { backup_schedule = "0 0 * * 1" }
+  expect_failures = [var.backup_schedule]
+}
+
+run "backup_job_rejects_shared_worker_secret" {
+  command = plan
+  variables {
+    enable_backup_job              = true
+    backup_job_image               = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/backup@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    backup_project_number          = "123456789"
+    backup_database_secret_id      = "shared-secret"
+    backup_database_secret_version = "7"
+    backup_schedule                = "0 */12 * * *"
+    worker_database_secret_id      = "shared-secret"
+  }
+  expect_failures = [google_cloud_run_v2_job.backup]
+}
+
+run "backup_job_rejects_shared_web_secret" {
+  command = plan
+  variables {
+    enable_backup_job              = true
+    backup_job_image               = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/backup@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    backup_project_number          = "123456789"
+    backup_database_secret_id      = "shared-secret"
+    backup_database_secret_version = "7"
+    backup_schedule                = "0 */12 * * *"
+    web_database_secret_id         = "shared-secret"
+    web_database_secret_version    = "1"
+  }
+  expect_failures = [google_cloud_run_v2_job.backup]
+}
+
+run "backup_job_rejects_unmanaged_buckets" {
+  command = plan
+  variables {
+    manage_media_buckets           = false
+    enable_backup_job              = true
+    backup_job_image               = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/backup@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    backup_project_number          = "123456789"
+    backup_database_secret_id      = "backup-only"
+    backup_database_secret_version = "7"
+    backup_schedule                = "0 */12 * * *"
+  }
+  expect_failures = [google_cloud_run_v2_job.backup]
+}
+
+run "backup_job_can_use_backup_only_foundation" {
+  command = plan
+  variables {
+    manage_media_buckets            = false
+    manage_backup_bucket_separately = true
+    enable_backup_job               = true
+    backup_job_image                = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/backup@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    backup_project_number           = "123456789"
+    backup_database_secret_id       = "backup-only"
+    backup_database_secret_version  = "7"
+    backup_schedule                 = "0 */12 * * *"
+  }
+  assert {
+    condition = toset(keys(google_storage_bucket.media)) == toset(["backups"]) && (
+      google_storage_bucket_iam_member.backup_writer[0].bucket == var.bucket_names.backups &&
+      google_cloud_scheduler_job.backup[0].paused
+    )
+    error_message = "A backup-only foundation must use its own backup bucket and start the scheduler paused."
+  }
+}
+
+run "backup_job_requires_explicit_inputs" {
+  command = plan
+  variables {
+    enable_backup_job              = true
+    backup_job_image               = "us-central1-docker.pkg.dev/synthetic-idea-map-dev/images/backup@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    backup_project_number          = "123456789"
+    backup_database_secret_id      = "synthetic-backup-only"
+    backup_database_secret_version = "7"
+  }
+  expect_failures = [google_cloud_run_v2_job.backup]
 }
 
 run "task_delivery_is_opt_in" {

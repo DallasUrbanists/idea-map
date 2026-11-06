@@ -7,6 +7,26 @@ const geographyPoint = customType<{ data: string }>({ dataType: () => 'geography
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
 export const publicationState = pgEnum('publication_state', ['private', 'approved', 'withdrawn'])
 export const reviewState = pgEnum('review_state', ['waiting', 'queued', 'reviewing', 'escalated', 'approved', 'rejected'])
+// A missing or closed gate must deny public access. Only reviewed recovery
+// procedures may open it after journal coverage and pending decisions are known.
+export const publicAccessGate = pgTable('public_access_gate', {
+  singleton: boolean('singleton').primaryKey().default(true),
+  isOpen: boolean('is_open').notNull().default(false),
+  removalResumeBaseline: text('removal_resume_baseline'),
+}, table => [
+  check('public_access_gate_singleton', sql`${table.singleton} = true`),
+  check('public_access_gate_removal_baseline', sql`${table.removalResumeBaseline} IS NULL OR ${table.removalResumeBaseline} ~ '^[0-9a-f]{64}$'`),
+])
+// This ledger records independent reasons to keep the gate closed. It does
+// not authorize reopening or establish journal coverage on its own.
+export const publicAccessClosures = pgTable('public_access_closures', {
+  kind: text('kind').notNull(),
+  causeId: uuid('cause_id').notNull(),
+  createdAt: createdAt(),
+}, table => [
+  uniqueIndex('public_access_closures_kind_cause_key').on(table.kind, table.causeId),
+  check('public_access_closures_kind', sql`${table.kind} IN ('removal', 'recovery', 'operator')`),
+])
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   createdAt: createdAt(),
@@ -64,6 +84,44 @@ export const ideas = pgTable('ideas', {
   location: geographyPoint('location'),
   createdAt: createdAt(),
 }, table => [index('ideas_owner_idx').on(table.ownerId), index('ideas_author_contact_idx').on(table.authorContactId), index('ideas_location_gist_idx').using('gist', table.location), uniqueIndex('ideas_id_author_contact_key').on(table.id, table.authorContactId)])
+// Pending decisions keep exact journal bytes for retry and remain private.
+// An unresolved decision holds the public gate closed until reconciliation.
+export const publicAccessPendingDecisions = pgTable('public_access_pending_decisions', {
+  operationId: uuid('operation_id').primaryKey(),
+  recordId: uuid('record_id').notNull(),
+  ideaId: uuid('idea_id').notNull().references(() => ideas.id),
+  actorId: uuid('actor_id').notNull().references(() => users.id),
+  approvedRevisionId: uuid('approved_revision_id'),
+  removalReason: text('removal_reason'),
+  intent: text('intent').notNull(),
+  journalProjectNumber: text('journal_project_number'),
+  journalSecretId: text('journal_secret_id'),
+  journalEpochId: uuid('journal_epoch_id'),
+  journalTargetTransactionId: text('journal_target_transaction_id'),
+  journalGeneration: text('journal_generation'),
+  appliedAt: timestamp('applied_at', { withTimezone: true }),
+  appliedTransactionId: text('applied_transaction_id'),
+  confirmationRecordId: uuid('confirmation_record_id'),
+  confirmationPreparedAt: timestamp('confirmation_prepared_at', { withTimezone: true }),
+  confirmationGeneration: text('confirmation_generation'),
+  confirmationVerifiedAt: timestamp('confirmation_verified_at', { withTimezone: true }),
+  confirmationVerifiedTransactionId: text('confirmation_verified_transaction_id'),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  createdAt: createdAt(),
+}, table => [
+  uniqueIndex('public_access_pending_record_key').on(table.recordId),
+  uniqueIndex('public_access_pending_confirmation_key').on(table.confirmationRecordId),
+  foreignKey({ columns: [table.ideaId, table.approvedRevisionId], foreignColumns: [ideaRevisions.ideaId, ideaRevisions.id] }),
+  check('public_access_pending_intent_size', sql`octet_length(${table.intent}) between 1 and 16384`),
+  check('public_access_pending_journal_target', sql`(${table.journalProjectNumber} IS NULL AND ${table.journalSecretId} IS NULL AND ${table.journalEpochId} IS NULL AND ${table.journalTargetTransactionId} IS NULL) OR (${table.journalProjectNumber} IS NOT NULL AND ${table.journalSecretId} IS NOT NULL AND ${table.journalEpochId} IS NOT NULL AND ${table.journalTargetTransactionId} IS NOT NULL AND ${table.journalProjectNumber} ~ '^[1-9][0-9]{5,19}$' AND ${table.journalSecretId} ~ '^[a-zA-Z0-9_-]{1,255}$' AND ${table.journalEpochId}::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' AND ${table.journalTargetTransactionId} ~ '^[1-9][0-9]*$')`),
+  check('public_access_pending_applied_fields', sql`(${table.journalGeneration} IS NULL AND ${table.appliedAt} IS NULL) OR (${table.journalGeneration} IS NOT NULL AND ${table.journalGeneration} ~ '^[1-9][0-9]*$' AND ${table.appliedAt} IS NOT NULL)`),
+  check('public_access_pending_application_xid', sql`${table.appliedTransactionId} IS NULL OR (${table.appliedAt} IS NOT NULL AND ${table.appliedTransactionId} ~ '^[1-9][0-9]*$')`),
+  check('public_access_pending_confirmation_fields', sql`(${table.confirmationRecordId} IS NULL AND ${table.confirmationPreparedAt} IS NULL) OR (${table.confirmationRecordId} IS NOT NULL AND ${table.confirmationRecordId}::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' AND ${table.confirmationPreparedAt} IS NOT NULL AND ${table.appliedAt} IS NOT NULL AND ${table.confirmationPreparedAt} >= ${table.appliedAt})`),
+  check('public_access_pending_verified_confirmation', sql`(${table.confirmationGeneration} IS NULL AND ${table.confirmationVerifiedAt} IS NULL) OR (${table.confirmationGeneration} IS NOT NULL AND ${table.confirmationGeneration} ~ '^[1-9][0-9]{0,19}$' AND ${table.confirmationVerifiedAt} IS NOT NULL AND ${table.confirmationPreparedAt} IS NOT NULL AND ${table.confirmationVerifiedAt} >= ${table.confirmationPreparedAt})`),
+  check('public_access_pending_verification_xid', sql`${table.confirmationVerifiedTransactionId} IS NULL OR (${table.confirmationVerifiedAt} IS NOT NULL AND ${table.confirmationVerifiedTransactionId} ~ '^[1-9][0-9]*$')`),
+  check('public_access_pending_resolution', sql`${table.resolvedAt} IS NULL OR (${table.confirmationVerifiedAt} IS NOT NULL AND ${table.resolvedAt} >= ${table.confirmationVerifiedAt})`),
+  check('public_access_pending_removal_fields', sql`(${table.approvedRevisionId} IS NULL AND ${table.removalReason} IS NULL) OR (${table.approvedRevisionId} IS NOT NULL AND ${table.removalReason} IS NOT NULL AND length(trim(${table.removalReason})) > 0 AND octet_length(${table.removalReason}) <= 1000)`),
+])
 // One record covers one idea and one documented case; different cases may overlap.
 export const legalHolds = pgTable('legal_holds', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -84,6 +142,42 @@ export const legalHolds = pgTable('legal_holds', {
   check('legal_holds_reason', sql`length(trim(${table.reason})) > 0 AND octet_length(${table.reason}) <= 1000`),
   check('legal_holds_release', sql`(${table.releasedAt} IS NULL AND ${table.releasedBy} IS NULL AND ${table.releaseAuthorityId} IS NULL AND ${table.releaseReason} IS NULL AND ${table.legalReviewReference} IS NULL) OR (${table.releasedAt} IS NOT NULL AND ${table.releasedBy} IS NOT NULL AND ${table.releaseAuthorityId} IS NOT NULL AND ${table.releaseReason} IS NOT NULL AND length(trim(${table.releaseReason})) > 0 AND octet_length(${table.releaseReason}) <= 1000 AND (${table.legalReviewReference} IS NULL OR (length(trim(${table.legalReviewReference})) > 0 AND octet_length(${table.legalReviewReference}) <= 300)))`),
 ])
+// The broad hold commits first. These checkpoints record exact journal readback.
+export const legalHoldJournalPlacements = pgTable('legal_hold_journal_placements', {
+  requestId: uuid('request_id').primaryKey(),
+  holdId: uuid('hold_id').notNull().unique().references(() => legalHolds.id),
+  baselinePin: text('baseline_pin').notNull(),
+  intentVersion: integer('intent_version'),
+  confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+  confirmationVersion: integer('confirmation_version'),
+}, table => [
+  check('legal_hold_journal_baseline', sql`${table.baselinePin} ~ '^[0-9a-f]{64}$'`),
+  check('legal_hold_journal_intent', sql`(${table.intentVersion} IS NULL AND ${table.confirmedAt} IS NULL) OR (${table.intentVersion} IS NOT NULL AND ${table.intentVersion} BETWEEN 2 AND 9999 AND ${table.confirmedAt} IS NOT NULL)`),
+  check('legal_hold_journal_confirmation', sql`${table.confirmationVersion} IS NULL OR (${table.intentVersion} IS NOT NULL AND ${table.confirmationVersion} BETWEEN ${table.intentVersion} + 1 AND 10000)`),
+])
+// Scope decisions bind the authorized reviewer to exact held-inventory bytes.
+export const legalHoldScopeReviews = pgTable('legal_hold_scope_reviews', {
+  operationId: uuid('operation_id').primaryKey(),
+  holdId: uuid('hold_id').notNull().references(() => legalHolds.id),
+  reviewerAuthorityId: uuid('reviewer_authority_id').notNull().references(() => legalHoldAssignments.id),
+  selectedInventory: jsonb('selected_inventory').notNull(),
+  baselinePin: text('baseline_pin').notNull(),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }).notNull(),
+  intentVersion: integer('intent_version'),
+  confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+  confirmationVersion: integer('confirmation_version'),
+}, table => [
+  index('legal_hold_scope_reviews_hold_idx').on(table.holdId, table.reviewedAt),
+  check('legal_hold_scope_journal_baseline', sql`${table.baselinePin} ~ '^[0-9a-f]{64}$'`),
+  check('legal_hold_scope_journal_intent', sql`(${table.intentVersion} IS NULL AND ${table.confirmedAt} IS NULL) OR (${table.intentVersion} IS NOT NULL AND ${table.intentVersion} BETWEEN 2 AND 9999 AND ${table.confirmedAt} IS NOT NULL)`),
+  check('legal_hold_scope_journal_confirmation', sql`${table.confirmationVersion} IS NULL OR (${table.intentVersion} IS NOT NULL AND ${table.confirmationVersion} BETWEEN ${table.intentVersion} + 1 AND 10000)`),
+])
+// An older archive can lack a hold that was recorded later in the journal.
+export const restoredHoldProtections = pgTable('restored_hold_protections', {
+  ideaId: uuid('idea_id').primaryKey().references(() => ideas.id),
+  recoveryClosureId: uuid('recovery_closure_id').notNull(),
+  createdAt: createdAt(),
+})
 // A claim is evidence of an ownership transfer, not proof that a caller owns
 // an email address. The server must verify that evidence before inserting it.
 export const ownershipClaims = pgTable('ownership_claims', {

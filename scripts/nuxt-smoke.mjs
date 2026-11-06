@@ -41,8 +41,11 @@ test('production server renders, responds safely, and keeps private config priva
     }
     // The health route is GET-only; HEAD reaches routing rather than the guard.
     assert.equal((await fetch(base + '/api/health', { method: 'HEAD' })).status, 404);
-    const futureRoute = await fetch(base + '/api/not-yet-implemented', { method: 'POST' });
-    assert.equal(futureRoute.status, 403);
+    for (const path of ['/api/not-yet-implemented', '/api/moderation/removal', '/api/moderation/legal-hold']) {
+      const disabled = await fetch(base + path, { method: 'POST' });
+      assert.equal(disabled.status, 403, path);
+      assert.match(disabled.headers.get('cache-control'), /no-store/);
+    }
     const home = await fetch(base + '/');
     assert.equal(home.headers.get('cache-control'), 'private, no-store');
     const html = await home.text();
@@ -64,7 +67,7 @@ test('production server renders, responds safely, and keeps private config priva
     assert.equal((await fetch(base + '/api/media/not-an-id')).status, 404);
     assert.equal((await fetch(base + '/api/webhooks/resend', { method: 'POST' })).status, 503);
     const page = await fetch(base + '/suggestion/missing');
-    assert.equal(page.status, 404);
+    assert.equal(page.status, 503);
     assert.equal(page.headers.get('cache-control'), 'private, no-store');
     assert.ok(!(await page.text()).includes(secret));
     for (const path of ['/account', '/api/session']) {

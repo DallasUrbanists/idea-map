@@ -265,7 +265,50 @@ For the worker integration check, migrate a different disposable database,
 set `TEST_DATABASE_URL`, and run `pnpm --filter @idea-map/worker test:integration`.
 The worker integration test also checks recovery with fake queue responses,
 including inaccessible queues, timeouts, concurrent recovery, and active leases.
-It checks aggregate backlog and email-event snapshots using synthetic records.
+For aggregate backlog and email-event snapshots, migrate a separate, otherwise
+empty disposable database, set `TEST_DATABASE_URL`, and run
+`pnpm --filter @idea-map/worker test:operations`. It checks synthetic records,
+a concurrent outbox insertion, and column-scoped access. The role check requires
+the local `idea_map_test_operations` database and creates and removes its own
+uniquely named test role.
+For encrypted database export and restore, run the [synthetic recovery rehearsal](backup-recovery.md#rehearse-with-synthetic-data).
+The worker tests also exercise the Cloud Storage client against a credential-free
+loopback fake; they do not verify provider encryption or hosted permissions.
+The local recovery rehearsal also checks suppression of known removals and
+selected held-artifact readback from linked fake journal epochs. It does not
+establish hold scope, earlier-epoch coverage, or a hosted writer fence.
+Run `pnpm --filter @idea-map/server test:recovery-journal` for the unwired
+journal record encoding, decoding, numbered transport, and conservative
+summary. This does not test live decision coverage,
+held-evidence capture, public-access gating, or recovery reconciliation.
+For the separate read-lease primitive, migrate an otherwise empty local
+`idea_map_test_public_gate` database, set `TEST_DATABASE_URL` to its loopback
+connection, and run `pnpm --filter @idea-map/server test:public-access-lease`.
+The test changes the gate, creates and removes synthetic roles, terminates one
+test connection, and disables triggers in a rolled-back transaction to model an
+older row, so use only that disposable database. It
+checks lock ordering, a closed or missing gate, a limited reader, and a lost connection, plus
+authorization, retry, and rollback of a pending removal.
+It also models an inconsistent restored gate with a recorded closure and checks
+that an active lease aborts and a new lease is denied. The test temporarily
+disables a trigger only in its disposable database and restores it afterward.
+It revokes the synthetic reader's function grant while a lease is active and
+checks that both the active lease and a subsequent lease fail closed.
+It separately grants a synthetic role the close-only recovery function and
+checks that retries are idempotent and that the role cannot remove a cause or
+open the gate. A second synthetic role checks the exact committed cause without
+receiving permission to place one. This local test does not authorize any hosted
+role grant.
+It also uses fake journal writer and reader interfaces to check that a completed
+write, an ambiguous write, a rejected retry, and a matching read leave the gate
+closed. A synthetic coordinator role tests a verified pending removal, reader
+drain, rollback and idempotent retry. The tests also check pin ordering, including
+savepoints, deterministic confirmation IDs, uncertain writes and separately
+authorized confirmation readback with a lost commit response. The gate stays closed;
+complete reconciliation and reopening are not implemented. These tests do not
+exercise public responses, Cloud Storage permissions, or the hosted Neon pooler.
+The unwired coordinator is also retried after a synthetic journal read failure;
+the test checks separate database roles, stale revisions and repeat confirmation.
 For the controlled-time delivery check, migrate another empty local disposable
 database, set `TEST_DATABASE_URL`, and run
 `pnpm --filter @idea-map/worker test:delivery`. This combines the adopted review
@@ -426,13 +469,22 @@ You should check that server-rendered pages show only approved ideas:
 You should use the [development guide](development-guide.md) for local PostGIS
 setup. This published-page check verifies that both an idea and its displayed
 revision are approved before the page shows the title and description. It also
-checks the default and staging-only HTML cache headers, credential-bearing
-requests, and the origin response after a synthetic withdrawal. The [Hosting cache guide](../architecture/hosting-cache.md)
-describes provider checks and their limitations.
+checks the default and staging HTML no-store headers, credential-bearing
+requests, concurrent page renders, closed-gate responses, an in-flight synthetic
+media fetch aborted by a waiting gate closure, and the origin response after a
+synthetic withdrawal. A fake journal outage also exercises the removal
+coordinator and confirms the closed gate survives a web-process restart. This
+does not establish live journal coverage or hosted delivery. The
+[Hosting cache guide](../architecture/hosting-cache.md) describes provider
+checks and their limitations.
 
-The check restores the synthetic idea after its withdrawal assertion. If the test
-process is interrupted before cleanup, contributors should inspect and restore
-that fixture in the disposable test database before reusing it.
+The check temporarily changes the synthetic gate and restores its original state,
+and restores the synthetic idea after its withdrawal assertion. It creates a
+synthetic moderator and temporarily disables triggers within a cleanup transaction
+to remove that test's otherwise immutable audit record; use an isolated database
+with a local test administrator. If interrupted
+before cleanup, inspect and restore both in the disposable test database before
+reusing it. These checks do not prove bounded delivery or hosted pooler behavior.
 
 To check local fixture repeatability, privacy, and cleanup, migrate a separate
 empty local `idea_map_test_*` database and set `TEST_DATABASE_URL` to its

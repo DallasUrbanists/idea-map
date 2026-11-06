@@ -20,7 +20,7 @@ variable "region" {
   default     = "us-central1"
 }
 variable "bucket_names" {
-  description = "Globally unique names for uploads, approved media and backups when this root manages them."
+  description = "Reviewed names for uploads, approved media and backups managed or monitored by this root."
   type = object({
     uploads = string
     public  = string
@@ -36,6 +36,19 @@ variable "manage_media_buckets" {
   description = "Manage foundation media and backup buckets; disabling is limited to dev and leaves media access unconfigured."
   type        = bool
   default     = true
+}
+variable "manage_backup_bucket_separately" {
+  description = "In dev only, manage the foundation backup bucket without creating media buckets."
+  type        = bool
+  default     = false
+  validation {
+    condition = !var.manage_backup_bucket_separately || (
+      var.environment == "dev" && !var.manage_media_buckets &&
+      can(regex("^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$", var.bucket_names.backups)) &&
+      var.bucket_names.backups != var.bucket_names.uploads && var.bucket_names.backups != var.bucket_names.public
+    )
+    error_message = "A separate backup bucket requires dev, omitted media buckets, and a distinct valid backup name."
+  }
 }
 variable "web_image" {
   description = "Reviewed immutable web container image digest."

@@ -225,6 +225,160 @@
       "when": 1793728863429,
       "tag": "0031_registered_submissions",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793740600082,
+      "tag": "0032_brief_riptide",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793741531178,
+      "tag": "0033_charming_hellfire_club",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793748343597,
+      "tag": "0034_pending_removal_application",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793749229433,
+      "tag": "0035_pending_removal_confirmation",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793752133848,
+      "tag": "0036_confirmation_verification",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1793825991053,
+      "tag": "0037_recovery_suppression",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1793831867353,
+      "tag": "0038_pending_sequence_target",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1793832601399,
+      "tag": "0039_sequence_removal_apply",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1793832959321,
+      "tag": "0040_sequence_confirmation_verification",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1793834736334,
+      "tag": "0041_sequence_removal_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1793835307596,
+      "tag": "0042_sequence_confirmation_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1793849091736,
+      "tag": "0043_dark_master_mold",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1793849644954,
+      "tag": "0044_guard_access_closures",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1793849979962,
+      "tag": "0045_check_read_access_closures",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1793850836483,
+      "tag": "0046_fence_unresolved_decisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1793851952010,
+      "tag": "0047_place_independent_access_closure",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1793852222611,
+      "tag": "0048_inspect_independent_access_closure",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1793910065095,
+      "tag": "0049_journaled_removal_resolution",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1793911675017,
+      "tag": "0050_journaled_hold_placement",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1793912090636,
+      "tag": "0051_protect_restored_held_ideas",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1793912864014,
+      "tag": "0052_read_held_source_selection",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1793913425977,
+      "tag": "0053_journaled_hold_scope_review",
+      "breakpoints": true
     }
   ]
 }

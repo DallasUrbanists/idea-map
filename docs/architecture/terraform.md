@@ -28,8 +28,18 @@ this table:
 | --- | --- | --- |
 | `google_service_account.runtime` | Separate web and worker identities per environment, no IAM grants | Verify names, required permissions and deployment ownership; never reuse unrelated identities |
 | `google_cloud_run_v2_service.runtime` | Internal-only services, separate identities, bootstrap images, request-based CPU, zero minimum; web max 2/concurrency 20, worker max 1/concurrency 1 | Verify image provenance, sizing, health, runtime secrets and reviewed ingress/invoker grants. Public web routing requires explicit reviewed ingress and invoker configuration |
-| `google_storage_bucket.media` | Separate uploads, approved-media and backup buckets; uniform access, public access prevention, versioning, no forced deletion and `prevent_destroy` | Confirm unique names, retention, backup access and recovery; approved-media access uses the reviewed delivery boundary |
+| `google_storage_bucket.media` | Separate uploads, approved-media and backup buckets; uniform access, public access prevention, versioning, seven-day backup soft delete, no forced deletion and `prevent_destroy` | Confirm unique names, existing retention and policy history, backup access and recovery; approved-media access uses the reviewed delivery boundary |
 | `manage_media_buckets` | Defaults to managing the foundation buckets; dev can omit them for an isolated release rehearsal | Confirm existing bucket ownership, leave foundation media access off, and review backups and recovery separately |
+| `manage_backup_bucket_separately` | Opt-in dev-only ownership of the foundation backup bucket while media buckets are omitted | Verify its name and state ownership; it does not configure or manage the staging media buckets |
+| `enable_development_email_channel` | Separately opt-in development email notification channel; not attached to alerts automatically | Check existing channel ownership, protect the recipient and state, and review creation, delivery and cleanup before a real plan or apply |
+| `enable_public_uptime_check`, `enable_public_uptime_alert` | Separately opt-in public HTTPS check and alert using existing notification channels | Inspect existing checks, routing and channels; confirm the target and test failure notifications before relying on the alert |
+| `enable_storage_capacity_alerts` | Opt-in byte-threshold alerts for the existing environment buckets, using the same reviewed notification channels | Review each bucket and threshold, account for daily metric delay and absent empty-bucket series, and test notifications before relying on alerts |
+| `enable_storage_growth_alerts` | Opt-in percentage-change alerts for individual storage-class and object-type series in the existing buckets | Review each bucket and threshold, account for missing series, small baselines and delayed daily measurements, and test notifications before relying on alerts |
+| `enable_queue_delay_alert` | Opt-in dispatch-delay alert for the existing task queue and reviewed notification channels | Check queue naming and other regions, choose a threshold, and test notification and missing-data behavior |
+| `enable_operations_monitor`, `enable_operations_alert`, `enable_operations_freshness_alert` | Opt-in aggregate collector using the worker image, separate read-only identity and paused trigger, plus separately opt-in alerts | Review database grants, queue scope, image, secret, thresholds, connection limits, collection freshness, and notification behavior |
+| `enable_operations_database_growth_alert` | Opt-in log-derived growth alert using the same collector and existing channels | Review sample scope, retention, thresholds, missing data and provider behavior; branch and historical storage require separate monitoring |
+| `enable_backup_job` | Opt-in backup job, prefix-scoped create-only writer, dedicated trigger identity, and paused scheduler | Confirm bucket and state ownership, inherited access, dedicated secret, immutable image, schedule, retention, alerts and recovery before a real plan |
+| `enable_backup_failure_alert`, `enable_backup_freshness_alert` | Separate opt-in alerts for exporter-reported failures and absent completion signals | Review the absence window and existing channels; verify startup, data delivery, retention and restores independently |
 | `google_cloud_tasks_queue.jobs` | Per-environment queue with bounded dispatch and five attempts | Verify quotas, idempotent handlers, dead-letter/reconciliation behavior and authenticated target before use |
 | `enable_task_delivery` | Opt-in task and repair invokers, worker-only invocation grants, scoped queue access and a paused hourly scheduler | Review service identity, queue inspection access, worker configuration and recovery before a live plan; unpausing is a separate operation |
 | `web_database_secret_id` and `web_database_secret_version` | Opt-in web access to an existing, pinned database URL secret | Review the web role, secret ownership and version, connection budget, and service-only access |
@@ -52,6 +62,15 @@ any resulting media and recovery limitations. The setting cannot omit production
 buckets and is not a removal procedure for buckets already in foundation state;
 their `prevent_destroy` guard and a reviewed ownership and recovery plan still
 apply. When the root manages buckets, supply all three distinct `bucket_names`.
+Enabling all three solely to obtain a backup bucket can duplicate existing
+staging media; resolve each bucket's state ownership before changing this
+setting. The release rehearsal alone does not establish a backup bucket.
+For development only, `manage_backup_bucket_separately = true` can manage the
+foundation's backup bucket without creating the omitted media buckets. It uses
+the same `google_storage_bucket.media["backups"]` address as the full
+foundation. It is disabled by default, requires a distinct backup name, and
+does not grant access to media. Review existing resources and state before a
+plan or apply; an existing bucket must not be adopted or recreated implicitly.
 
 After service creation, the [release workflow](../contributor-guides/cloud-run-release.md)
 owns image, traffic, and client attribution. Terraform ignores those fields

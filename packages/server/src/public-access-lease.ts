@@ -1,0 +1,146 @@
+import type pg from 'pg'
+import { runtimeDatabasePool } from './runtime-database.js'
+
+// Transaction-scoped locks work with transaction pooling. Every guarded reader
+// and removal writer must use this same namespace before this can be relied on.
+const sharedLock = 'SELECT pg_catalog.pg_advisory_xact_lock_shared(726421, 391)'
+const accessStillValid = `SELECT public.public_access_allowed() AS is_open, EXISTS (
+  SELECT 1 FROM pg_catalog.pg_locks
+  WHERE locktype = 'advisory' AND database = (SELECT oid FROM pg_catalog.pg_database WHERE datname = pg_catalog.current_database())
+    AND classid = 726421::oid AND objid = 391::oid AND objsubid = 2 AND mode = 'ExclusiveLock' AND NOT granted
+) AS closing`
+
+export type PublicAccessLease = {
+  readonly signal: AbortSignal
+  readonly release: () => Promise<void>
+}
+
+const activeLeases = new WeakMap<PublicAccessLease, pg.PoolClient>()
+
+/** Keep the underlying connection private and reject inactive leases. */
+export function publicAccessLeaseClient(value: PublicAccessLease | undefined): pg.PoolClient {
+  const client = value && activeLeases.get(value)
+  if (!value || !client || value.signal.aborted) throw new Error('Public access unavailable')
+  return client
+}
+
+/**
+ * Acquire the database portion of a public-read guard. The caller must stop
+ * delivery if the connection fails and hold the lease until delivery finishes.
+ * The primitive alone is not a complete access gate.
+ */
+export async function acquirePublicAccessLease(pool: pg.Pool): Promise<PublicAccessLease> {
+  let client: pg.PoolClient
+  try { client = await pool.connect() } catch { throw new Error('Public access unavailable') }
+  const controller = new AbortController()
+  const abort = () => controller.abort()
+  client.on('error', abort)
+  client.on('end', abort)
+  let releasePromise: Promise<void> | undefined
+  const dispose = (destroy: boolean) => {
+    client.removeListener('error', abort)
+    client.removeListener('end', abort)
+    client.release(destroy)
+  }
+  const boundedQuery = async (statement: string, observeAbort: boolean) => {
+    const deadline = performance.now() + 10_000
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let onAbort: (() => void) | undefined
+    try {
+      if (observeAbort && controller.signal.aborted) throw new Error('Public access unavailable')
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Public access unavailable')), 10_000)
+        timer.unref()
+      })
+      const aborted = observeAbort ? new Promise<never>((_, reject) => {
+        onAbort = () => reject(new Error('Public access unavailable'))
+        controller.signal.addEventListener('abort', onAbort, { once: true })
+      }) : undefined
+      const query = Promise.resolve().then(() => {
+        if (observeAbort && controller.signal.aborted) throw new Error('Public access unavailable')
+        return client.query(statement)
+      })
+      const result = await Promise.race([query, timeout, ...(aborted ? [aborted] : [])])
+      if (performance.now() >= deadline || (observeAbort && controller.signal.aborted)) throw new Error('Public access unavailable')
+      return result
+    } finally {
+      if (timer) clearTimeout(timer)
+      if (onAbort) controller.signal.removeEventListener('abort', onAbort)
+    }
+  }
+  try {
+    // Each poll must see a gate closure committed after the lease began,
+    // regardless of the role's default transaction isolation.
+    await boundedQuery('BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY', true)
+    await boundedQuery("SET LOCAL lock_timeout = '5s'", true)
+    await boundedQuery("SET LOCAL statement_timeout = '10s'", true)
+    await boundedQuery(sharedLock, true)
+    const result = await boundedQuery('SELECT public.public_access_allowed() AS is_open', true)
+    if (controller.signal.aborted || result.rows.length !== 1 || result.rows[0]?.is_open !== true) throw new Error('Public access unavailable')
+    let checking = false, checkStarted = false
+    const timer = setInterval(() => {
+      if (checking || controller.signal.aborted) return
+      checking = true
+      checkStarted = false
+      // A broken connection can leave a query pending without a server-side
+      // statement timeout ever reaching this process. Stop delivery locally.
+      const deadline = performance.now() + 10_000
+      const checkDeadline = setTimeout(() => controller.abort(), 10_000)
+      checkDeadline.unref()
+      const clearDeadline = () => clearTimeout(checkDeadline)
+      controller.signal.addEventListener('abort', clearDeadline, { once: true })
+      void Promise.resolve().then(() => {
+        if (controller.signal.aborted) throw new Error('Public access unavailable')
+        checkStarted = true
+        return client.query<{ is_open: boolean | null, closing: boolean }>(accessStillValid)
+      }).then(status => {
+        if (performance.now() >= deadline || status.rows.length !== 1 || status.rows[0]?.is_open !== true || status.rows[0]?.closing !== false) controller.abort()
+      }).catch(() => controller.abort()).finally(() => {
+        clearDeadline()
+        controller.signal.removeEventListener('abort', clearDeadline)
+        checking = false
+        checkStarted = false
+      })
+    }, 250)
+    timer.unref()
+    controller.signal.addEventListener('abort', () => clearInterval(timer), { once: true })
+    const lease: PublicAccessLease = {
+      signal: controller.signal,
+      release: () => {
+        releasePromise ??= (async () => {
+          try {
+            if (controller.signal.aborted) throw new Error('Public access unavailable')
+            // A disconnected response may leave asynchronous handlers running.
+            // Mark the lease unusable before returning its client to the pool.
+            controller.abort()
+            // A polling query can be stuck behind a broken connection. Do not
+            // queue COMMIT behind it or return that client to the pool.
+            if (checking && checkStarted) { dispose(true); return }
+            await boundedQuery('COMMIT', false)
+            dispose(false)
+          } catch {
+            controller.abort()
+            dispose(true)
+            throw new Error('Public access unavailable')
+          }
+        })()
+        return releasePromise
+      },
+    }
+    activeLeases.set(lease, client)
+    controller.signal.addEventListener('abort', () => activeLeases.delete(lease), { once: true })
+    return Object.freeze(lease)
+  } catch {
+    controller.abort()
+    // A failed setup query may still be in flight. Destroying the client avoids
+    // queuing a rollback behind it or returning an uncertain transaction.
+    dispose(true)
+    throw new Error('Public access unavailable')
+  }
+}
+
+/** Use the existing bounded web pool for a public-read lease. */
+export async function acquirePublicAccessLeaseForDatabase(databaseUrl: string): Promise<PublicAccessLease> {
+  if (!databaseUrl) throw new Error('Public access unavailable')
+  return acquirePublicAccessLease(runtimeDatabasePool(databaseUrl))
+}
