@@ -104,9 +104,10 @@ denied private-data access in the isolated environment before using it.
 For a web service using the same synthetic database, apply
 [`staging-web-grants.sql`](../../packages/server/test/staging-web-grants.sql)
 to create a separate, initially disabled `idea_map_staging_web_test` role. It
-grants the columns used by the published-idea query and read-only access to the
-public-access gate, not the worker's job or outbox access. It cannot open or
-close the gate. Set its own password securely, then apply
+grants the columns used by the published-idea query and execution of
+`public.public_access_allowed()`. The guard exposes only its access decision
+and the role receives no direct gate, job or outbox access. Set its own
+password securely, then apply
 [`staging-web-enable-login.sql`](../../packages/server/test/staging-web-enable-login.sql).
 Store its pooled URL in a distinct web-only secret. As with the existing web
 test role, these column grants allow direct reads of synthetic revision content

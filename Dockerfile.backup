@@ -18,7 +18,7 @@ RUN --mount=type=secret,id=proxy_ca \
 FROM postgis/postgis@sha256:4a43e3c3e5d55b9208240fc71db543b79c638766280c625a425bd0a2390989c4
 ENV NODE_ENV=production
 WORKDIR /app
-RUN test -r /etc/ssl/certs/ca-certificates.crt && pg_dump --version
+RUN test -r /etc/ssl/certs/ca-certificates.crt && pg_dump --version && psql --version
 COPY --from=build /usr/local/bin/node /usr/local/bin/node
 COPY --from=build --chown=postgres:postgres /worker ./
 USER postgres

@@ -39,32 +39,37 @@ and the absence of a record inserted after the snapshot. It also withdraws a
 synthetic approved idea, adds a later revision, and places a synthetic legal
 hold after the export. The older isolated restore still contains the previously
 public state and lacks the later hold, revision, actor, and legal-authority
-assignment. The rehearsal runs the removal coordinator against a synthetic
-moderator and an in-memory numbered sequence, then appends synthetic hold
-records and captures the committed hold's ID. The coordinator uses a local
-database administrator and fake identity and journal services; this does not
-verify hosted grants or complete journal coverage. It reads each version
-through a selected fence, rejects a deliberately missing version, identifies the
-synthetic idea for hold review, and uses the suppression primitive
-for the known removal in the isolated restore. It also stores and reads back one
-synthetic title from the later revision as a bounded held-material artifact. Its
-fake upload checks the temporary-hold request and response, and readback checks
-the synthetic hold before and after download. It does not prove that a hosted
-hold persists or can be released safely. A
-synthetic manifest links that artifact to the hold and is itself referenced by a
-version-three confirmation; the rehearsal verifies the selected exact generation
-and digest. That single value is not a complete hold scope or a
-reconstruction of the revision.
+assignment. The rehearsal sends requests to the journaled removal and hold
+placement handlers using a synthetic identity, separate local database roles,
+and an in-memory journal. It checks rejected requests, a journal outage, a
+removal retry that resumes access, and a retry during a separate recovery
+closure. Hold placement blocks retention during an outage, and retries reuse
+the same hold. The recovery role reads each journal version through a selected
+fence, rejects a missing version, and requires the exact database recovery
+closure. It suppresses the known removal and blocks retention of the restored
+idea in one transaction. Hosted identity grants and journal coverage require
+separate verification. The authorized inventory lists current references for
+the active hold without returning content or storage paths. The test rejects
+an unassigned actor and a missing hold and excludes an unrelated idea.
+The authorized capture reads the full synthetic revision and related audit
+row from PostgreSQL and reads the exact preview generation. It stores those three artifacts and their manifest under separate
+temporary object holds in a storage fake. The operator's scope review checks
+the stored artifacts and rechecks their source bytes before recording the
+review and exact journal positions. A changed source blocks confirmation.
+After restoring the synthetic database, the rehearsal removes its local
+archive and verifies the held inventory and artifacts through the independent
+journal, including across a rollover. This models archive loss after restore.
+The fixture covers the selected sources. Hosted hold enforcement,
+other relevant records, and disposition authorization need separate evidence.
 It verifies that an open gate
 blocks suppression and that a retry is idempotent. With
 the gate still closed, it checks
 the existing internal idea and preview reads before and after suppression; the
 preview uses synthetic bytes from a fake storage client. These checks do not test
-the hosted delivery path or caches. The rehearsal does not prove journal coverage,
-reapply the hold, reconstruct its authority, or preserve all held material. The
-service must stay isolated until those remaining decisions and evidence are
-reconciled. The rehearsal
-first confirms that restoring without a required
+the hosted delivery path or caches. The rehearsal leaves the
+restored idea under provisional retention protection. Operators must reconcile
+journal coverage, authority and held copies before opening the service. The
+rehearsal first confirms that restoring without a required
 synthetic role fails, then prepares that role and restores to another database.
 It checks that one protected security-definer function retains its synthetic
 named-role grant and `PUBLIC` revocation in the restore. The fake
@@ -84,9 +89,8 @@ does not show that an older archive contains a later gate closure. These checks
 do not establish a hosted network or IAM fence.
 
 The rehearsal records the synthetic hold's committed assignment facts and exact
-placement time in a version-three confirmation. These facts do not authenticate
-the person or written delegation, recreate missing referenced rows, or preserve
-held content. The sequence's baseline and fence are synthetic fixtures, not
+placement time in the placement confirmation. Review the recorded authority
+and its supporting documentation before relying on the hold during recovery. The sequence's baseline and fence are synthetic fixtures, not
 independently protected evidence, and do not establish coverage.
 
 The JSON result reports backup and recovery elapsed seconds, the interval between
@@ -263,7 +267,14 @@ Prepare an immutable backup image and a dedicated direct database URL secret.
 The image's `pg_dump` major version must support the actual source server;
 verify the source version separately for each environment. The URL must use
 the TLS settings above and an identity with the access needed for a complete
-dump. Pin a numeric secret version. Secret Manager grants access at the secret
+dump. Grant read access to the application relations and sequences the dump
+needs. On Neon, check the existing read access on provider-owned extension
+relations before granting additional privileges. For example, a redundant
+PostGIS grant can cause the archive to include a grantor the restore login
+cannot assume. Test the exact backup login against a disposable database with
+the same extensions and grants.
+
+Pin a numeric secret version. Secret Manager grants access at the secret
 level, so the job identity can access other versions of that secret even though
 the job references one version. Do not reuse web or worker credentials.
 
@@ -370,8 +381,14 @@ to false, proposes no deletions, and causes the command to exit nonzero. The
 output still reports the distinct period counts and freshness during initial
 backup accumulation. `privacyDeadlineVerified` is always false: the inventory
 does not establish that copies of removed content expired by their deadline.
-The inventory checks version-three markers against the observed bucket generation
-and metageneration and fails if either differs. A legitimate bucket metadata
+`holdScopeVerified` and `deletionAuthorized` are also always false. Object
+holds and backup ages cannot establish the scope of every legal hold, including
+one still awaiting review, or authorize deleting any generation. Treat listed
+`candidates` only as observations for an independently authorized review.
+The inventory checks version-three and version-four markers against the observed
+bucket generation and metageneration and fails if either differs. Version four
+also records the source default-privilege digest from the archive snapshot.
+Update the inventory and restore readers before enabling a version-four exporter. A legitimate bucket metadata
 change also requires separate review. It checks provider timestamps at their
 reported precision so a completion marker cannot precede its archive. Older
 version-two markers lack the bucket identity values. `legacyCompletions` counts
@@ -379,8 +396,8 @@ them, requires review, and prevents a verified retention result or deletion
 candidates. Do not delete or rewrite older records
 solely to make the inventory pass; reconcile their archives independently.
 `latestDailyAgeSeconds` and `latestWeeklyAgeSeconds` measure the ages of the
-latest exports with matching version-three markers from their conservative start
-times. Older markers do not establish freshness. `dailyFreshEnough` and
+latest exports with matching version-three or version-four markers from their
+conservative start times. Version-two markers cannot establish freshness. `dailyFreshEnough` and
 `weeklyFreshEnough` are false when the respective
 export is absent or older than 24 hours or seven days. The command then proposes
 no candidates and exits nonzero. These conservative limits can signal a gap
@@ -388,11 +405,22 @@ during a delayed run. This diagnostic does not schedule checks or send alerts.
 A lower-level planner also suppresses candidates when even the latest upload
 completion is too old; that check alone cannot establish backup freshness. The
 inventory additionally checks the recorded backup start time and completion.
-A fresh export alone does not prove that the deployed service meets its data-loss
-objective.
+Use `dailyRecoveryWindow` to review past gaps between the daily recovery points
+that still have verified live archives. The window starts when the first
+matching completion record was created and ends when the inventory was
+evaluated. `maximumSnapshotAgeSeconds` includes the wait for each newer
+snapshot's completion, using the preceding snapshot's conservative start
+time. An older export finishing out of order leaves the newer recovery point
+in effect. A missing verified daily archive yields a null window. Record the
+window and archive count with the scheduled-run evidence. The estimate assumes
+the verified copies were usable from completion onward. Separate restore
+checks and service history establish usability and coverage.
 
 `reviewRequired` is true when a live archive is old or held, or an old archive
 remains noncurrent or soft-deleted; the command exits nonzero in that case.
+When it is false, it reports only that these inventory conditions were not
+observed; it does not mean that legal-hold review is complete or that a
+candidate may be deleted.
 `oldPendingArchives` identifies old noncurrent archives separately from
 `oldSoftDeleted`. `longSoftDelete` counts generations whose original soft-delete
 period exceeds seven days; `overdueSoftDeletion` counts generations still listed
@@ -402,14 +430,43 @@ review, even if the current bucket policy is shorter. These conservative signals
 require investigation; they do not prove that a particular archive violates a removal
 deadline or that a hold is
 unauthorized. A valid hold still requires separately scoped retention review.
+While a hold's scope is being reviewed, preserve all potentially relevant
+versions, files, and related records with restricted access. After an authorized
+person records the case-specific scope, material outside it may return to the
+applicable deletion process only after review confirms no other hold or
+preservation obligation applies. Use the
+[journaled scope review](../architecture/recovery-journal.md#review-held-material)
+to identify the exact separately held inventory. Verify the applicable
+reviews and their selected artifacts at expiry time. An unresolved scope
+keeps affected copies protected.
 
-The plan is a point-in-time observation, not permission to delete. It cannot
-serialize other operators or detect an independently missing or invalid archive.
-Before any separately authorized cleanup, serialize all backup and retention
-operations, re-list every generation and hold, and review the exact generation
-and metageneration preconditions. Retain a completion record while any of its
-archive generations remain; review orphan records separately after their
-archives have expired. Cloud Storage lifecycle deletion is
+Treat the inventory as a point-in-time observation. Before any separately
+authorized expiry, use this procedure.
+
+1. Identify the exact candidate archive generation and completion record.
+   Confirm 14 daily dates and eight weekly periods remain available after the
+   proposed expiry. Resolve incomplete backups, missing versions and
+   uncertain metadata before selecting a candidate.
+2. Identify which holds may apply to content in that recovery point. If its
+   contents are uncertain, inspect an isolated restore and keep the archive
+   protected until the review completes. Read the independently fenced
+   journal through its exact cutoff. Compare it with the current authorized
+   hold records and affected material, including changes after the backup.
+3. For each applicable hold, verify the recorded scope, independently held
+   manifest and all required copies. Check the exact object generations,
+   digests and holds. Keep the affected archive protected if any relevant
+   artifact, newer review, scope or overlapping obligation remains unresolved.
+   An authorized reviewer records which required material survives the
+   proposed expiry and where to recover it.
+4. Serialize backup, hold changes and retention during the final check and
+   expiry. Re-list every relevant generation and compare the same generation
+   and metageneration with the reviewed approval. Use both as preconditions.
+   Stop on changed metadata or a new applicable hold. Retain the completion
+   record while any corresponding archive generation remains recoverable.
+5. Record the provider's soft-delete and scheduled hard-delete times for the
+   exact generations. Recheck the live, noncurrent and soft-deleted inventory
+   after the scheduled expiry. Verify separately that the held copies are
+   still recoverable and removed content stays behind the restore fence. Cloud Storage lifecycle deletion is
 asynchronous; versioning, soft delete, object holds, and legal holds can extend
 retention. Monitor and verify actual expiration against the
 [Privacy Policy](../policies/privacy-policy.md#retention-and-deletion); an age
@@ -504,10 +561,10 @@ an outbox generation requires the separately authorized operator connection in
 the [outbox recovery procedure](../architecture/postgresql-postgis-drizzle.md#outbox-recovery);
 the restricted staging worker role cannot do it. Do not widen that runtime role
 to make a restore proceed.
-The project does not currently implement an independent authoritative record for
-those later changes. The [recovery decision journal design](../architecture/recovery-journal.md)
-describes the required record and unresolved safeguards. This procedure cannot by
-itself establish that a restored service is safe to return to public use.
+The [recovery decision journal](../architecture/recovery-journal.md) records
+journaled moderation decisions and lets an operator check the selected
+hold captures. Keep the replacement fenced until the operator reconciles
+every decision path and verifies coverage, scope and authority independently.
 
 For a separately authorized synthetic rehearsal, prepare a private working
 directory on the recovery host, a fresh archive path, and an empty isolated
@@ -534,11 +591,71 @@ gcloud storage hash --skip-md5 "$RECOVERY_ARCHIVE"
 
 Compare the reported CRC32C with the reviewed completion record and stop on any
 mismatch. Cloud Storage also checks integrity during download. Verify the target
-and connection again, then inspect and restore the trusted archive:
+and connection again, then inspect the trusted archive:
 
 ```sh
 pg_restore --list "$RECOVERY_ARCHIVE"
-pg_restore --exit-on-error --no-owner --dbname "$RECOVERY_DB_NAME" "$RECOVERY_ARCHIVE"
+```
+
+Review the list before restoring. A Neon archive can include default privileges
+owned by `cloud_admin` that the restore role cannot change. Preserve every ACL
+entry except those approved below. Compare the complete source and target sets
+of default privileges, including owner, schema, object type, and grants. Use the
+`source_default_acl_sha256` field from the authenticated version-four completion
+record for the exact archive generation. The exporter computes it within the
+same PostgreSQL snapshot used by `pg_dump`. A local rehearsal changed a grant
+after the snapshot began and verified that the restored privileges matched the
+recorded digest. For a version-two or version-three record, use separately
+authenticated equivalent source evidence for that archive. Keep the target
+isolated if the evidence is absent or differs, or if any entry or role is
+unexpected.
+
+Use the matching PostgreSQL major version. Connect to the verified target with
+the restricted recovery role and compare this digest with the source evidence.
+
+```sh
+psql --no-psqlrc --set ON_ERROR_STOP=1 --no-align --tuples-only --dbname "$RECOVERY_DB_NAME" <<'SQL'
+SELECT pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(COALESCE(
+  pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+    'owner', pg_catalog.pg_get_userbyid(d.defaclrole), 'schema', n.nspname,
+    'type', d.defaclobjtype, 'acl', d.defaclacl::text
+  ) ORDER BY pg_catalog.pg_get_userbyid(d.defaclrole)::text COLLATE pg_catalog."C",
+    n.nspname::text COLLATE pg_catalog."C" NULLS FIRST, d.defaclobjtype,
+    d.defaclacl::text COLLATE pg_catalog."C"), '[]'::jsonb)::text, 'UTF8')), 'hex')
+FROM pg_catalog.pg_default_acl AS d
+LEFT JOIN pg_catalog.pg_namespace AS n ON n.oid=d.defaclnamespace;
+SQL
+```
+
+An authorized operator may prepare a private `pg_restore --use-list` file that
+omits only the reviewed provider-owned default-privilege entries already present
+on the target. Set `RECOVERY_LIST` to a fresh private file path and create the
+list:
+
+```sh
+test ! -e "$RECOVERY_LIST" && pg_restore --list "$RECOVERY_ARCHIVE" > "$RECOVERY_LIST"
+```
+
+Comment out only the reviewed entries by placing a semicolon at the start of
+each line. Review the complete file and preserve every other entry, then restore:
+
+```sh
+pg_restore --single-transaction --exit-on-error --no-owner --use-list "$RECOVERY_LIST" --dbname "$RECOVERY_DB_NAME" "$RECOVERY_ARCHIVE"
+```
+
+Compare the target's default privileges with the retained source evidence again
+and verify the restored objects' ownership and ACLs. If the archive contains a
+grant under a provider identity the restore login cannot assume, keep the
+replacement fenced. Compare the exact grantor, grantee, object, privilege and
+grant option with authenticated source evidence. An authorized operator can
+review a private restore script that replays the same grants through the
+provider's supported role and verifies each resulting ACL in the restore
+transaction. Stop if the restored grants differ. Verify the journal and holds
+separately. If no
+entries need to be omitted, restore the archive with:
+
+```sh
+pg_restore --single-transaction --exit-on-error --no-owner --dbname "$RECOVERY_DB_NAME" "$RECOVERY_ARCHIVE"
 ```
 
 Archive listings can contain sensitive names. Do not send them to public logs.

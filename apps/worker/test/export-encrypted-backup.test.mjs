@@ -3,13 +3,17 @@ import { spawn, spawnSync } from 'node:child_process'
 import { Readable, Writable } from 'node:stream'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { backupConfiguration, backupConnectionEnvironment, exportEncryptedBackup, isCanonicalBackupCrc32c, startDump, verifyBackupBucket } from '../ops/export-encrypted-backup.mjs'
+import { backupConfiguration, backupConnectionEnvironment, exportEncryptedBackup as exportWithSnapshot, isCanonicalBackupCrc32c, startDump, verifyBackupBucket } from '../ops/export-encrypted-backup.mjs'
 
 const env = { BACKUP_ENVIRONMENT: 'dev', BACKUP_BUCKET: 'synthetic-private-backups', BACKUP_PROJECT_NUMBER: '123456789',
   BACKUP_DATABASE_URL: 'postgres://test:secret@example.invalid/db?sslmode=verify-full&sslrootcert=system' }
 const metadata = { name: env.BACKUP_BUCKET, projectNumber: env.BACKUP_PROJECT_NUMBER, generation: '11', metageneration: '1',
   iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
   versioning: { enabled: true }, softDeletePolicy: { retentionDurationSeconds: '604800' } }
+const snapshotId = '00000003-0000001B-1'
+const defaultAclSha256 = 'a'.repeat(64)
+const openSnapshot = async () => ({ id: snapshotId, defaultAclSha256, async close() {} })
+const exportEncryptedBackup = (config, options) => exportWithSnapshot(config, { openSnapshot, ...options })
 
 test('backup checksums require canonical four-byte base64', () => {
   assert.equal(isCanonicalBackupCrc32c('AAAAAA=='), true)
@@ -81,9 +85,26 @@ test('backup configuration failure emits a sanitized alert event', () => {
 })
 
 test('a dump warning fails the export without exposing diagnostic contents', async () => {
-  const result = startDump({}, () => spawn(process.execPath, ['-e', "process.stderr.write('synthetic sensitive warning')"], { stdio: ['ignore', 'pipe', 'pipe'] }))
+  const result = startDump({}, snapshotId, (_command, args) => {
+    assert.ok(args.includes(`--snapshot=${snapshotId}`))
+    return spawn(process.execPath, ['-e', "process.stderr.write('synthetic sensitive warning')"], { stdio: ['ignore', 'pipe', 'pipe'] })
+  })
   result.child.stdout.resume()
   await assert.rejects(result.done, error => error.message === 'Database export failed or reported a warning' && !error.message.includes('synthetic'))
+})
+
+test('a lost snapshot session leaves uploaded archives unconfirmed', async () => {
+  const fake = provider()
+  let closeCalls = 0
+  await assert.rejects(exportEncryptedBackup(backupConfiguration(env), {
+    storage: fake.storage, start: () => source(),
+    openSnapshot: async () => ({ id: snapshotId, defaultAclSha256, async close() {
+      closeCalls++
+      throw new Error('Synthetic snapshot closed early')
+    } }),
+  }), /Synthetic snapshot closed early/)
+  assert.equal(closeCalls, 1)
+  assert.equal(fake.manifests.length, 0)
 })
 
 function provider(bucketMetadata = metadata, failWeekly = false, failCompletion = false, mismatchedWeekly = false, ambiguousCompletion = false, stallUpload = false, archiveBucket = env.BACKUP_BUCKET, archiveCrc = 'AAAAAA==') {
@@ -155,7 +176,8 @@ test('one completed Monday dump finalizes identical daily and weekly uploads', a
   assert.equal(manifests.length, 1)
   for (const marker of manifests) {
     assert.equal(marker.options.metadata.metadata.backup_started_at, '2026-11-02T10:00:00.000Z')
-    assert.equal(marker.options.metadata.metadata.backup_version, '3')
+    assert.equal(marker.options.metadata.metadata.backup_version, '4')
+    assert.equal(marker.options.metadata.metadata.source_default_acl_sha256, defaultAclSha256)
     assert.equal(marker.options.metadata.metadata.bucket_generation, metadata.generation)
     assert.equal(marker.options.metadata.metadata.bucket_metageneration, metadata.metageneration)
     assert.equal(marker.options.metadata.metadata.daily_generation, '123')

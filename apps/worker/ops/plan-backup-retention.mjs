@@ -90,5 +90,9 @@ export function planBackupRetention({ environment, complete, objects, now = new 
   // does not prove that a particular archive contains a removed item or that
   // it will expire on time.
   const expiryAttention = entries.filter(entry => now.getTime() - entry.earliestStart >= 69 * DAY).length
-  return { retentionSatisfied, privacyDeadlineVerified: false, groupCounts, consecutive, candidates, oldOrHeld, expiryAttention }
+  // Provider object holds and age checks do not establish the scope of every
+  // applicable legal hold, including cases still awaiting scope review. These
+  // candidates are observations for review, never deletion authorization.
+  return { retentionSatisfied, privacyDeadlineVerified: false, holdScopeVerified: false, deletionAuthorized: false,
+    groupCounts, consecutive, candidates, oldOrHeld, expiryAttention }
 }

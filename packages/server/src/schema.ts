@@ -12,7 +12,11 @@ export const reviewState = pgEnum('review_state', ['waiting', 'queued', 'reviewi
 export const publicAccessGate = pgTable('public_access_gate', {
   singleton: boolean('singleton').primaryKey().default(true),
   isOpen: boolean('is_open').notNull().default(false),
-}, table => [check('public_access_gate_singleton', sql`${table.singleton} = true`)])
+  removalResumeBaseline: text('removal_resume_baseline'),
+}, table => [
+  check('public_access_gate_singleton', sql`${table.singleton} = true`),
+  check('public_access_gate_removal_baseline', sql`${table.removalResumeBaseline} IS NULL OR ${table.removalResumeBaseline} ~ '^[0-9a-f]{64}$'`),
+])
 // This ledger records independent reasons to keep the gate closed. It does
 // not authorize reopening or establish journal coverage on its own.
 export const publicAccessClosures = pgTable('public_access_closures', {
@@ -102,6 +106,7 @@ export const publicAccessPendingDecisions = pgTable('public_access_pending_decis
   confirmationGeneration: text('confirmation_generation'),
   confirmationVerifiedAt: timestamp('confirmation_verified_at', { withTimezone: true }),
   confirmationVerifiedTransactionId: text('confirmation_verified_transaction_id'),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
   createdAt: createdAt(),
 }, table => [
   uniqueIndex('public_access_pending_record_key').on(table.recordId),
@@ -114,6 +119,7 @@ export const publicAccessPendingDecisions = pgTable('public_access_pending_decis
   check('public_access_pending_confirmation_fields', sql`(${table.confirmationRecordId} IS NULL AND ${table.confirmationPreparedAt} IS NULL) OR (${table.confirmationRecordId} IS NOT NULL AND ${table.confirmationRecordId}::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' AND ${table.confirmationPreparedAt} IS NOT NULL AND ${table.appliedAt} IS NOT NULL AND ${table.confirmationPreparedAt} >= ${table.appliedAt})`),
   check('public_access_pending_verified_confirmation', sql`(${table.confirmationGeneration} IS NULL AND ${table.confirmationVerifiedAt} IS NULL) OR (${table.confirmationGeneration} IS NOT NULL AND ${table.confirmationGeneration} ~ '^[1-9][0-9]{0,19}$' AND ${table.confirmationVerifiedAt} IS NOT NULL AND ${table.confirmationPreparedAt} IS NOT NULL AND ${table.confirmationVerifiedAt} >= ${table.confirmationPreparedAt})`),
   check('public_access_pending_verification_xid', sql`${table.confirmationVerifiedTransactionId} IS NULL OR (${table.confirmationVerifiedAt} IS NOT NULL AND ${table.confirmationVerifiedTransactionId} ~ '^[1-9][0-9]*$')`),
+  check('public_access_pending_resolution', sql`${table.resolvedAt} IS NULL OR (${table.confirmationVerifiedAt} IS NOT NULL AND ${table.resolvedAt} >= ${table.confirmationVerifiedAt})`),
   check('public_access_pending_removal_fields', sql`(${table.approvedRevisionId} IS NULL AND ${table.removalReason} IS NULL) OR (${table.approvedRevisionId} IS NOT NULL AND ${table.removalReason} IS NOT NULL AND length(trim(${table.removalReason})) > 0 AND octet_length(${table.removalReason}) <= 1000)`),
 ])
 // One record covers one idea and one documented case; different cases may overlap.
@@ -136,6 +142,42 @@ export const legalHolds = pgTable('legal_holds', {
   check('legal_holds_reason', sql`length(trim(${table.reason})) > 0 AND octet_length(${table.reason}) <= 1000`),
   check('legal_holds_release', sql`(${table.releasedAt} IS NULL AND ${table.releasedBy} IS NULL AND ${table.releaseAuthorityId} IS NULL AND ${table.releaseReason} IS NULL AND ${table.legalReviewReference} IS NULL) OR (${table.releasedAt} IS NOT NULL AND ${table.releasedBy} IS NOT NULL AND ${table.releaseAuthorityId} IS NOT NULL AND ${table.releaseReason} IS NOT NULL AND length(trim(${table.releaseReason})) > 0 AND octet_length(${table.releaseReason}) <= 1000 AND (${table.legalReviewReference} IS NULL OR (length(trim(${table.legalReviewReference})) > 0 AND octet_length(${table.legalReviewReference}) <= 300)))`),
 ])
+// The broad hold commits first. These checkpoints record exact journal readback.
+export const legalHoldJournalPlacements = pgTable('legal_hold_journal_placements', {
+  requestId: uuid('request_id').primaryKey(),
+  holdId: uuid('hold_id').notNull().unique().references(() => legalHolds.id),
+  baselinePin: text('baseline_pin').notNull(),
+  intentVersion: integer('intent_version'),
+  confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+  confirmationVersion: integer('confirmation_version'),
+}, table => [
+  check('legal_hold_journal_baseline', sql`${table.baselinePin} ~ '^[0-9a-f]{64}$'`),
+  check('legal_hold_journal_intent', sql`(${table.intentVersion} IS NULL AND ${table.confirmedAt} IS NULL) OR (${table.intentVersion} IS NOT NULL AND ${table.intentVersion} BETWEEN 2 AND 9999 AND ${table.confirmedAt} IS NOT NULL)`),
+  check('legal_hold_journal_confirmation', sql`${table.confirmationVersion} IS NULL OR (${table.intentVersion} IS NOT NULL AND ${table.confirmationVersion} BETWEEN ${table.intentVersion} + 1 AND 10000)`),
+])
+// Scope decisions bind the authorized reviewer to exact held-inventory bytes.
+export const legalHoldScopeReviews = pgTable('legal_hold_scope_reviews', {
+  operationId: uuid('operation_id').primaryKey(),
+  holdId: uuid('hold_id').notNull().references(() => legalHolds.id),
+  reviewerAuthorityId: uuid('reviewer_authority_id').notNull().references(() => legalHoldAssignments.id),
+  selectedInventory: jsonb('selected_inventory').notNull(),
+  baselinePin: text('baseline_pin').notNull(),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }).notNull(),
+  intentVersion: integer('intent_version'),
+  confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+  confirmationVersion: integer('confirmation_version'),
+}, table => [
+  index('legal_hold_scope_reviews_hold_idx').on(table.holdId, table.reviewedAt),
+  check('legal_hold_scope_journal_baseline', sql`${table.baselinePin} ~ '^[0-9a-f]{64}$'`),
+  check('legal_hold_scope_journal_intent', sql`(${table.intentVersion} IS NULL AND ${table.confirmedAt} IS NULL) OR (${table.intentVersion} IS NOT NULL AND ${table.intentVersion} BETWEEN 2 AND 9999 AND ${table.confirmedAt} IS NOT NULL)`),
+  check('legal_hold_scope_journal_confirmation', sql`${table.confirmationVersion} IS NULL OR (${table.intentVersion} IS NOT NULL AND ${table.confirmationVersion} BETWEEN ${table.intentVersion} + 1 AND 10000)`),
+])
+// An older archive can lack a hold that was recorded later in the journal.
+export const restoredHoldProtections = pgTable('restored_hold_protections', {
+  ideaId: uuid('idea_id').primaryKey().references(() => ideas.id),
+  recoveryClosureId: uuid('recovery_closure_id').notNull(),
+  createdAt: createdAt(),
+})
 // A claim is evidence of an ownership transfer, not proof that a caller owns
 // an email address. The server must verify that evidence before inserting it.
 export const ownershipClaims = pgTable('ownership_claims', {

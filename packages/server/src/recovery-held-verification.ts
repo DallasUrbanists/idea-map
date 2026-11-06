@@ -1,7 +1,7 @@
 import type { Storage } from '@google-cloud/storage'
-import { decodeRecoveryRecord } from './recovery-journal-record.js'
+import { decodeRecoveryRecord, type HeldArtifactReference } from './recovery-journal-record.js'
 import { summarizeUnverifiedRecovery } from './recovery-journal-plan.js'
-import { compareUnverifiedHeldSources, matchUnverifiedHeldManifest, snapshotUnverifiedHeldSources, type HeldSource } from './recovery-held-manifest.js'
+import { compareUnverifiedHeldSources, decodeUnverifiedHeldManifest, matchUnverifiedHeldManifest, snapshotUnverifiedHeldSources, type HeldSource } from './recovery-held-manifest.js'
 import { readUnverifiedHeldMaterial } from './recovery-held-storage.js'
 import { readUnverifiedRecoverySequence, type RecoverySequenceTransport } from './recovery-sequence-storage.js'
 import { readUnverifiedSequenceChain, readUnverifiedSequenceRollover, type SequenceReaderEpoch } from './recovery-sequence-rollover-storage.js'
@@ -78,15 +78,37 @@ async function verifyHeldCapture(storage: Storage, target: Target,
   }
 }
 
+/** Verify the inventory and every artifact named by this specific scope review. */
+export async function verifyHeldScopeInventory(storage: Storage, target: Target, reference: HeldArtifactReference,
+  binding: { operationId: string, holdId: string, ideaId: string }, remaining: () => number, budget: number) {
+  if (reference.size > budget) throw new Error('Held scope inventory is too large')
+  const bytes = await readUnverifiedHeldMaterial(storage, target, reference.artifactId, reference, Math.min(remaining(), 5000))
+  const manifest = decodeUnverifiedHeldManifest(bytes, target.environment)
+  if (manifest.operationId !== binding.operationId || manifest.holdId !== binding.holdId ||
+      manifest.ideaId !== binding.ideaId || manifest.entries.some(entry => entry.artifactId === reference.artifactId)) {
+    throw new Error('Held scope inventory differs from review')
+  }
+  const totalBytes = manifest.entries.reduce((sum, entry) => sum + entry.size, reference.size)
+  if (totalBytes > budget) throw new Error('Held scope inventory is too large')
+  for (const entry of manifest.entries) {
+    await readUnverifiedHeldMaterial(storage, target, entry.artifactId, entry, Math.min(remaining(), 5000))
+  }
+  return { manifest, totalBytes }
+}
+
 async function verifyInventoryHeldCaptures(inventory: Inventory, environment: 'dev' | 'prod', storage: Storage,
   destination: Target, remaining: () => number) {
   const intents = new Map<string, Uint8Array>(), confirmations = new Map<string, Uint8Array>()
+  const reviews = new Map<string, ReturnType<typeof decodeRecoveryRecord> & { recordType: 'intent' }>()
+  const reviewConfirmations = new Set<string>()
   for (const { payload } of inventory.records) {
     const record = decodeRecoveryRecord(payload, environment)
     if (record.recordType === 'intent' && record.decision.kind === 'hold_placement') intents.set(record.operationId, payload)
+    else if (record.recordType === 'intent' && record.decision.kind === 'hold_scope_review') reviews.set(record.operationId, record)
     else if (record.recordType === 'hold_commit_confirmation' && record.version === 3) confirmations.set(record.operationId, payload)
+    else if (record.recordType === 'commit_confirmation') reviewConfirmations.add(record.operationId)
   }
-  if (intents.size > 100) throw new Error('Held capture inventory is too large')
+  if (intents.size + reviews.size > 100) throw new Error('Held capture inventory is too large')
   let checkedCaptures = 0, checkedArtifacts = 0, totalBytes = 0, incompletePlacements = 0
   for (const [operationId, intent] of intents) {
     const confirmation = confirmations.get(operationId)
@@ -96,8 +118,18 @@ async function verifyInventoryHeldCaptures(inventory: Inventory, environment: 'd
     const checked = await verifyUnverifiedHeldCapture(storage, destination, intent, confirmation, remaining(), budget)
     checkedCaptures++; checkedArtifacts += checked.checkedArtifacts; totalBytes += checked.totalBytes
   }
+  let checkedScopeInventories = 0, incompleteScopeReviews = 0
+  for (const [operationId, review] of reviews) {
+    if (!reviewConfirmations.has(operationId)) { incompleteScopeReviews++; continue }
+    if (review.decision.kind !== 'hold_scope_review') throw new Error('Invalid scope review')
+    const reference = review.decision.selectedInventory
+    const checked = await verifyHeldScopeInventory(storage, destination, reference,
+      { operationId, holdId: review.decision.holdId, ideaId: review.ideaId }, remaining,
+      Math.min(128 * 1024 * 1024, 512 * 1024 * 1024 - totalBytes))
+    checkedScopeInventories++; checkedArtifacts += checked.manifest.entries.length; totalBytes += checked.totalBytes
+  }
   remaining()
-  return { checkedCaptures, checkedArtifacts, totalBytes, incompletePlacements,
+  return { checkedCaptures, checkedArtifacts, checkedScopeInventories, totalBytes, incompletePlacements, incompleteScopeReviews,
     reviewOperations: inventory.summary.reviewOperations.length, unmatchedConfirmations: inventory.summary.unmatchedConfirmations,
     coverageVerified: false as const, authorityVerified: false as const }
 }

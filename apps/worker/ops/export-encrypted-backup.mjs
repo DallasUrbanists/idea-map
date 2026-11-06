@@ -70,9 +70,12 @@ export function backupConfiguration(env) {
 }
 
 export const dumpArguments = Object.freeze(['--no-password', '--format=custom', '--no-owner'])
+const snapshotPattern = /^[0-9A-F]{8}-[0-9A-F]{8}-[1-9][0-9]{0,9}$/
+const sha256Pattern = /^[0-9a-f]{64}$/
 
-export function startDump(env, spawnProcess = spawn) {
-  const child = spawnProcess('pg_dump', dumpArguments,
+export function startDump(env, snapshotId, spawnProcess = spawn) {
+  if (typeof snapshotId !== 'string' || !snapshotPattern.test(snapshotId)) throw new Error('Invalid export snapshot')
+  const child = spawnProcess('pg_dump', [...dumpArguments, `--snapshot=${snapshotId}`],
     { env, windowsHide: true, signal: AbortSignal.timeout(30 * 60 * 1000), stdio: ['ignore', 'pipe', 'pipe'] })
   let warning = false
   child.stderr.on('data', chunk => { if (chunk.length) warning = true })
@@ -119,6 +122,68 @@ async function settleFailedTransfer(dump, pending, timeoutMs) {
   }
 }
 
+export const defaultAclDigestSql = `SELECT pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(COALESCE(
+  pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+    'owner', pg_catalog.pg_get_userbyid(d.defaclrole), 'schema', n.nspname,
+    'type', d.defaclobjtype, 'acl', d.defaclacl::text
+  ) ORDER BY pg_catalog.pg_get_userbyid(d.defaclrole)::text COLLATE pg_catalog."C",
+    n.nspname::text COLLATE pg_catalog."C" NULLS FIRST, d.defaclobjtype,
+    d.defaclacl::text COLLATE pg_catalog."C"), '[]'::jsonb)::text, 'UTF8')), 'hex')
+FROM pg_catalog.pg_default_acl AS d
+LEFT JOIN pg_catalog.pg_namespace AS n ON n.oid=d.defaclnamespace`
+
+/** Hold a read-only snapshot open until pg_dump finishes importing and using it. */
+export async function openBackupSnapshot(env, spawnProcess = spawn) {
+  const child = spawnProcess('psql', ['--no-psqlrc', '--no-password', '-qAt', '-v', 'ON_ERROR_STOP=1'],
+    { env, windowsHide: true, signal: AbortSignal.timeout(31 * 60 * 1000), stdio: ['pipe', 'pipe', 'pipe'] })
+  const unavailable = () => new Error('Backup snapshot evidence is unavailable')
+  const ready = Promise.withResolvers()
+  const exited = new Promise(resolve => child.once('close', resolve))
+  let output = '', invalid = false
+  const fail = () => { invalid = true; ready.reject(unavailable()) }
+  child.on('error', fail)
+  child.stdin.on('error', fail)
+  child.stdout.on('error', fail)
+  child.stderr.on('data', fail)
+  child.stdout.on('data', chunk => {
+    if (invalid) return
+    output += chunk.toString('utf8')
+    if (output.length > 100) { fail(); return }
+    if (!output.includes('\n')) return
+    const match = /^([^:\r\n]+):([0-9a-f]{64})\r?\n$/.exec(output)
+    if (!match || !snapshotPattern.test(match[1])) { fail(); return }
+    ready.resolve({ id: match[1], defaultAclSha256: match[2] })
+  })
+  child.stdin.write(`BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+SET LOCAL statement_timeout = '15s';
+SET LOCAL idle_in_transaction_session_timeout = '31min';
+SELECT pg_catalog.pg_export_snapshot() || ':' || (${defaultAclDigestSql});
+`)
+  try {
+    const evidence = await withinProviderTimeout(() => Promise.race([ready.promise,
+      exited.then(() => { throw unavailable() })]), 15_000)
+    let closing
+    return { ...evidence, close() {
+      closing ??= (async () => {
+        try {
+          if (child.exitCode !== null || child.signalCode !== null) throw unavailable()
+          child.stdin.end('ROLLBACK;\n')
+          if (await withinProviderTimeout(() => exited, 5000) !== 0 || invalid) throw unavailable()
+        } catch {
+          child.stdin.destroy()
+          await settleFailedTransfer({ child }, [exited], 5000)
+          throw unavailable()
+        }
+      })()
+      return closing
+    } }
+  } catch {
+    child.stdin.destroy()
+    await settleFailedTransfer({ child }, [exited], 5000)
+    throw unavailable()
+  }
+}
+
 async function verifiedBucketIdentity(bucket, destination, timeoutMs) {
   const [metadata] = await withinProviderTimeout(() => bucket.getMetadata(), timeoutMs)
   verifyBackupBucket(metadata, destination)
@@ -161,7 +226,48 @@ export async function exportEncryptedBackup(config, options = {}) {
       throw new Error('Backup bucket changed')
     }
   }
-  const dump = start({ ...env, ...connection, PGCONNECT_TIMEOUT: '10' })
+  const childEnv = { ...env, ...connection, PGCONNECT_TIMEOUT: '10' }
+  const snapshot = await (options.openSnapshot ?? openBackupSnapshot)(childEnv)
+  let snapshotNeedsClose = true
+  try {
+    const { id: snapshotId, defaultAclSha256 } = snapshot
+    if (typeof snapshotId !== 'string' || !snapshotPattern.test(snapshotId) ||
+        typeof defaultAclSha256 !== 'string' || !sha256Pattern.test(defaultAclSha256)) {
+      throw new Error('Invalid backup snapshot evidence')
+    }
+    const dump = start(childEnv, snapshotId)
+    const generations = await uploadBackupArchive(dump, bucket, destination, paths, transferTimeoutMs, cleanupTimeoutMs)
+    snapshotNeedsClose = false
+    await snapshot.close()
+    await checkBucket()
+    const completion = { backup_version: '4', backup_started_at: now.toISOString(),
+      bucket_generation: initialBucket.generation, bucket_metageneration: initialBucket.metageneration,
+      source_default_acl_sha256: defaultAclSha256 }
+    for (let index = 0; index < kinds.length; index++) {
+      for (const key of ['generation', 'size', 'crc32c']) completion[`${kinds[index]}_${key}`] = generations[index][key]
+    }
+    const completionPath = `idea-map-v2/${destination.environment}/completion/${date}/${id}.complete`
+    const marker = bucket.file(completionPath)
+    await withinProviderTimeout(() => marker.save('', { resumable: false, validation: 'crc32c',
+      preconditionOpts: { ifGenerationMatch: 0 }, metadata: { metadata: completion } }), providerTimeoutMs)
+    const saved = marker.metadata
+    if (saved?.name !== completionPath || saved.bucket !== destination.bucket ||
+        typeof saved.generation !== 'string' || !/^[1-9][0-9]*$/.test(saved.generation) ||
+        typeof saved.metageneration !== 'string' || !/^[1-9][0-9]*$/.test(saved.metageneration) ||
+        saved.size !== '0' || saved.crc32c !== 'AAAAAA==' || !saved.metadata ||
+        typeof saved.metadata !== 'object' || Array.isArray(saved.metadata) ||
+        Object.keys(saved.metadata).length !== Object.keys(completion).length ||
+        !Object.entries(completion).every(([key, value]) => Object.hasOwn(saved.metadata, key) && saved.metadata[key] === value)) {
+      throw new Error('Backup completion metadata is ambiguous')
+    }
+    await checkBucket()
+    return { startedAt: now.toISOString(), objects: paths }
+  } finally {
+    if (snapshotNeedsClose) await snapshot.close().catch(() => {})
+  }
+}
+
+async function uploadBackupArchive(dump, bucket, destination, paths, transferTimeoutMs, cleanupTimeoutMs) {
   const uploads = []
   const files = []
   try {
@@ -211,28 +317,7 @@ export async function exportEncryptedBackup(config, options = {}) {
     if (generations.length === 2 && (generations[0].size !== generations[1].size || generations[0].crc32c !== generations[1].crc32c)) {
       throw new Error('Uploaded backup copies differ')
     }
-    await checkBucket()
-    const completion = { backup_version: '3', backup_started_at: now.toISOString(),
-      bucket_generation: initialBucket.generation, bucket_metageneration: initialBucket.metageneration }
-    for (let index = 0; index < kinds.length; index++) {
-      for (const key of ['generation', 'size', 'crc32c']) completion[`${kinds[index]}_${key}`] = generations[index][key]
-    }
-    const completionPath = `idea-map-v2/${destination.environment}/completion/${date}/${id}.complete`
-    const marker = bucket.file(completionPath)
-    await withinProviderTimeout(() => marker.save('', { resumable: false, validation: 'crc32c',
-      preconditionOpts: { ifGenerationMatch: 0 }, metadata: { metadata: completion } }), providerTimeoutMs)
-    const saved = marker.metadata
-    if (saved?.name !== completionPath || saved.bucket !== destination.bucket ||
-        typeof saved.generation !== 'string' || !/^[1-9][0-9]*$/.test(saved.generation) ||
-        typeof saved.metageneration !== 'string' || !/^[1-9][0-9]*$/.test(saved.metageneration) ||
-        saved.size !== '0' || saved.crc32c !== 'AAAAAA==' || !saved.metadata ||
-        typeof saved.metadata !== 'object' || Array.isArray(saved.metadata) ||
-        Object.keys(saved.metadata).length !== Object.keys(completion).length ||
-        !Object.entries(completion).every(([key, value]) => Object.hasOwn(saved.metadata, key) && saved.metadata[key] === value)) {
-      throw new Error('Backup completion metadata is ambiguous')
-    }
-    await checkBucket()
-    return { startedAt: now.toISOString(), objects: paths }
+    return generations
   } catch (error) {
     if (transferTimer) { clearTimeout(transferTimer); transferTimer = undefined }
     tee.destroy()

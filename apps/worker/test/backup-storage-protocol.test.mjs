@@ -4,7 +4,7 @@ import { once } from 'node:events'
 import { createRequire } from 'node:module'
 import { Readable } from 'node:stream'
 import { test } from 'node:test'
-import { exportEncryptedBackup } from '../ops/export-encrypted-backup.mjs'
+import { exportEncryptedBackup as exportWithSnapshot } from '../ops/export-encrypted-backup.mjs'
 import { inspectBackupRetention } from '../ops/inspect-backup-retention.mjs'
 import { readUnverifiedHeldMaterial, writeUnverifiedHeldMaterial } from '../../../packages/server/dist/recovery-held-storage.js'
 
@@ -13,6 +13,11 @@ const { Storage } = require('@google-cloud/storage')
 const target = { environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789',
   databaseUrl: 'postgres://synthetic:synthetic@example.invalid/db?sslmode=verify-full&sslrootcert=system' }
 const created = '2026-11-02T10:01:00.000Z'
+const defaultAclSha256 = 'a'.repeat(64)
+const exportEncryptedBackup = (config, options) => exportWithSnapshot(config, {
+  openSnapshot: async () => ({ id: '00000003-0000001B-1', defaultAclSha256, async close() {} }),
+  ...options,
+})
 
 // Independent checksum for the fake server's synthetic bytes.
 function crc32c(data) {
@@ -142,7 +147,8 @@ test('storage client sends create-only archives, completion metadata, and held m
     assert.equal(markers.length, 1)
     assert.equal(markers[0].size, '0')
     assert.equal(markers[0].temporaryHold, undefined)
-    assert.equal(markers[0].metadata.backup_version, '3')
+    assert.equal(markers[0].metadata.backup_version, '4')
+    assert.equal(markers[0].metadata.source_default_acl_sha256, defaultAclSha256)
     assert.equal(markers[0].metadata.bucket_generation, '11')
     assert.equal(markers[0].metadata.bucket_metageneration, '1')
     assert.equal(markers[0].metadata.daily_generation, objects.get(exported.objects[0]).generation)

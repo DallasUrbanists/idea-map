@@ -88,7 +88,11 @@ export function confirmCompletedExports(objects, environment, now, bucketIdentit
     const created = parseBackupProviderTime(marker.timeCreated)
     const hasWeekly = ['weekly_generation', 'weekly_size', 'weekly_crc32c'].some(key => meta[key] !== undefined)
     const legacy = meta.backup_version === '2'
-    if ((!legacy && meta.backup_version !== '3') ||
+    const hasDefaultAclEvidence = meta.backup_version === '4'
+    if ((!legacy && meta.backup_version !== '3' && !hasDefaultAclEvidence) ||
+        (hasDefaultAclEvidence
+          ? typeof meta.source_default_acl_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(meta.source_default_acl_sha256)
+          : Object.hasOwn(meta, 'source_default_acl_sha256')) ||
         (!legacy && (!number(bucketIdentity?.generation) || !number(bucketIdentity?.metageneration) ||
           meta.bucket_generation !== bucketIdentity.generation || meta.bucket_metageneration !== bucketIdentity.metageneration)) ||
         typeof startedAt !== 'string' || !Number.isFinite(started) ||
@@ -113,13 +117,36 @@ export function confirmCompletedExports(objects, environment, now, bucketIdentit
           archive.generation !== meta[`${kind}_generation`] || archive.size !== meta[`${kind}_size`] || archive.crc32c !== meta[`${kind}_crc32c`]) {
         throw new Error('Backup archive differs from its completion record')
       }
-      confirmed.push({ ...archive, bucketIdentityVerified: !legacy,
+      confirmed.push({ ...archive, bucketIdentityVerified: !legacy, completionTimeMs: created.ceilingMilliseconds,
         metadata: { ...archive.metadata, backup_started_at: startedAt } })
     }
     if (group.weekly && !hasWeekly) throw new Error('Unexpected weekly backup')
     if (!group.daily && !group.weekly) orphanCompletions++
   }
   return { confirmed, orphanCompletions, legacyCompletions }
+}
+
+// A newer snapshot becomes available only when its matching completion record is created.
+function dailyRecoveryWindow(dailyArchives, observedAt) {
+  const points = dailyArchives.map(archive => ({
+    startedAt: Date.parse(archive.metadata.backup_started_at),
+    completedAt: archive.completionTimeMs,
+  })).sort((a, b) => a.completedAt - b.completedAt || b.startedAt - a.startedAt)
+  if (points.length === 0) return null
+
+  let latestStart = points[0].startedAt
+  let maximumAge = points[0].completedAt - latestStart
+  for (const point of points.slice(1)) {
+    if (point.startedAt <= latestStart) continue
+    maximumAge = Math.max(maximumAge, point.completedAt - latestStart)
+    latestStart = point.startedAt
+  }
+  return {
+    firstCompletionAt: new Date(points[0].completedAt).toISOString(),
+    observedAt: observedAt.toISOString(),
+    completedArchives: points.length,
+    maximumSnapshotAgeSeconds: Math.max(maximumAge, observedAt.getTime() - latestStart) / 1000,
+  }
 }
 
 /** Inspect all live, noncurrent, and soft-deleted backup generations; never delete. */
@@ -224,8 +251,8 @@ export async function inspectBackupRetention(storage, target, now, options = {})
   const confirmedLive = confirmed.filter(object => liveNames.has(object.name))
   const verifiedLive = confirmedLive.filter(object => object.bucketIdentityVerified)
   const plan = planBackupRetention({ environment: target.environment, complete: true, objects: confirmedLive, now })
-  const latestDaily = verifiedLive.reduce((latest, object) => object.name.startsWith(`${prefix}daily/`)
-    ? Math.max(latest, Date.parse(object.metadata.backup_started_at)) : latest, -Infinity)
+  const verifiedDaily = verifiedLive.filter(object => object.name.startsWith(`${prefix}daily/`))
+  const latestDaily = verifiedDaily.reduce((latest, object) => Math.max(latest, Date.parse(object.metadata.backup_started_at)), -Infinity)
   const latestWeekly = verifiedLive.reduce((latest, object) => object.name.startsWith(`${prefix}weekly/`)
     ? Math.max(latest, Date.parse(object.metadata.backup_started_at)) : latest, -Infinity)
   const evaluatedAt = fixedTime ? now : new Date()
@@ -254,6 +281,7 @@ export async function inspectBackupRetention(storage, target, now, options = {})
   const retentionSatisfied = plan.retentionSatisfied && legacyCompletions === 0
   return { ...plan, retentionSatisfied, candidates: retentionSatisfied && dailyFreshEnough && weeklyFreshEnough ? plan.candidates : [],
     dailyFreshEnough, latestDailyAgeSeconds, weeklyFreshEnough, latestWeeklyAgeSeconds,
+    dailyRecoveryWindow: dailyRecoveryWindow(verifiedDaily, evaluatedAt),
     pendingLifecycle: pending.length, pendingCompletions: pendingCompletions.length, orphanCompletions, legacyCompletions,
     softDeleted: softDeleted.length, oldSoftDeleted, longSoftDelete, overdueSoftDeletion, oldPendingArchives,
     expiryAttentionPending, expiryAttentionSoftDeleted, reviewRequired }

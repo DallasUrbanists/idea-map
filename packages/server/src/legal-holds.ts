@@ -9,14 +9,16 @@ function reference(value: unknown, max: number): value is string {
 
 type Outcome = 'forbidden' | 'processed' | 'not_found' | 'already_held' | 'already_released'
 type Access = { state: 'unauthenticated' | Outcome }
+export type LegalAuthorityAccess<T> = { state: 'unauthenticated' | 'forbidden' } | { state: 'authorized', value: T }
 
 /** The verifier is the configured Firebase Admin SDK; never accept client-supplied actor IDs. */
-async function withLegalAuthority(databaseUrl: string, projectId: string, cookie: string, verifier: RegisteredSessionVerifier,
-  action: (client: pg.PoolClient, provider: string, subject: string) => Promise<Outcome>): Promise<Access> {
+export async function withLegalAuthority<T>(databaseUrl: string, projectId: string, cookie: string, verifier: RegisteredSessionVerifier,
+  action: (client: pg.PoolClient, provider: string, subject: string) => Promise<T>): Promise<LegalAuthorityAccess<T>> {
   if (!databaseUrl) throw new Error('Invalid legal-hold configuration')
   const session = await verifyRegisteredSession(projectId, cookie, verifier)
   if (session.state !== 'verified') return session
   const client = await runtimeDatabasePool(databaseUrl).connect()
+  let destroy = false
   try {
     await client.query('BEGIN ISOLATION LEVEL READ COMMITTED')
     await client.query("SET LOCAL lock_timeout = '5s'")
@@ -38,30 +40,35 @@ async function withLegalAuthority(databaseUrl: string, projectId: string, cookie
       return { state: current.state === 'unauthenticated' ? 'unauthenticated' : 'forbidden' }
     }
     await client.query('COMMIT')
-    return { state: outcome }
-  } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
+    return { state: 'authorized', value: outcome }
+  } catch (error) {
+    try { await client.query('ROLLBACK') } catch { destroy = true }
+    throw error
+  } finally { client.release(destroy) }
 }
 
 /** Server-only, disabled until scoped permissions, lifecycle, and deletion integration are reviewed. */
 export async function placeLegalHold(databaseUrl: string, projectId: string, cookie: string, verifier: RegisteredSessionVerifier,
   input: { ideaId: string, caseReference: string, reason: string }): Promise<Access> {
   if (!uuid.test(input.ideaId) || !reference(input.caseReference, 300) || !reference(input.reason, 1000)) throw new Error('Invalid legal hold')
-  return withLegalAuthority(databaseUrl, projectId, cookie, verifier, async (client, provider, subject) => {
+  const access = await withLegalAuthority(databaseUrl, projectId, cookie, verifier, async (client, provider, subject) => {
     const result = await client.query<{ outcome: Outcome }>('SELECT public.place_legal_hold_outcome($1,$2,$3,$4,$5) AS outcome', [provider, subject, input.ideaId, input.caseReference, input.reason])
     if (!result.rows[0]?.outcome) throw new Error('Missing legal-hold outcome')
     return result.rows[0].outcome
   })
+  return { state: access.state === 'authorized' ? access.value : access.state }
 }
 
 /** Release only the named case; other active holds remain effective. */
 export async function releaseLegalHold(databaseUrl: string, projectId: string, cookie: string, verifier: RegisteredSessionVerifier,
   input: { holdId: string, reason: string, legalReviewReference: string | null }): Promise<Access> {
   if (!uuid.test(input.holdId) || !reference(input.reason, 1000) || (input.legalReviewReference !== null && !reference(input.legalReviewReference, 300))) throw new Error('Invalid legal hold release')
-  return withLegalAuthority(databaseUrl, projectId, cookie, verifier, async (client, provider, subject) => {
+  const access = await withLegalAuthority(databaseUrl, projectId, cookie, verifier, async (client, provider, subject) => {
     const result = await client.query<{ outcome: Outcome }>('SELECT public.release_legal_hold_outcome($1,$2,$3,$4,$5) AS outcome', [provider, subject, input.holdId, input.reason, input.legalReviewReference])
     if (!result.rows[0]?.outcome) throw new Error('Missing legal-hold outcome')
     return result.rows[0].outcome
   })
+  return { state: access.state === 'authorized' ? access.value : access.state }
 }
 
 /** Check active holds only, inside the deletion transaction; this is not deletion authorization. */

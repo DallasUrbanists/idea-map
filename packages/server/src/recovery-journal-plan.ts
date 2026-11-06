@@ -63,7 +63,9 @@ export function summarizeUnverifiedRecovery(records: Uint8Array[], environment: 
     }
     if (intent.decision.kind === 'removal') removals.add(intent.ideaId)
     if (intent.decision.kind === 'hold_placement') holdPlacements.add(intent.ideaId)
-    if (intent.decision.kind === 'hold_release') checkHoldIdentity(intent.decision.holdId, intent.ideaId, intent.decision.caseReference)
+    if (intent.decision.kind === 'hold_release' || intent.decision.kind === 'hold_scope_review') {
+      checkHoldIdentity(intent.decision.holdId, intent.ideaId, intent.decision.caseReference)
+    }
     if (intent.decision.kind !== 'removal') holdReviewIdeas.add(intent.ideaId)
     // Even a confirmed placement lacks the authority and held-material evidence
     // needed to recreate it. Releases and uncertain decisions also need review.

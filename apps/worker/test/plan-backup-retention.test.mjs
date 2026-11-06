@@ -19,6 +19,8 @@ test('retention preserves recent daily dates, weekly periods, grace, and holds',
   const result = planBackupRetention(input)
   assert.equal(result.retentionSatisfied, true)
   assert.equal(result.privacyDeadlineVerified, false)
+  assert.equal(result.holdScopeVerified, false)
+  assert.equal(result.deletionAuthorized, false)
   assert.deepEqual(result.consecutive, { daily: true, weekly: true })
   const removed = new Set(result.candidates.map(row => row.name))
   assert.ok(!removed.has(object('daily', 14).name))
@@ -28,6 +30,14 @@ test('retention preserves recent daily dates, weekly periods, grace, and holds',
   assert.ok(!removed.has(object('daily', 40).name))
   assert.ok(!removed.has(object('daily', 41).name))
   assert.equal(result.oldOrHeld, 2)
+})
+
+test('healthy backup counts and caller-supplied flags cannot authorize deletion', () => {
+  const result = planBackupRetention({ ...inventory(), holdScopeVerified: true, deletionAuthorized: true })
+  assert.equal(result.retentionSatisfied, true)
+  assert.ok(result.candidates.length > 0)
+  assert.equal(result.holdScopeVerified, false)
+  assert.equal(result.deletionAuthorized, false)
 })
 
 test('a missing day prevents deletion even when older copies satisfy the count', () => {

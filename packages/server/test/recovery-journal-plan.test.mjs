@@ -13,6 +13,32 @@ const confirmation = id => encodeRecoveryConfirmation(operation(id), 'dev', '202
 const assignment = { actorId: base.actorId, authority: 'executive_director', grantedBy: base.actorId,
   grantedAt: '2026-11-03T11:59:00.000000Z', authorizationReference: 'synthetic authority' }
 
+test('a scope review remains unresolved even when confirmed and cannot clear another hold', () => {
+  const firstHold = '44444444-4444-4444-8444-444444444444'
+  const secondHold = '55555555-5555-4555-8555-555555555555'
+  const authority = '66666666-6666-4666-8666-666666666666'
+  const review = { kind: 'hold_scope_review', holdId: firstHold, caseReference: hold.caseReference,
+    authorizationReference: 'synthetic authority', selectedInventory: {
+      artifactId: '77777777-7777-4777-8777-777777777777', generation: '123', size: 42, sha256: 'a'.repeat(64),
+    } }
+  for (const records of [[intent(3, review)], [intent(3, review), confirmation(3)]]) {
+    const summary = summarizeUnverifiedRecovery(records, 'dev')
+    assert.deepEqual(summary.holdReviewIdeas, [idea])
+    assert.deepEqual(summary.reviewOperations, [operation(3)])
+    assert.deepEqual(summary.holdIdentities, [])
+    assert.equal(summary.coverageVerified, false)
+  }
+  const placed = (id, holdId) => encodeRecoveryHoldConfirmation(operation(id), 'dev', '2026-11-03T12:01:00.000Z',
+    holdId, authority, '2026-11-03T12:00:00.000000Z', assignment)
+  const placements = [intent(1, hold), placed(1, firstHold), intent(2, { ...hold, caseReference: 'second synthetic case' }), placed(2, secondHold)]
+  const summary = summarizeUnverifiedRecovery([...placements, intent(3, review), confirmation(3)], 'dev')
+  assert.deepEqual(summary.holdIdentities.map(entry => entry.holdId), [firstHold, secondHold])
+  assert.deepEqual(summary.reviewOperations, [operation(1), operation(2), operation(3)])
+  assert.equal(summary.coverageVerified, false)
+  assert.throws(() => summarizeUnverifiedRecovery([...placements, intent(3, { ...review, caseReference: 'wrong case' })], 'dev'), /ambiguous/)
+  assert.throws(() => summarizeUnverifiedRecovery([intent(3, review), placed(3, firstHold)], 'dev'), /ambiguous/)
+})
+
 test('recovery summary protects uncertain removals and holds and never applies a release', () => {
   const records = [
     confirmation(1), intent(1, { kind: 'removal', classification: 'other', reason: 'synthetic reason' }),
@@ -34,6 +60,26 @@ test('a release without its placement still identifies an idea requiring hold re
   assert.deepEqual(result.reviewOperations, [operation(1)])
   assert.equal(result.coverageVerified, false)
 })
+
+test('a confirmed release does not clear another case or resolve held-material review', () => {
+  const firstHold = '44444444-4444-4444-8444-444444444444'
+  const secondHold = '55555555-5555-4555-8555-555555555555'
+  const authority = '66666666-6666-4666-8666-666666666666'
+  const otherCase = { ...hold, caseReference: 'second synthetic case' }
+  const placed = (id, holdId) => encodeRecoveryHoldConfirmation(operation(id), 'dev', '2026-11-03T12:01:00.000Z',
+    holdId, authority, '2026-11-03T12:00:00.000000Z', assignment)
+  const release = { ...hold, kind: 'hold_release', holdId: firstHold, legalReviewReference: null }
+  const result = summarizeUnverifiedRecovery([
+    intent(1, hold), placed(1, firstHold), intent(2, otherCase), placed(2, secondHold),
+    intent(3, release), confirmation(3),
+  ], 'dev')
+  assert.deepEqual(result.holdPlacements, [idea])
+  assert.deepEqual(result.holdReviewIdeas, [idea])
+  assert.deepEqual(result.holdIdentities.map(entry => entry.holdId), [firstHold, secondHold])
+  assert.deepEqual(result.reviewOperations, [operation(1), operation(2), operation(3)])
+  assert.equal(result.coverageVerified, false)
+})
+
 test('recovery summary rejects duplicate, incompatible, or incorrectly ordered evidence', () => {
   const decision = intent(1, { kind: 'removal', classification: 'other', reason: 'synthetic reason' })
   assert.throws(() => summarizeUnverifiedRecovery([decision, decision], 'dev'), /ambiguous/)

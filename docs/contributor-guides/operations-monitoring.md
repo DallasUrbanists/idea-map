@@ -326,10 +326,25 @@ before relying on unattended monitoring.
 
 ## Review costs across providers
 
-Use the [cloud cost model](https://github.com/DallasUrbanists/idea-map/wiki/Cloud-Infrastructure-and-Cost-Model)
-and an approved private operations record to review the coverage of all enabled
-providers and shared resources. Assign an owner and review interval, record the
-reporting period and missing or delayed data, and escalate gaps for follow-up.
-Use named, authorized access and keep account identifiers and credentials out of
-public logs. Verify notification recipients and delivery when authorized. This
-review alone does not configure alerts or establish complete provider coverage.
+Assign a platform operator and a review interval for each deployed environment.
+Use the same completed usage window for each comparison and record it in the
+approved private operations record. List which services contribute to the total,
+including shared resources and any unallocated usage. [Cloud infrastructure and cost model](https://github.com/DallasUrbanists/idea-map/wiki/Cloud-Infrastructure-and-Cost-Model)
+
+- Open Cloud Billing Reports with project-scoped access. Select the exact
+  environment project and usage window, then group by service. Review Cloud
+  Run, Cloud Storage, Scheduler, Tasks, and any other enabled services. Record
+  credits and billing delay separately from measured usage. [Cloud Billing Reports](https://docs.cloud.google.com/billing/docs/how-to/reports)
+- Open the approved Neon project's usage view. Record the plan, compute
+  usage, transfer and storage, including retained history or test branches
+  that account for part of the provider total. [Neon billing and usage](https://neon.com/docs/introduction/monitor-usage)
+- For the remaining enabled providers, record the usage and charges that can
+  be attributed to this environment. Keep provider totals separate when an
+  account combines environments and the allocation is uncertain.
+
+Compare each signal with its reviewed budget or quota and the preceding
+window. Record the owner, observation time, lag, missing coverage, and any
+change that needs follow-up. Check existing budget alerts and their verified
+recipients using authorized access. Treat budget alerts as notifications and
+review spending controls separately. Keep amounts, account identifiers, and
+credentials in the private record.

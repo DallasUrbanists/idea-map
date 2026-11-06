@@ -1,4 +1,4 @@
-import { GoogleAuth } from 'google-auth-library'
+import { GoogleAuth, Impersonated } from 'google-auth-library'
 import type { RecoverySequenceTransport } from './recovery-sequence-storage.js'
 
 type TokenProvider = Pick<GoogleAuth, 'getAccessToken'>
@@ -6,7 +6,7 @@ const parent = 'projects/[1-9][0-9]{5,19}/secrets/[a-zA-Z0-9_-]{1,255}'
 const appendPath = new RegExp(`^${parent}:addVersion$`)
 const accessPath = new RegExp(`^${parent}/versions/([1-9][0-9]{0,19}):access$`)
 
-/** Unwired Secret Manager transport; callers must separately review effective IAM. */
+/** Secret Manager transport for exact version access and checksum-bound appends. */
 export function createGoogleRecoverySequenceTransport(
   auth: TokenProvider = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] }),
   fetcher: typeof fetch = fetch,
@@ -59,4 +59,24 @@ export function createGoogleRecoverySequenceTransport(
       return { status: response.status, data }
     } catch { throw new Error('Recovery sequence transport unavailable') }
   } }
+}
+
+/** Use separate principals for append and readback through the trusted coordinator. */
+export function createGoogleRemovalTransports(writerAccount: string, readerAccount: string) {
+  const accountPattern = /^[a-z][a-z0-9-]{4,28}[a-z0-9]@[a-z][a-z0-9-]{4,28}[a-z0-9]\.iam\.gserviceaccount\.com$/
+  if (!accountPattern.test(writerAccount) || !accountPattern.test(readerAccount) || writerAccount === readerAccount) {
+    throw new Error('Invalid journal identities')
+  }
+  const scopes = ['https://www.googleapis.com/auth/cloud-platform']
+  const source = new GoogleAuth({ scopes })
+  const forAccount = (targetPrincipal: string) => {
+    let client: Impersonated | undefined
+    return createGoogleRecoverySequenceTransport({
+      async getAccessToken() {
+        client ??= new Impersonated({ sourceClient: await source.getClient(), targetPrincipal, targetScopes: scopes })
+        return (await client.getAccessToken()).token
+      },
+    })
+  }
+  return { writer: forAccount(writerAccount), reader: forAccount(readerAccount) }
 }

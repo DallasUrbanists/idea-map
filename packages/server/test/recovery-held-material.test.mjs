@@ -5,7 +5,7 @@ import { after, test } from 'node:test'
 import { CRC32C } from '@google-cloud/storage'
 import { readUnverifiedHeldMaterial, writeUnverifiedHeldMaterial } from '../dist/recovery-held-storage.js'
 import { encodeUnverifiedHeldManifest } from '../dist/recovery-held-manifest.js'
-import { encodeRecoveryHoldManifestConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
+import { encodeRecoveryConfirmation, encodeRecoveryHoldManifestConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../dist/recovery-journal-record.js'
 import { encodeRecoverySequenceEntry } from '../dist/recovery-sequence.js'
 import { unverifiedRolloverCheckpoint } from '../dist/recovery-sequence-rollover.js'
 import { verifyRolloverHeldCaptures, verifySequenceChainHeldCaptures, verifySequenceHeldCaptures, verifyUnverifiedHeldCapture, verifyUnverifiedHeldCaptureAgainstSources } from '../dist/recovery-held-verification.js'
@@ -149,6 +149,30 @@ test('the selected bytes and reference cannot change while storage is pending', 
   assert.deepEqual(Buffer.from(await pendingRead), contents)
 })
 
+test('a selected related record is read by exact generation and remains unverified for scope', async () => {
+  const { storage, objects } = fake()
+  const operationId = '22222222-2222-4222-8222-222222222222', ideaId = '33333333-3333-4333-8333-333333333333'
+  const holdId = '44444444-4444-4444-8444-444444444444', actorId = '55555555-5555-4555-8555-555555555555'
+  const manifestId = '66666666-6666-4666-8666-666666666666', sourceId = '77777777-7777-4777-8777-777777777777'
+  const saved = await writeUnverifiedHeldMaterial(storage, target, artifact, contents)
+  const source = { kind: 'related_record', sourceType: 'moderation_events', sourceId, sourceGeneration: null }
+  const manifest = encodeUnverifiedHeldManifest({ environment: 'dev', operationId, ideaId, holdId,
+    entries: [{ ...source, artifactId: artifact, generation: saved.generation, size: saved.size, sha256: saved.sha256 }] })
+  const ref = await writeUnverifiedHeldMaterial(storage, target, manifestId, manifest)
+  const intent = encodeRecoveryIntent({ environment: 'dev', operationId, ideaId, actorId, authorizedAt: '2026-11-03T12:00:00.000Z',
+    decision: { kind: 'hold_placement', caseReference: 'synthetic case', reason: 'synthetic reason',
+      authorizationReference: 'synthetic authority', scope: 'synthetic scope' } })
+  const confirmation = encodeRecoveryHoldManifestConfirmation(operationId, 'dev', '2026-11-03T12:01:00.000Z', holdId,
+    '88888888-8888-4888-8888-888888888888', '2026-11-03T12:00:00.123456Z',
+    { actorId, authority: 'executive_director', grantedBy: actorId, grantedAt: '2026-11-03T11:59:00.000000Z',
+      authorizationReference: 'synthetic authority' },
+    { artifactId: manifestId, generation: ref.generation, size: ref.size, sha256: ref.sha256 })
+  assert.deepEqual(await verifyUnverifiedHeldCaptureAgainstSources(storage, target, intent, confirmation, [source]),
+    { checkedArtifacts: 1, totalBytes: manifest.length + contents.length, matchedSources: 1, scopeVerified: false, coverageVerified: false })
+  objects.delete(`idea-map-v2/dev/held-material/${artifact}.bin`)
+  await assert.rejects(verifyUnverifiedHeldCaptureAgainstSources(storage, target, intent, confirmation, [source]), /could not be verified/)
+})
+
 test('verification reads every selected generation but never asserts hold coverage', async () => {
   const { storage, objects, reads } = fake()
   const operationId = '22222222-2222-4222-8222-222222222222', ideaId = '33333333-3333-4333-8333-333333333333'
@@ -212,13 +236,49 @@ test('verification reads every selected generation but never asserts hold covera
       payload: { data: Buffer.from(bytes).toString('base64'), dataCrc32c: String(Buffer.from(crc.toString(), 'base64').readUInt32BE(0)) } } }
   } }
   assert.deepEqual(await verifySequenceHeldCaptures(sequenceReader, sequenceTarget, '4', nonce, storage, target),
-    { checkedCaptures: 1, checkedArtifacts: 2, totalBytes: manifest.length + contents.length + secondBytes.length, incompletePlacements: 0,
+    { checkedCaptures: 1, checkedArtifacts: 2, checkedScopeInventories: 0, totalBytes: manifest.length + contents.length + secondBytes.length, incompletePlacements: 0, incompleteScopeReviews: 0,
       reviewOperations: 1, unmatchedConfirmations: 0, coverageVerified: false, authorityVerified: false })
   const confirmationFrame = entries.splice(2, 1)[0]
   assert.deepEqual(await verifySequenceHeldCaptures(sequenceReader, sequenceTarget, '3', nonce, storage, target),
-    { checkedCaptures: 0, checkedArtifacts: 0, totalBytes: 0, incompletePlacements: 1,
+    { checkedCaptures: 0, checkedArtifacts: 0, checkedScopeInventories: 0, totalBytes: 0, incompletePlacements: 1, incompleteScopeReviews: 0,
       reviewOperations: 1, unmatchedConfirmations: 0, coverageVerified: false, authorityVerified: false })
   entries.splice(2, 0, confirmationFrame)
+  const reviewOperation = 'abababab-abab-4bab-8bab-abababababab'
+  const reviewArtifact = 'bcbcbcbc-bcbc-4cbc-8cbc-bcbcbcbcbcbc'
+  const reviewBytes = encodeUnverifiedHeldManifest({ environment: 'dev', operationId: reviewOperation, ideaId, holdId, entries: [media] })
+  const reviewReference = await writeUnverifiedHeldMaterial(storage, target, reviewArtifact, reviewBytes)
+  const reviewIntent = encodeRecoveryIntent({ environment: 'dev', operationId: reviewOperation, ideaId, actorId,
+    authorizedAt: '2026-11-03T12:02:00.000Z', decision: { kind: 'hold_scope_review', holdId,
+      caseReference: 'synthetic case', authorizationReference: 'synthetic authority', selectedInventory: {
+        artifactId: reviewArtifact, generation: reviewReference.generation, size: reviewReference.size, sha256: reviewReference.sha256,
+      } } })
+  const reviewConfirmation = encodeRecoveryConfirmation(reviewOperation, 'dev', '2026-11-03T12:03:00.000Z')
+  const reviewFrame = encodeRecoverySequenceEntry({ ...base, kind: 'decision', recordId: reviewOperation, data: Buffer.from(reviewIntent).toString('base64') })
+  const reviewConfirmationFrame = encodeRecoverySequenceEntry({ ...base, kind: 'decision', recordId: recoveryConfirmationRecordId(reviewOperation), data: Buffer.from(reviewConfirmation).toString('base64') })
+  entries.splice(3, 0, reviewFrame)
+  const unconfirmed = await verifySequenceHeldCaptures(sequenceReader, sequenceTarget, '5', nonce, storage, target)
+  assert.equal(unconfirmed.incompleteScopeReviews, 1)
+  assert.equal(unconfirmed.checkedScopeInventories, 0)
+  entries.splice(4, 0, reviewConfirmationFrame)
+  const confirmed = await verifySequenceHeldCaptures(sequenceReader, sequenceTarget, '6', nonce, storage, target)
+  assert.equal(confirmed.checkedScopeInventories, 1)
+  assert.equal(confirmed.checkedArtifacts, 3)
+  assert.equal(confirmed.totalBytes, manifest.length + contents.length + 2 * secondBytes.length + reviewBytes.length)
+  assert.equal(confirmed.incompleteScopeReviews, 0)
+  assert.equal(confirmed.reviewOperations, 2)
+  assert.equal(confirmed.coverageVerified, false)
+  const reviewPath = `idea-map-v2/dev/held-material/${reviewArtifact}.bin`
+  const reviewObject = objects.get(reviewPath)
+  objects.delete(reviewPath)
+  await assert.rejects(verifySequenceHeldCaptures(sequenceReader, sequenceTarget, '6', nonce, storage, target), /could not be verified/)
+  objects.set(reviewPath, reviewObject)
+  reviewObject.metadata.temporaryHold = false
+  await assert.rejects(verifySequenceHeldCaptures(sequenceReader, sequenceTarget, '6', nonce, storage, target), /could not be verified/)
+  reviewObject.metadata.temporaryHold = true
+  reviewObject.body = Buffer.alloc(reviewBytes.length, 1)
+  await assert.rejects(verifySequenceHeldCaptures(sequenceReader, sequenceTarget, '6', nonce, storage, target), /could not be verified/)
+  reviewObject.body = reviewBytes
+  entries.splice(3, 2)
   await assert.rejects(verifySequenceHeldCaptures(sequenceReader, sequenceTarget, '4', nonce, storage, { ...target, environment: 'prod' }), /Invalid/)
   const previous = { ...sequenceTarget, fenceVersion: '3', fenceNonce: nonce }
   const previousEntries = [entries[0], entries[1], entries[3]]
@@ -241,7 +301,7 @@ test('verification reads every selected generation but never asserts hold covera
   } })
   const previousReader = readerFor(previous, previousEntries), nextReader = readerFor(next, nextEntries)
   assert.deepEqual(await verifyRolloverHeldCaptures(previousReader, previous, nextReader, next, storage, target),
-    { checkedCaptures: 1, checkedArtifacts: 2, totalBytes: manifest.length + contents.length + secondBytes.length, incompletePlacements: 0,
+    { checkedCaptures: 1, checkedArtifacts: 2, checkedScopeInventories: 0, totalBytes: manifest.length + contents.length + secondBytes.length, incompletePlacements: 0, incompleteScopeReviews: 0,
       reviewOperations: 1, unmatchedConfirmations: 0, coverageVerified: false, authorityVerified: false, earlierEpochsIncluded: false })
   const nextCheckpoint = unverifiedRolloverCheckpoint(next, nextEntries.map((payload, index) => ({ version: String(index + 1), payload })))
   const third = { ...next, secretId: 'synthetic-third', epochId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
@@ -252,8 +312,21 @@ test('verification reads every selected generation but never asserts hold covera
   const chain = [{ reader: previousReader, descriptor: previous }, { reader: nextReader, descriptor: next },
     { reader: readerFor(third, thirdEntries), descriptor: third }]
   assert.deepEqual(await verifySequenceChainHeldCaptures(chain, storage, target),
-    { checkedCaptures: 1, checkedArtifacts: 2, totalBytes: manifest.length + contents.length + secondBytes.length, incompletePlacements: 0,
+    { checkedCaptures: 1, checkedArtifacts: 2, checkedScopeInventories: 0, totalBytes: manifest.length + contents.length + secondBytes.length, incompletePlacements: 0, incompleteScopeReviews: 0,
       reviewOperations: 1, unmatchedConfirmations: 0, coverageVerified: false, authorityVerified: false, epochCount: 3, earlierEpochsIncluded: false })
+  const reviewPrevious = { ...previous, fenceVersion: '4' }
+  const reviewPreviousEntries = [entries[0], entries[1], reviewFrame, entries[3]]
+  const reviewCheckpoint = unverifiedRolloverCheckpoint(reviewPrevious, reviewPreviousEntries.map((payload, index) => ({ version: String(index + 1), payload })))
+  const reviewNext = { ...next, fenceVersion: '4' }
+  const reviewNextEntries = [encodeRecoverySequenceEntry({ ...nextBase, kind: 'baseline', checkpointDigest: reviewCheckpoint.checkpointDigest }),
+    nextEntries[1], encodeRecoverySequenceEntry({ ...nextBase, kind: 'decision', recordId: recoveryConfirmationRecordId(reviewOperation),
+      data: Buffer.from(reviewConfirmation).toString('base64') }), nextEntries[2]]
+  const acrossEpochs = await verifyRolloverHeldCaptures(readerFor(reviewPrevious, reviewPreviousEntries), reviewPrevious,
+    readerFor(reviewNext, reviewNextEntries), reviewNext, storage, target)
+  assert.equal(acrossEpochs.checkedScopeInventories, 1)
+  assert.equal(acrossEpochs.incompleteScopeReviews, 0)
+  assert.equal(acrossEpochs.reviewOperations, 2)
+  assert.equal(acrossEpochs.coverageVerified, false)
   const beforeMissing = reads()
   nextEntries[1] = undefined
   await assert.rejects(verifyRolloverHeldCaptures(previousReader, previous, nextReader, next, storage, target), /could not be verified/)

@@ -8,7 +8,9 @@ type Removal = { kind: 'removal', classification: 'violation' | 'other', reason:
 type HoldPlacement = { kind: 'hold_placement', caseReference: string, reason: string, authorizationReference: string, scope: string }
 type HoldRelease = { kind: 'hold_release', holdId: string, caseReference: string, reason: string,
   authorizationReference: string, scope: string, legalReviewReference: string | null }
-type Decision = Removal | HoldPlacement | HoldRelease
+type HoldScopeReview = { kind: 'hold_scope_review', holdId: string, caseReference: string,
+  authorizationReference: string, selectedInventory: HeldArtifactReference }
+type Decision = Removal | HoldPlacement | HoldRelease | HoldScopeReview
 
 export type RecoveryIntent = {
   operationId: string
@@ -60,6 +62,16 @@ export function encodeRecoveryIntent(input: RecoveryIntent): Uint8Array {
         !text(decision.authorizationReference, 300) || !text(decision.scope, 1000) ||
         (decision.kind === 'hold_release' && (typeof decision.holdId !== 'string' || !uuid.test(decision.holdId) ||
           (decision.legalReviewReference !== null && !text(decision.legalReviewReference, 300))))) throw new Error('Invalid recovery decision')
+  } else if (decision.kind === 'hold_scope_review') {
+    const inventory = decision.selectedInventory
+    if (!keys(decision, ['kind', 'holdId', 'caseReference', 'authorizationReference', 'selectedInventory']) ||
+        typeof decision.holdId !== 'string' || !uuid.test(decision.holdId) || !text(decision.caseReference, 300) ||
+        !text(decision.authorizationReference, 300) || !inventory || typeof inventory !== 'object' || Array.isArray(inventory) ||
+        !keys(inventory, ['artifactId', 'generation', 'size', 'sha256']) ||
+        typeof inventory.artifactId !== 'string' || !operationIdPattern.test(inventory.artifactId) ||
+        typeof inventory.generation !== 'string' || !/^[1-9][0-9]{0,19}$/.test(inventory.generation) ||
+        !Number.isSafeInteger(inventory.size) || inventory.size < 1 || inventory.size > 16 * 1024 * 1024 ||
+        typeof inventory.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(inventory.sha256)) throw new Error('Invalid recovery decision')
   } else throw new Error('Invalid recovery decision')
   // Select each field so unexpected prototype properties cannot enter storage.
   const base = { version: 1, recordType: 'intent', operationId: input.operationId, environment: input.environment,
@@ -68,6 +80,10 @@ export function encodeRecoveryIntent(input: RecoveryIntent): Uint8Array {
   if (decision.kind === 'removal') details = { kind: decision.kind, classification: decision.classification, reason: decision.reason }
   else if (decision.kind === 'hold_placement') details = { kind: decision.kind, caseReference: decision.caseReference,
     reason: decision.reason, authorizationReference: decision.authorizationReference, scope: decision.scope }
+  else if (decision.kind === 'hold_scope_review') details = { kind: decision.kind, holdId: decision.holdId,
+    caseReference: decision.caseReference, authorizationReference: decision.authorizationReference,
+    selectedInventory: { artifactId: decision.selectedInventory.artifactId, generation: decision.selectedInventory.generation,
+      size: decision.selectedInventory.size, sha256: decision.selectedInventory.sha256 } }
   else details = { kind: decision.kind, holdId: decision.holdId, caseReference: decision.caseReference, reason: decision.reason,
     authorizationReference: decision.authorizationReference, scope: decision.scope, legalReviewReference: decision.legalReviewReference }
   return Buffer.from(JSON.stringify({ ...base, decision: details }))

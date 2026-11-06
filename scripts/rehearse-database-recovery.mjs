@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { createServer } from 'node:http'
 import { createReadStream, createWriteStream } from 'node:fs'
 import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -8,23 +9,26 @@ import { Readable, Writable } from 'node:stream'
 import { createRequire } from 'node:module'
 import { pipeline } from 'node:stream/promises'
 import { setTimeout as delay } from 'node:timers/promises'
-import { dumpArguments, exportEncryptedBackup } from '../apps/worker/ops/export-encrypted-backup.mjs'
-import { decodeRecoveryRecord, encodeRecoveryHoldManifestConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from '../packages/server/dist/recovery-journal-record.js'
+import { defaultAclDigestSql, dumpArguments, exportEncryptedBackup, openBackupSnapshot } from '../apps/worker/ops/export-encrypted-backup.mjs'
+import { decodeRecoveryRecord, encodeRecoveryIntent } from '../packages/server/dist/recovery-journal-record.js'
 import { encodeRecoverySequenceEntry } from '../packages/server/dist/recovery-sequence.js'
 import { unverifiedRolloverCheckpoint } from '../packages/server/dist/recovery-sequence-rollover.js'
-import { encodeUnverifiedHeldManifest } from '../packages/server/dist/recovery-held-manifest.js'
-import { verifyRolloverHeldCaptures, verifySequenceChainHeldCaptures, verifySequenceHeldCaptures, verifyUnverifiedHeldCapture } from '../packages/server/dist/recovery-held-verification.js'
-import { suppressKnownRemovalsFromRollover, suppressKnownRemovalsFromSequence, suppressKnownRemovalsFromSequenceChain, suppressUnverifiedRestoredRemovals } from '../packages/server/dist/recovery-suppression.js'
+import { decodeUnverifiedHeldManifest } from '../packages/server/dist/recovery-held-manifest.js'
+import { captureAuthorizedHeldInventory, listAuthorizedHeldSourceCandidates } from '../packages/server/dist/held-inventory-capture.js'
+import { recordJournaledHoldScopeReview } from '../packages/server/dist/journaled-hold-scope.js'
+import { verifyRolloverHeldCaptures, verifySequenceChainHeldCaptures, verifySequenceHeldCaptures } from '../packages/server/dist/recovery-held-verification.js'
+import { reconcileFencedRecoveryFromSequence, suppressKnownRemovalsFromRollover, suppressKnownRemovalsFromSequence, suppressKnownRemovalsFromSequenceChain, suppressUnverifiedRestoredRemovals } from '../packages/server/dist/recovery-suppression.js'
 import { appendAndVerifyRecoverySequenceVersion, readUnverifiedRecoverySequence } from '../packages/server/dist/recovery-sequence-storage.js'
-import { writeUnverifiedHeldMaterial } from '../packages/server/dist/recovery-held-storage.js'
+import { readUnverifiedHeldMaterial } from '../packages/server/dist/recovery-held-storage.js'
 import { acquirePublicAccessLease } from '../packages/server/dist/public-access-lease.js'
-import { coordinateSequenceRemoval } from '../packages/server/dist/pending-removal.js'
-import { pendingRemovalDatabasePool } from '../packages/server/dist/runtime-database.js'
+import { pendingRemovalDatabasePool, runtimeDatabasePool } from '../packages/server/dist/runtime-database.js'
 import { readPublishedIdea } from '../packages/server/dist/published-ideas.js'
 import { readMediaPreview } from '../packages/server/dist/media-preview.js'
+import { createJournaledHoldPlacementHandler, createJournaledRemovalHandler } from '../apps/web/server/utils/journaled-removal.ts'
 
 const { CRC32C } = createRequire(new URL('../packages/server/package.json', import.meta.url))('@google-cloud/storage')
 const pg = createRequire(new URL('../packages/server/package.json', import.meta.url))('pg')
+const { createApp, toNodeListener } = createRequire(new URL('../apps/web/package.json', import.meta.url))('h3')
 
 // The rehearsal owns every target it creates. It has no database or bucket inputs.
 const id = randomUUID()
@@ -45,11 +49,14 @@ let created = false
 
 function start(command, args, options = {}) {
   const child = spawn(command, args, { ...options, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
+  // Every subprocess in this rehearsal uses its own synthetic inputs.
+  let diagnostic = ''
+  child.stderr.setEncoding('utf8')
+  child.stderr.on('data', chunk => { diagnostic = (diagnostic + chunk).slice(-2000) })
   const done = new Promise((resolve, reject) => {
     child.once('error', reject)
-    child.once('close', code => code === 0 ? resolve() : reject(new Error(`${command} failed (${code})`)))
+    child.once('close', code => code === 0 ? resolve() : reject(new Error(`${command} failed (${code}): ${diagnostic.trim()}`)))
   })
-  child.stderr.resume()
   return { child, done }
 }
 
@@ -72,6 +79,163 @@ async function assertRuntimeFence(database, port) {
   try { await client.connect() } catch (error) { rejected = error.code === '42501' }
   finally { await client.end().catch(() => {}) }
   if (!rejected) throw new Error('Synthetic database fence did not reject runtime access')
+}
+
+async function exerciseRemovalRequest(databaseUrl, journalConfig, writer, reader, request, subject, makeJournalUnavailable, reviewHeldScope) {
+  const publicRole = 'synthetic_removal_reader'
+  const preparationRole = 'synthetic_removal_preparer'
+  const coordinatorRole = 'synthetic_removal_coordinator'
+  const roleUrl = role => {
+    const url = new URL(databaseUrl)
+    url.username = role
+    url.password = 'synthetic-role-only'
+    return url.toString()
+  }
+  const config = {
+    databaseUrl: roleUrl(publicRole), firebaseProjectId: 'demo-idea-map', authProviderMode: 'offline', sessionOrigin: '',
+    journaledRemoval: {
+      ...journalConfig, enabled: true, holdPlacementEnabled: true, preparationDatabaseUrl: roleUrl(preparationRole), coordinatorDatabaseUrl: roleUrl(coordinatorRole),
+      writerAccount: 'synthetic-writer', readerAccount: 'synthetic-reader',
+    },
+  }
+  await sql(source, `
+    CREATE ROLE ${publicRole} LOGIN PASSWORD 'synthetic-role-only';
+    CREATE ROLE ${preparationRole} LOGIN PASSWORD 'synthetic-role-only';
+    CREATE ROLE ${coordinatorRole} LOGIN PASSWORD 'synthetic-role-only';
+    GRANT EXECUTE ON FUNCTION public.public_access_allowed() TO ${publicRole};
+    GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text),
+      public.prepare_journaled_removal(text,text,uuid,uuid,uuid,uuid,text,text,text,text,text,text,uuid,text),
+      public.lock_active_legal_hold_authority(text,text),
+      public.prepare_journaled_hold_placement(text,text,uuid,uuid,text,text,text,text,text,uuid,text) TO ${preparationRole};
+    GRANT EXECUTE ON FUNCTION public.lock_active_moderator(text,text),
+      public.pin_pending_removal_sequence(text,text,uuid,uuid,text,text,text,uuid),
+      public.apply_pending_sequence_removal(text,text,uuid,uuid,text,text,text,text,text,uuid),
+      public.pending_sequence_removal_status(text,text,uuid,uuid,text,text,text,text,uuid),
+      public.prepare_pending_removal_confirmation(text,text,uuid,uuid,text,text,timestamptz,uuid),
+      public.pending_sequence_confirmation_status(text,text,uuid,uuid,text,text,timestamptz,uuid,timestamptz,text,text,text,uuid),
+      public.verify_pending_sequence_confirmation(text,text,uuid,uuid,timestamptz,text,text,text,text,uuid),
+      public.resolve_journaled_removal(text,text,uuid,uuid,text,text,text,uuid,text),
+      public.lock_active_legal_hold_authority(text,text),
+      public.advance_journaled_hold_placement(text,text,uuid,uuid,text,text,text,uuid,text,integer,integer),
+      public.advance_journaled_hold_scope_review(text,text,uuid,uuid,text,text,text,uuid,text,integer,integer) TO ${coordinatorRole};
+  `)
+  const privileges = await sql(source, `SELECT
+    NOT has_table_privilege('${coordinatorRole}','public.public_access_gate','UPDATE')
+    AND NOT has_function_privilege('${preparationRole}','public.apply_pending_sequence_removal(text,text,uuid,uuid,text,text,text,text,text,uuid)','EXECUTE')
+    AND NOT has_function_privilege('${coordinatorRole}','public.remove_published_idea(text,text,uuid,uuid,text,text)','EXECUTE')
+    AND NOT has_function_privilege('${coordinatorRole}','public.apply_pending_removal(text,text,uuid,uuid,text,text)','EXECUTE')
+    AND NOT has_function_privilege('${coordinatorRole}','public.authorize_journaled_public_access(text,text,text,uuid,text)','EXECUTE')
+    AND NOT has_function_privilege('${preparationRole}','public.place_legal_hold_outcome(text,text,uuid,text,text)','EXECUTE')
+    AND NOT has_function_privilege('${coordinatorRole}','public.release_legal_hold_outcome(text,text,uuid,text,text)','EXECUTE')
+    AND NOT has_table_privilege('${coordinatorRole}','public.legal_hold_journal_placements','UPDATE')`)
+  if (privileges !== 't') throw new Error('Synthetic removal roles can bypass the journal')
+  const { environment, projectNumber, secretId, epochId, checkpointDigest } = journalConfig
+  await sql(source, `UPDATE public.public_access_gate SET is_open=false WHERE singleton=true;
+    SELECT public.authorize_journaled_public_access('${environment}','${projectNumber}','${secretId}','${epochId}','${checkpointDigest}')`)
+  const email = 'synthetic-moderator@example.invalid'
+  const verifier = {
+    async verifySessionCookie(cookie) {
+      if (!['synthetic-cookie', 'synthetic-non-moderator'].includes(cookie)) {
+        throw Object.assign(new Error('Invalid synthetic cookie'), { code: 'auth/invalid-session-cookie' })
+      }
+      return { uid: cookie === 'synthetic-cookie' ? subject : 'unassigned-synthetic-user', email, email_verified: true,
+        firebase: { sign_in_provider: 'password' } }
+    },
+    async getUser(uid) { return { uid, email, emailVerified: true, disabled: false } },
+  }
+  const app = createApp()
+  const path = '/api/moderation/removal'
+  let transportCreations = 0
+  const getTransports = () => {
+    transportCreations++
+    return { writer, reader }
+  }
+  app.use(path, createJournaledRemovalHandler(() => config, () => verifier, getTransports))
+  const holdPath = '/api/moderation/legal-hold'
+  app.use(holdPath, createJournaledHoldPlacementHandler(() => config, () => verifier, getTransports))
+  const holdRequest = { ideaId: request.ideaId, requestId: randomUUID(), caseReference: 'synthetic-journaled-hold', reason: 'Synthetic preservation' }
+  let journaledHoldId
+  const server = createServer(toNodeListener(app))
+  try {
+    await new Promise((resolve, reject) => server.once('error', reject).listen(0, '127.0.0.1', resolve))
+    config.sessionOrigin = `http://127.0.0.1:${server.address().port}`
+    const send = (cookie = 'synthetic-cookie', origin = config.sessionOrigin, body = request, endpoint = path) => fetch(config.sessionOrigin + endpoint, {
+      method: 'POST', headers: { cookie: `__session=${cookie}`, origin, 'content-type': 'application/json', 'x-idea-map-session': 'IdeaMapSession' },
+      body: JSON.stringify(body), signal: AbortSignal.timeout(30_000),
+    })
+    for (const [response, expected] of [
+      [await send('invalid'), 401],
+      [await send('synthetic-non-moderator'), 403],
+      [await send('synthetic-cookie', 'https://example.invalid'), 403],
+      [await send('synthetic-cookie', config.sessionOrigin, { ...request, approvedRevisionId: randomUUID() }), 409],
+    ]) {
+      if (response.status !== expected || response.headers.get('cache-control') !== 'private, no-store') {
+        throw new Error(`Synthetic removal request expected ${expected}, received ${response.status}`)
+      }
+      await response.arrayBuffer()
+    }
+    if (await sql(source, 'SELECT public.public_access_allowed()') !== 't') throw new Error('Rejected requests closed the gate')
+    const sendHold = (cookie = 'synthetic-cookie') => send(cookie, config.sessionOrigin, holdRequest, holdPath)
+    const deniedHold = await sendHold('synthetic-non-moderator')
+    await deniedHold.arrayBuffer()
+    if (deniedHold.status !== 403 || await sql(source, `SELECT public.lock_idea_for_retention('${request.ideaId}')`) !== 't') {
+      throw new Error('An unassigned identity could place a legal hold')
+    }
+    makeJournalUnavailable(true)
+    const pendingHold = await sendHold()
+    await pendingHold.arrayBuffer()
+    if (pendingHold.status !== 503 || await sql(source, `SELECT public.lock_idea_for_retention('${request.ideaId}')`) !== 'f' ||
+        await sql(source, 'SELECT public.public_access_allowed()') !== 't') {
+      throw new Error('An interrupted hold placement failed to preserve primary data')
+    }
+    journaledHoldId = await sql(source, `SELECT hold_id FROM legal_hold_journal_placements WHERE request_id='${holdRequest.requestId}'`)
+    makeJournalUnavailable(false)
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const holdResponse = await sendHold()
+      const hold = await holdResponse.json()
+      if (holdResponse.status !== 200 || hold.state !== 'held' || hold.scope !== 'provisional' || hold.holdId !== journaledHoldId) {
+        throw new Error(`Synthetic hold retry failed with HTTP ${holdResponse.status}`)
+      }
+    }
+    if (await sql(source, `SELECT count(*) FROM legal_hold_journal_placements WHERE hold_id='${journaledHoldId}' AND confirmation_version>intent_version`) !== '1') {
+      throw new Error('Synthetic hold confirmation is missing')
+    }
+    makeJournalUnavailable(true)
+    const failed = await send()
+    if (failed.status !== 503 || await sql(source, 'SELECT public.public_access_allowed()') !== 'f' ||
+        await sql(source, `SELECT publication_state FROM public.ideas WHERE id='${request.ideaId}'`) !== 'approved') {
+      throw new Error('Unavailable journal failed to keep the accepted removal safely pending')
+    }
+    await failed.arrayBuffer()
+    const overlapping = await send('synthetic-cookie', config.sessionOrigin, { ...request, operationId: randomUUID() })
+    await overlapping.arrayBuffer()
+    if (overlapping.status !== 409) throw new Error('An overlapping request was allowed to prepare a second removal')
+    makeJournalUnavailable(false)
+    const removed = await send()
+    const status = await removed.json()
+    if (removed.status !== 200 || status.state !== 'removed' || status.publicAccess !== 'open' ||
+        await sql(source, 'SELECT public.public_access_allowed()') !== 't' ||
+        await sql(source, `SELECT publication_state FROM public.ideas WHERE id='${request.ideaId}'`) !== 'withdrawn') {
+      throw new Error(`Synthetic removal retry failed with HTTP ${removed.status}`)
+    }
+    await reviewHeldScope(journaledHoldId, config.journaledRemoval.coordinatorDatabaseUrl)
+    const recoveryClosure = randomUUID()
+    await sql(source, `SELECT public.place_independent_access_closure('recovery','${recoveryClosure}')`)
+    const replayed = await send()
+    const replayStatus = await replayed.json()
+    if (replayed.status !== 200 || replayStatus.state !== 'removed' || replayStatus.publicAccess !== 'paused' ||
+        await sql(source, `SELECT public.inspect_independent_access_closure('recovery','${recoveryClosure}')`) !== 't') {
+      throw new Error('A removal retry cleared the independent recovery closure')
+    }
+    if (transportCreations !== 2) throw new Error('The journal routes discarded their provider clients on retry')
+    return journaledHoldId
+  } finally {
+    if (server.listening) await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
+    await Promise.all([pendingRemovalDatabasePool(config.journaledRemoval.preparationDatabaseUrl).end(),
+      pendingRemovalDatabasePool(config.journaledRemoval.coordinatorDatabaseUrl).end(),
+      runtimeDatabasePool(config.journaledRemoval.preparationDatabaseUrl).end(),
+      runtimeDatabasePool(config.journaledRemoval.coordinatorDatabaseUrl).end()])
+  }
 }
 
 try {
@@ -132,17 +296,31 @@ update-ca-certificates >/dev/null 2>&1`)
   await sql(source, `INSERT INTO idea_revisions(idea_id,version,content,review_state) SELECT i.id,1,'{"title":"Synthetic title","description":"Synthetic description"}'::jsonb,'approved' FROM ideas i JOIN contacts c ON c.id=i.author_contact_id WHERE c.normalized_email='${marker}@example.invalid'; INSERT INTO approved_revisions(idea_id,revision_id) SELECT r.idea_id,r.id FROM idea_revisions r JOIN ideas i ON i.id=r.idea_id JOIN contacts c ON c.id=i.author_contact_id WHERE c.normalized_email='${marker}@example.invalid'`)
   const ideaId = await sql(source, `SELECT i.id FROM ideas i JOIN contacts c ON c.id=i.author_contact_id WHERE c.normalized_email='${marker}@example.invalid'`)
   const revisionId = await sql(source, `SELECT r.id FROM idea_revisions r WHERE r.idea_id='${ideaId}'`)
+  const unrelatedIdea = randomUUID()
+  await sql(source, `INSERT INTO contacts(normalized_email) VALUES ('${marker}-control@example.invalid');
+    INSERT INTO ideas(id,author_contact_id,publication_state)
+      SELECT '${unrelatedIdea}',id,'approved' FROM contacts WHERE normalized_email='${marker}-control@example.invalid';
+    INSERT INTO idea_revisions(idea_id,version,content,review_state)
+      VALUES ('${unrelatedIdea}',1,'{"title":"Synthetic control","description":"Unrelated approved test idea"}'::jsonb,'approved');
+    INSERT INTO approved_revisions(idea_id,revision_id)
+      SELECT idea_id,id FROM idea_revisions WHERE idea_id='${unrelatedIdea}'`)
   const previewId = await sql(source, `INSERT INTO media_previews(idea_id,revision_id,object_name,generation,content_type,published) VALUES ('${ideaId}','${revisionId}','synthetic-preview','1','image/png',true) RETURNING id`)
   await sql(source, `CREATE ROLE ${reader} NOLOGIN; CREATE ROLE ${runtime} LOGIN PASSWORD 'synthetic-runtime-only'; GRANT EXECUTE ON FUNCTION public.place_legal_hold_outcome(text,text,uuid,text,text) TO ${reader}; UPDATE public_access_gate SET is_open=true WHERE singleton=true`)
+  await sql(source, `CREATE ROLE synthetic_default_acl_reader NOLOGIN;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO synthetic_default_acl_reader`)
   const captured = await sql(source, `SELECT extract(epoch FROM recorded_at) * 1000 FROM synthetic_recovery_marker WHERE id='${marker}-before'`)
   const dumpStarted = Date.now()
+  let backupAclDigest
   const storage = { bucket: () => ({ async getMetadata() { return [{ name: 'synthetic-private-backups', projectNumber: '123456789', generation: '100', metageneration: '1',
     iamConfiguration: { publicAccessPrevention: 'enforced', uniformBucketLevelAccess: { enabled: true } },
     versioning: { enabled: true }, softDeletePolicy: { retentionDurationSeconds: '604800' } }] },
   file(name) {
     if (name.endsWith('.complete')) {
       const file = { async save(content, options) {
-        if (content !== '' || options.preconditionOpts.ifGenerationMatch !== 0 || options.metadata.metadata.daily_generation !== '123') throw new Error('Synthetic completion record is invalid')
+        if (content !== '' || options.preconditionOpts.ifGenerationMatch !== 0 || options.metadata.metadata.daily_generation !== '123' ||
+            options.metadata.metadata.backup_version !== '4' ||
+            !/^[0-9a-f]{64}$/.test(options.metadata.metadata.source_default_acl_sha256)) throw new Error('Synthetic completion record is invalid')
+        backupAclDigest = options.metadata.metadata.source_default_acl_sha256
         file.metadata = { name, bucket: 'synthetic-private-backups', generation: '124', metageneration: '1',
           size: '0', crc32c: 'AAAAAA==', metadata: { ...options.metadata.metadata } }
       } }
@@ -156,22 +334,34 @@ update-ca-certificates >/dev/null 2>&1`)
   } }
     return file
   } }) }
-  const startSyntheticDump = childEnv => {
+  const assertSyntheticBackupConnection = childEnv => {
     if (childEnv.PGDATABASE !== source || childEnv.PGHOST !== '127.0.0.1' || childEnv.PGPORT !== port ||
         childEnv.PGUSER !== 'idea_map' || childEnv.PGPASSWORD !== 'synthetic-local-only' ||
         childEnv.PGSSLMODE !== 'verify-full' || childEnv.PGSSLROOTCERT !== 'system') throw new Error('Unexpected synthetic source')
-    // The only connection override is the port inside the disposable container.
-    const process = start('docker', ['exec', '-e', `PGHOST=${childEnv.PGHOST}`, '-e', 'PGPORT=5432',
-      '-e', `PGUSER=${childEnv.PGUSER}`, '-e', `PGPASSWORD=${childEnv.PGPASSWORD}`,
-      '-e', `PGDATABASE=${childEnv.PGDATABASE}`, '-e', `PGSSLMODE=${childEnv.PGSSLMODE}`,
-      '-e', `PGSSLROOTCERT=${childEnv.PGSSLROOTCERT}`, '-e', `PGGSSENCMODE=${childEnv.PGGSSENCMODE}`,
-      container, 'pg_dump', ...dumpArguments])
+  }
+  const startSyntheticDump = (childEnv, snapshotId) => {
+    assertSyntheticBackupConnection(childEnv)
+    const process = start('docker', ['exec', ...tlsEnvironment, container, 'pg_dump', ...dumpArguments, `--snapshot=${snapshotId}`])
     process.child.stdin.end()
     return process
   }
+  const openSyntheticSnapshot = async childEnv => {
+    assertSyntheticBackupConnection(childEnv)
+    const snapshot = await openBackupSnapshot(childEnv, (command, args, { signal, stdio, windowsHide }) =>
+      spawn('docker', ['exec', '-i', ...tlsEnvironment, container, command, ...args], { signal, stdio, windowsHide }))
+    try {
+      // This commit occurs before pg_dump starts but after the exported snapshot.
+      await sql(source, 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT UPDATE ON TABLES TO synthetic_default_acl_reader')
+      return snapshot
+    } catch (error) {
+      await snapshot.close()
+      throw error
+    }
+  }
   await exportEncryptedBackup({ environment: 'dev', bucket: 'synthetic-private-backups', projectNumber: '123456789',
     databaseUrl: `${databaseUrl}?sslmode=verify-full&sslrootcert=system` },
-    { start: startSyntheticDump, storage, now: new Date('2026-11-03T00:00:00Z') })
+    { start: startSyntheticDump, openSnapshot: openSyntheticSnapshot, storage, now: new Date('2026-11-03T00:00:00Z') })
+  if (await sql(source, defaultAclDigestSql) === backupAclDigest) throw new Error('Post-snapshot privilege change was not observed')
   const backupFinished = Date.now()
   // Model the missing-gate condition of an older archive. This is not a full
   // historical schema or evidence of compatibility with any specific version.
@@ -237,6 +427,7 @@ update-ca-certificates >/dev/null 2>&1`)
   const sequenceParent = `projects/${sequenceTarget.projectNumber}/secrets/${sequenceTarget.secretId}`
   const frames = []
   let omitSequenceVersion = false
+  let journalUnavailable = false
   const sequenceWriter = { async request(method, path, body) {
     if (method !== 'POST' || path !== `${sequenceParent}:addVersion`) throw new Error('Unexpected synthetic sequence append')
     const bytes = Buffer.from(body.payload.data, 'base64')
@@ -248,6 +439,7 @@ update-ca-certificates >/dev/null 2>&1`)
   const sequenceReader = { async request(method, path) {
     const match = new RegExp(`^${sequenceParent}/versions/([1-9][0-9]*):access$`).exec(path)
     if (method !== 'GET' || !match) throw new Error('Unexpected synthetic sequence read')
+    if (journalUnavailable) return { status: 503, data: null }
     const version = Number(match[1]), bytes = frames[version - 1]
     if (!bytes || (omitSequenceVersion && version === 2)) return { status: 404, data: null }
     const checksum = new CRC32C(); checksum.update(bytes)
@@ -257,67 +449,148 @@ update-ca-certificates >/dev/null 2>&1`)
   } }
   const appendSequence = entry => appendAndVerifyRecoverySequenceVersion(sequenceWriter, sequenceReader, sequenceTarget,
     encodeRecoverySequenceEntry(entry))
-  const appendDecision = (recordId, payload) => appendSequence({ ...sequenceBase, kind: 'decision', recordId,
-    data: Buffer.from(payload).toString('base64') })
   const removalOperation = randomUUID()
-  const holdOperation = randomUUID()
-  const heldArtifact = randomUUID()
+  const reviewOperation = randomUUID()
   const manifestArtifact = randomUUID()
-  let committedHoldId
+  let journaledHoldId
   let committedAuthorityId
   let committedPlacedAt
   let committedAuthority
   let sequenceFenceVersion
-  let heldReference
+  let heldBytes
   let manifestReference
   const authorizedAt = new Date().toISOString()
   const base = { environment: 'dev', ideaId, actorId: director, authorizedAt }
   const previousEmulator = process.env.STORAGE_EMULATOR_HOST
   delete process.env.STORAGE_EMULATOR_HOST
-  let coordinatorPoolUsed = false
   try {
-    await appendSequence({ ...sequenceBase, kind: 'baseline', checkpointDigest: 'a'.repeat(64) })
-    const session = { uid: marker, email: 'synthetic-moderator@example.invalid', email_verified: true,
-      firebase: { sign_in_provider: 'password' } }
-    const verifier = { async verifySessionCookie() { return session }, async getUser() {
-      return { uid: session.uid, email: session.email, emailVerified: true, disabled: false }
-    } }
-    coordinatorPoolUsed = true
-    const removed = await coordinateSequenceRemoval(databaseUrl, databaseUrl, 'demo-idea-map', 'synthetic-cookie',
-      verifier, sequenceTarget, sequenceWriter, sequenceReader, { operationId: removalOperation, recordId: randomUUID(),
-        ideaId, approvedRevisionId: revisionId, classification: 'other', reason: 'synthetic removal' })
-    if (removed.state !== 'authorized' || removed.value !== 'confirmed' ||
-        await sql(source, 'SELECT is_open FROM public.public_access_gate WHERE singleton=true') !== 'f') {
-      throw new Error('Synthetic coordinated removal failed')
-    }
-    await appendDecision(randomUUID(), encodeRecoveryIntent({ ...base, operationId: holdOperation,
-      decision: { kind: 'hold_placement', caseReference: 'synthetic case', reason: 'synthetic preservation',
-        authorizationReference: 'synthetic authority', scope: 'synthetic idea' } }))
-    const holdOutcome = await sql(source, `SELECT public.place_legal_hold_outcome('firebase:demo-idea-map','${marker}','${ideaId}','synthetic case','synthetic preservation')`)
-    if (holdOutcome !== 'processed') throw new Error('Synthetic legal hold failed')
-    committedHoldId = await sql(source, `SELECT id FROM legal_holds WHERE idea_id='${ideaId}' AND case_reference='synthetic case' AND released_at IS NULL`)
-    if (!/^[0-9a-f-]{36}$/.test(committedHoldId)) throw new Error('Synthetic hold identity is ambiguous')
-    committedAuthorityId = await sql(source, `SELECT placement_authority_id FROM legal_holds WHERE id='${committedHoldId}'`)
-    committedPlacedAt = await sql(source, `SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') FROM legal_holds WHERE id='${committedHoldId}'`)
-    committedAuthority = JSON.parse(await sql(source, `SELECT json_build_object('actorId', user_id, 'authority', authority,
-      'grantedBy', granted_by, 'grantedAt', to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
-      'authorizationReference', authorization_reference)::text FROM legal_hold_assignments WHERE id='${committedAuthorityId}'`))
-    const heldTitle = await sql(source, `SELECT content->>'title' FROM idea_revisions WHERE idea_id='${ideaId}' AND version=2`)
-    if (heldTitle !== 'Synthetic later held material') throw new Error('Synthetic held revision is ambiguous')
-    const heldRevision = await sql(source, `SELECT id FROM idea_revisions WHERE idea_id='${ideaId}' AND version=2`)
-    heldReference = await writeUnverifiedHeldMaterial(journal, journalTarget, heldArtifact, Buffer.from(heldTitle))
-    const manifest = encodeUnverifiedHeldManifest({ environment: 'dev', operationId: holdOperation, ideaId, holdId: committedHoldId,
-      entries: [{ kind: 'revision', sourceId: heldRevision, sourceGeneration: null, artifactId: heldArtifact,
-        generation: heldReference.generation, size: heldReference.size, sha256: heldReference.sha256 }] })
-    manifestReference = await writeUnverifiedHeldMaterial(journal, journalTarget, manifestArtifact, manifest)
-    const manifestConfirmedAt = await sql(source, `SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`)
-    await appendDecision(recoveryConfirmationRecordId(holdOperation),
-      encodeRecoveryHoldManifestConfirmation(holdOperation, 'dev', manifestConfirmedAt, committedHoldId, committedAuthorityId,
-        committedPlacedAt, committedAuthority, { artifactId: manifestArtifact, generation: manifestReference.generation,
-          size: manifestReference.size, sha256: manifestReference.sha256 }))
+    const checkpointDigest = 'a'.repeat(64)
+    await appendSequence({ ...sequenceBase, kind: 'baseline', checkpointDigest })
+    journaledHoldId = await exerciseRemovalRequest(databaseUrl, { ...sequenceTarget, checkpointDigest }, sequenceWriter, sequenceReader,
+      { operationId: removalOperation, ideaId, approvedRevisionId: revisionId, classification: 'other', reason: 'synthetic removal' },
+      marker, unavailable => { journalUnavailable = unavailable }, async (holdId, coordinatorDatabaseUrl) => {
+        if (!/^[0-9a-f-]{36}$/.test(holdId)) throw new Error('Synthetic hold identity is ambiguous')
+        committedAuthorityId = await sql(source, `SELECT placement_authority_id FROM legal_holds WHERE id='${holdId}'`)
+        committedPlacedAt = await sql(source, `SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') FROM legal_holds WHERE id='${holdId}'`)
+        committedAuthority = JSON.parse(await sql(source, `SELECT json_build_object('actorId', user_id, 'authority', authority,
+          'grantedBy', granted_by, 'grantedAt', to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+          'authorizationReference', authorization_reference)::text FROM legal_hold_assignments WHERE id='${committedAuthorityId}'`))
+        const heldRevision = await sql(source, `SELECT id FROM idea_revisions WHERE idea_id='${ideaId}' AND version=2`)
+        const auditId = await sql(source, `INSERT INTO audit_events(idea_id,actor_id,event_type)
+          VALUES ('${ideaId}','${director}','synthetic_preservation') RETURNING id`)
+        const captureRole = 'synthetic_held_capturer'
+        await sql(source, `CREATE ROLE ${captureRole} LOGIN PASSWORD 'synthetic-hold-capture-only';
+          GRANT EXECUTE ON FUNCTION public.lock_active_legal_hold_authority(text,text),
+            public.read_held_source_selection(text,text,uuid,jsonb),
+            public.prepare_journaled_hold_scope_review(text,text,uuid,uuid,jsonb,text,text,text,uuid,text) TO ${captureRole}`)
+        if (await sql(source, `SELECT has_table_privilege('${captureRole}','public.idea_revisions','SELECT')`) !== 'f') {
+          throw new Error('Synthetic capture role can bypass source selection')
+        }
+        const captureUrl = new URL(databaseUrl)
+        captureUrl.username = captureRole
+        captureUrl.password = 'synthetic-hold-capture-only'
+        const fixtureEmail = 'synthetic-authority@example.invalid'
+        const captureVerifier = {
+          async verifySessionCookie(cookie) { return { uid: cookie === 'synthetic-legal' ? marker : 'synthetic-unassigned',
+            email: fixtureEmail, email_verified: true, firebase: { sign_in_provider: 'password' } } },
+          async getUser(uid) { return { uid, email: fixtureEmail, emailVerified: true, disabled: false } },
+        }
+        const media = Buffer.from('Synthetic exact preview')
+        const mediaChecksum = new CRC32C(); mediaChecksum.update(media)
+        const mediaStorage = { bucket(name) {
+          if (name !== 'synthetic-private-previews') throw new Error('Unexpected media bucket')
+          return { file(object, options) {
+            if (object !== 'synthetic-preview' || options.preconditionOpts.ifGenerationMatch !== '1') {
+              throw new Error('Exact held source generation was not selected')
+            }
+            const file = { interceptors: [], async getMetadata() {
+              const request = file.interceptors[0]?.request({ uri: '/synthetic', qs: {} })
+              if (request?.qs?.generation !== '1') throw new Error('Held source read did not pin its generation')
+              return [{ name: object, bucket: name, generation: '1', size: String(media.length), crc32c: mediaChecksum.toString() }]
+            }, createReadStream() { return Readable.from([media]) } }
+            return file
+          } }
+        } }
+        const selections = [
+          { source: { kind: 'revision', sourceId: heldRevision, sourceGeneration: null }, artifactId: randomUUID() },
+          { source: { kind: 'related_record', sourceType: 'audit_events', sourceId: auditId, sourceGeneration: null }, artifactId: randomUUID() },
+          { source: { kind: 'media', sourceId: previewId, sourceGeneration: '1' }, artifactId: randomUUID() },
+        ]
+        const capture = (selected, cookie = 'synthetic-legal') => captureAuthorizedHeldInventory(captureUrl.toString(),
+          'demo-idea-map', cookie, captureVerifier, { source: mediaStorage, held: journal }, journalTarget,
+          { upload: 'synthetic-private-uploads', preview: 'synthetic-private-previews' },
+          { holdId, operationId: reviewOperation, manifestArtifactId: manifestArtifact, selections: selected })
+        try {
+          const listCandidates = (cookie, caseId = holdId) => listAuthorizedHeldSourceCandidates(
+            captureUrl.toString(), 'demo-idea-map', cookie, captureVerifier, caseId)
+          const deniedInventory = await listCandidates('synthetic-unassigned')
+          if (deniedInventory.state !== 'forbidden') throw new Error('Unassigned actor listed held sources')
+          let unknownHoldRejected = false
+          try { await listCandidates('synthetic-legal', randomUUID()) }
+          catch { unknownHoldRejected = true }
+          if (!unknownHoldRejected) throw new Error('A missing hold listed candidate sources')
+          const candidates = await listCandidates('synthetic-legal')
+          if (candidates.state !== 'authorized' || candidates.value.holdId !== holdId || candidates.value.ideaId !== ideaId ||
+              candidates.value.sources.some(source => source.sourceId === unrelatedIdea) ||
+              selections.some(({ source }) => !candidates.value.sources.some(candidate =>
+                candidate.kind === source.kind && candidate.sourceId === source.sourceId &&
+                candidate.sourceGeneration === source.sourceGeneration && candidate.sourceType === source.sourceType))) {
+            throw new Error('The held source listing differs from the active idea and selected generations')
+          }
+          const rawCandidates = await runtimeDatabasePool(captureUrl.toString()).query(
+            'SELECT body, object_name, object_digest, object_store FROM public.read_held_source_selection($1,$2,$3,NULL)',
+            ['firebase:demo-idea-map', marker, holdId],
+          )
+          if (rawCandidates.rows.length !== candidates.value.sources.length ||
+              rawCandidates.rows.some(row => Object.values(row).some(value => value !== null))) {
+            throw new Error('The held source listing returned material bytes or storage metadata')
+          }
+          const denied = await capture(selections, 'synthetic-unassigned')
+          if (denied.state !== 'forbidden' || entries.size !== 0) throw new Error('Unassigned actor captured held material')
+          let rejectedMissing = false
+          try { await capture([{ ...selections[2], source: { ...selections[2].source, sourceGeneration: '2' } }]) }
+          catch (error) { rejectedMissing = error.message === 'Held source selection is incomplete' }
+          if (!rejectedMissing || entries.size !== 0) throw new Error('An unknown media generation produced held artifacts')
+          const captured = await capture(selections)
+          if (captured.state !== 'authorized' || captured.value.capturedSources !== selections.length || captured.value.ideaId !== ideaId) {
+            throw new Error('Synthetic selected hold capture did not complete')
+          }
+          manifestReference = captured.value.inventory
+          const bytes = await readUnverifiedHeldMaterial(journal, journalTarget, manifestArtifact, manifestReference)
+          const { entries: manifestEntries } = decodeUnverifiedHeldManifest(bytes, 'dev')
+          heldBytes = manifestEntries.reduce((total, entry) => total + entry.size, 0)
+          const capturedRevision = manifestEntries.find(entry => entry.sourceId === heldRevision)
+          const artifact = Buffer.from(await readUnverifiedHeldMaterial(journal, journalTarget, capturedRevision.artifactId, capturedRevision))
+          if (JSON.parse(artifact.toString()).content?.title !== 'Synthetic later held material') {
+            throw new Error('The selected revision did not retain its complete row')
+          }
+          const review = () => recordJournaledHoldScopeReview(captureUrl.toString(), coordinatorDatabaseUrl,
+            'demo-idea-map', 'synthetic-legal', captureVerifier, { ...sequenceTarget, checkpointDigest },
+            { writer: sequenceWriter, reader: sequenceReader }, { source: mediaStorage, held: journal }, journalTarget.bucket,
+            { upload: 'synthetic-private-uploads', preview: 'synthetic-private-previews' },
+            { holdId, operationId: reviewOperation, inventory: manifestReference })
+          await sql(source, `UPDATE audit_events SET event_type='synthetic_changed' WHERE id='${auditId}'`)
+          let rejectedChanged = false
+          try { await review() } catch (error) { rejectedChanged = error.message === 'Held source changed after capture' }
+          if (!rejectedChanged || frames.length !== 5 ||
+              await sql(source, `SELECT public.lock_idea_for_retention('${ideaId}')`) !== 'f') {
+            throw new Error('A changed source accepted a scope review')
+          }
+          await sql(source, `UPDATE audit_events SET event_type='synthetic_preservation' WHERE id='${auditId}'`)
+          for (let attempt = 0; attempt < 2; attempt++) {
+            const reviewed = await review()
+            if (reviewed.state !== 'authorized' || reviewed.value.state !== 'recorded' ||
+                reviewed.value.selectedSources !== selections.length || reviewed.value.holdId !== holdId) {
+              throw new Error('Synthetic authorized scope review did not complete')
+            }
+          }
+          if (await sql(source, `SELECT count(*) FROM legal_hold_scope_reviews WHERE operation_id='${reviewOperation}'
+            AND confirmation_version>intent_version`) !== '1') throw new Error('Synthetic scope receipt is missing')
+        } finally { await runtimeDatabasePool(captureUrl.toString()).end() }
+    })
+    if (frames.length !== 7) throw new Error('Synthetic requests did not produce one intent and confirmation each')
     sequenceFenceVersion = (await appendSequence({ ...sequenceBase, kind: 'fence', nonce: sequenceFenceNonce })).version
   } finally {
-    if (coordinatorPoolUsed) await pendingRemovalDatabasePool(databaseUrl).end()
     if (previousEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
     else process.env.STORAGE_EMULATOR_HOST = previousEmulator
   }
@@ -355,6 +628,7 @@ update-ca-certificates >/dev/null 2>&1`)
   const restore = start('docker', ['exec', '-i', container, 'pg_restore', '-U', 'idea_map', '--no-owner', '--exit-on-error', '-d', target])
   restore.child.stdout.resume()
   await Promise.all([pipeline(createReadStream(archive), restore.child.stdin), restore.done])
+  if (await sql(target, defaultAclDigestSql) !== backupAclDigest) throw new Error('Restore default privileges differ from backup snapshot')
   // An older archive can contain an open gate. The replacement is independently
   // isolated before restore, so a runtime identity cannot connect at this point.
   const originallyOpenGate = await sql(target, 'SELECT is_open FROM public.public_access_gate WHERE singleton=true')
@@ -362,8 +636,17 @@ update-ca-certificates >/dev/null 2>&1`)
   await assertRuntimeFence(target, port)
   // Keep the database gate closed for all subsequent reconciliation. The
   // external fence remains in place and is still required for older schemas.
-  const closedGate = await sql(target, 'UPDATE public.public_access_gate SET is_open=false WHERE singleton=true RETURNING is_open')
-  if (closedGate !== 'f') throw new Error('Synthetic gate could not be closed')
+  const targetClosure = randomUUID()
+  const reconcilerRole = 'synthetic_restore_reconciler'
+  await sql(target, `UPDATE public.public_access_gate SET is_open=false WHERE singleton=true;
+    CREATE ROLE ${reconcilerRole} LOGIN PASSWORD 'synthetic-reconciler-only';
+    GRANT CONNECT ON DATABASE ${target} TO ${reconcilerRole};
+    GRANT EXECUTE ON FUNCTION public.suppress_restored_removals(uuid[]),
+      public.protect_restored_held_ideas(uuid,uuid[]) TO ${reconcilerRole};`)
+  if (await sql(target, `SELECT has_table_privilege('${reconcilerRole}','public.restored_hold_protections','DELETE')
+        OR has_function_privilege('${reconcilerRole}','public.authorize_journaled_public_access(text,text,text,uuid,text)','EXECUTE')`) !== 'f') {
+    throw new Error('Synthetic recovery role can bypass reconciliation')
+  }
   const restored = await sql(target, `SELECT count(*) FROM synthetic_recovery_marker WHERE id='${marker}-before'`)
   const excluded = await sql(target, `SELECT count(*) FROM synthetic_recovery_marker WHERE id='${marker}-after'`)
   const postgis = await sql(target, 'SELECT count(*) FROM pg_extension WHERE extname = \'postgis\'')
@@ -384,52 +667,44 @@ update-ca-certificates >/dev/null 2>&1`)
   const laterRevisionQuery = `SELECT count(*) FROM idea_revisions WHERE idea_id='${ideaId}' AND version=2`
   const sourceLaterRevision = await sql(source, laterRevisionQuery)
   const restoredLaterRevision = await sql(target, laterRevisionQuery)
+  // Model loss of the ordinary archive after restoration. The held artifacts
+  // and decisions must remain independently readable while the target is fenced.
+  await rm(archive)
   let summary, recoveryRecords
   const inventoryEmulator = process.env.STORAGE_EMULATOR_HOST
   delete process.env.STORAGE_EMULATOR_HOST
   try {
     const preparedInventory = await readUnverifiedRecoverySequence(sequenceReader, sequenceTarget, sequenceFenceVersion, sequenceFenceNonce)
-    if (preparedInventory.coverageVerified !== false || preparedInventory.records.length !== 4) {
+    if (preparedInventory.coverageVerified !== false || preparedInventory.records.length !== 6) {
       throw new Error('Synthetic sequence inventory failed verification')
     }
     recoveryRecords = preparedInventory.records.map(record => record.payload)
     summary = preparedInventory.summary
-    const holdIntent = recoveryRecords.find(record => {
-      const decoded = decodeRecoveryRecord(record, 'dev')
-      return decoded.operationId === holdOperation && decoded.recordType === 'intent'
-    })
-    const holdConfirmation = recoveryRecords.find(record => {
-      const decoded = decodeRecoveryRecord(record, 'dev')
-      return decoded.operationId === holdOperation && decoded.recordType === 'hold_commit_confirmation'
-    })
-    if (!holdIntent || !holdConfirmation) throw new Error('Synthetic hold records are missing')
-    const checked = await verifyUnverifiedHeldCapture(journal, journalTarget, holdIntent, holdConfirmation)
-    if (heldReference.coverageVerified !== false || manifestReference.coverageVerified !== false ||
-        checked.coverageVerified !== false || checked.checkedArtifacts !== 1 || checked.totalBytes !== heldReference.size + manifestReference.size) {
-      throw new Error('Synthetic held material readback failed')
-    }
     const sequenceHeld = await verifySequenceHeldCaptures(sequenceReader, sequenceTarget, sequenceFenceVersion, sequenceFenceNonce, journal, journalTarget)
-    if (sequenceHeld.checkedCaptures !== 1 || sequenceHeld.checkedArtifacts !== 1 || sequenceHeld.totalBytes !== heldReference.size + manifestReference.size ||
-        sequenceHeld.incompletePlacements !== 0 || sequenceHeld.reviewOperations !== 1 || sequenceHeld.unmatchedConfirmations !== 0 ||
+    if (sequenceHeld.checkedCaptures !== 0 || sequenceHeld.checkedArtifacts !== 3 || sequenceHeld.checkedScopeInventories !== 1 ||
+        sequenceHeld.totalBytes !== heldBytes + manifestReference.size ||
+        sequenceHeld.incompletePlacements !== 1 || sequenceHeld.incompleteScopeReviews !== 0 || sequenceHeld.reviewOperations !== 2 || sequenceHeld.unmatchedConfirmations !== 0 ||
         sequenceHeld.coverageVerified !== false || sequenceHeld.authorityVerified !== false) throw new Error('Synthetic sequence held capture failed verification')
   } finally {
     if (inventoryEmulator === undefined) delete process.env.STORAGE_EMULATOR_HOST
     else process.env.STORAGE_EMULATOR_HOST = inventoryEmulator
   }
+  const requestPlacement = summary.holdIdentities.find(placement => placement.operationId === journaledHoldId)
   if (summary.coverageVerified !== false || summary.removals.length !== 1 || summary.removals[0] !== ideaId ||
       summary.holdPlacements.length !== 1 || summary.holdPlacements[0] !== ideaId ||
       summary.holdReviewIdeas.length !== 1 || summary.holdReviewIdeas[0] !== ideaId || summary.holdIdentities.length !== 1 ||
-      summary.holdIdentities[0].operationId !== holdOperation || summary.holdIdentities[0].ideaId !== ideaId ||
-      summary.holdIdentities[0].holdId !== committedHoldId || summary.holdIdentities[0].placementAuthorityId !== committedAuthorityId ||
-      summary.holdIdentities[0].placedAt !== committedPlacedAt ||
-      JSON.stringify(summary.holdIdentities[0].authorityEvidence) !== JSON.stringify(committedAuthority) || summary.reviewOperations.length !== 1 ||
-      summary.reviewOperations[0] !== holdOperation || summary.unmatchedConfirmations !== 0) {
+      !requestPlacement || requestPlacement.holdId !== journaledHoldId || requestPlacement.ideaId !== ideaId ||
+      requestPlacement.placementAuthorityId !== committedAuthorityId || requestPlacement.placedAt !== committedPlacedAt ||
+      JSON.stringify(requestPlacement.authorityEvidence) !== JSON.stringify(committedAuthority) || summary.reviewOperations.length !== 2 ||
+      !summary.reviewOperations.includes(journaledHoldId) || !summary.reviewOperations.includes(reviewOperation) || summary.unmatchedConfirmations !== 0) {
     throw new Error('Synthetic journal summary failed verification')
   }
   // The target stays isolated. Exercise the real projection and preview queries
   // internally, without opening the gate or claiming complete reconciliation.
   const recoveryPool = new pg.Pool({ connectionString: `postgres://idea_map:synthetic-local-only@127.0.0.1:${port}/${target}`,
     max: 2, connectionTimeoutMillis: 5000 })
+  const reconciliationPool = new pg.Pool({ connectionString: `postgres://${reconcilerRole}:synthetic-reconciler-only@127.0.0.1:${port}/${target}`,
+    max: 1, connectionTimeoutMillis: 5000 })
   const imageBytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
   let previewReads = 0
   const previewStorage = { bucket: bucket => ({ file: (name, options) => {
@@ -466,6 +741,10 @@ update-ca-certificates >/dev/null 2>&1`)
     catch (error) { rejectedOpenGate = error.message === 'Recovery suppression outcome is uncertain' }
     finally { await sql(target, 'UPDATE public.public_access_gate SET is_open=false WHERE singleton=true') }
     if (!rejectedOpenGate || (await sql(target, visibleQuery)) !== '1') throw new Error('Synthetic suppression accepted an open gate')
+    await sql(target, `SELECT public.place_independent_access_closure('recovery','${targetClosure}')`)
+    if (await sql(target, `SELECT public.inspect_independent_access_closure('recovery','${targetClosure}')`) !== 't') {
+      throw new Error('Synthetic recovery closure is missing')
+    }
     const removalIntent = recoveryRecords.find(record => {
       const decoded = decodeRecoveryRecord(record, 'dev')
       return decoded.recordType === 'intent' && decoded.operationId === removalOperation
@@ -503,13 +782,13 @@ update-ca-certificates >/dev/null 2>&1`)
       } })
       const nextReader = readerFor(next, nextFrames)
       const rollover = await suppressKnownRemovalsFromRollover(sequenceReader, previous, nextReader, next, recoveryPool)
-      if (JSON.stringify(rollover) !== JSON.stringify({ matched: 1, absent: 1, reviewOperations: 2,
+      if (JSON.stringify(rollover) !== JSON.stringify({ matched: 1, absent: 1, reviewOperations: 3,
         coverageVerified: false, earlierEpochsIncluded: false }) || (await sql(target, visibleQuery)) !== '0') {
         throw new Error('Synthetic rollover did not suppress known removals')
       }
       const heldRollover = await verifyRolloverHeldCaptures(sequenceReader, previous, nextReader, next, journal, journalTarget)
-      if (JSON.stringify(heldRollover) !== JSON.stringify({ checkedCaptures: 1, checkedArtifacts: 1,
-        totalBytes: heldReference.size + manifestReference.size, incompletePlacements: 0, reviewOperations: 2,
+      if (JSON.stringify(heldRollover) !== JSON.stringify({ checkedCaptures: 0, checkedArtifacts: 3, checkedScopeInventories: 1,
+        totalBytes: heldBytes + manifestReference.size, incompletePlacements: 1, incompleteScopeReviews: 0, reviewOperations: 3,
         unmatchedConfirmations: 0, coverageVerified: false, authorityVerified: false, earlierEpochsIncluded: false })) {
         throw new Error('Synthetic rollover held-material readback failed')
       }
@@ -522,20 +801,39 @@ update-ca-certificates >/dev/null 2>&1`)
       const chain = [{ reader: sequenceReader, descriptor: previous }, { reader: nextReader, descriptor: next },
         { reader: readerFor(third, thirdFrames), descriptor: third }]
       const chainSuppression = await suppressKnownRemovalsFromSequenceChain(chain, recoveryPool)
-      if (JSON.stringify(chainSuppression) !== JSON.stringify({ matched: 1, absent: 1, reviewOperations: 2,
+      if (JSON.stringify(chainSuppression) !== JSON.stringify({ matched: 1, absent: 1, reviewOperations: 3,
         coverageVerified: false, epochCount: 3, earlierEpochsIncluded: false }) || (await sql(target, visibleQuery)) !== '0') {
         throw new Error('Synthetic chain did not suppress known removals')
       }
       const heldChain = await verifySequenceChainHeldCaptures(chain, journal, journalTarget)
-      if (JSON.stringify(heldChain) !== JSON.stringify({ checkedCaptures: 1, checkedArtifacts: 1,
-        totalBytes: heldReference.size + manifestReference.size, incompletePlacements: 0, reviewOperations: 2,
+      if (JSON.stringify(heldChain) !== JSON.stringify({ checkedCaptures: 0, checkedArtifacts: 3, checkedScopeInventories: 1,
+        totalBytes: heldBytes + manifestReference.size, incompletePlacements: 1, incompleteScopeReviews: 0, reviewOperations: 3,
         unmatchedConfirmations: 0, coverageVerified: false, authorityVerified: false, epochCount: 3, earlierEpochsIncluded: false })) {
         throw new Error('Synthetic chain held-material readback failed')
       }
       await sql(target, `UPDATE ideas SET publication_state='approved' WHERE id='${ideaId}'; UPDATE media_previews SET published=true WHERE id='${previewId}'`)
-      const coordinated = await suppressKnownRemovalsFromSequence(sequenceReader, sequenceTarget, sequenceFenceVersion, sequenceFenceNonce, recoveryPool)
-      if (JSON.stringify(coordinated) !== JSON.stringify({ matched: 1, absent: 0, reviewOperations: 1, coverageVerified: false }) ||
-          (await sql(target, visibleQuery)) !== '0') throw new Error('Synthetic inventory did not suppress the restored removal')
+      const restoreJournal = { ...sequenceTarget, checkpointDigest: 'a'.repeat(64) }
+      let rejectedWrongClosure = false
+      try {
+        await reconcileFencedRecoveryFromSequence(sequenceReader, restoreJournal, sequenceFenceVersion,
+          sequenceFenceNonce, reconciliationPool, randomUUID())
+      } catch (error) { rejectedWrongClosure = error.message === 'Recovery suppression outcome is uncertain' }
+      if (!rejectedWrongClosure || await sql(target, visibleQuery) !== '1') throw new Error('Wrong recovery closure partially applied reconciliation')
+      const coordinated = await reconcileFencedRecoveryFromSequence(sequenceReader, restoreJournal, sequenceFenceVersion,
+        sequenceFenceNonce, reconciliationPool, targetClosure)
+      if (coordinated.matched !== 1 || coordinated.absent !== 0 || coordinated.reviewOperations !== 2 || coordinated.coverageVerified !== false ||
+          coordinated.holds?.matched !== 1 || coordinated.holds.absent !== 0 ||
+          (await sql(target, visibleQuery)) !== '0' ||
+          (await sql(target, `SELECT public.lock_idea_for_retention('${ideaId}')`)) !== 'f') {
+        throw new Error('Synthetic recovery did not preserve removal and hold restrictions')
+      }
+      const control = await recoveryPool.connect()
+      try {
+        if ((await readPublishedIdea('', unrelatedIdea, control))?.title !== 'Synthetic control' ||
+            await sql(target, `SELECT public.lock_idea_for_retention('${unrelatedIdea}')`) !== 't') {
+          throw new Error('Recovery changed unrelated approved content')
+        }
+      } finally { control.release() }
       if (await sql(target, 'SELECT is_open FROM public.public_access_gate WHERE singleton=true') !== 'f') {
         throw new Error('Synthetic inventory and suppression opened the public gate')
       }
@@ -553,12 +851,12 @@ update-ca-certificates >/dev/null 2>&1`)
     }
     const suppressed = await suppressUnverifiedRestoredRemovals(recoveryPool, recoveryRecords, 'dev')
     const retried = await suppressUnverifiedRestoredRemovals(recoveryPool, recoveryRecords, 'dev')
-    if (JSON.stringify(suppressed) !== JSON.stringify({ matched: 1, absent: 0, reviewOperations: 1, coverageVerified: false }) ||
+    if (JSON.stringify(suppressed) !== JSON.stringify({ matched: 1, absent: 0, reviewOperations: 2, coverageVerified: false }) ||
         JSON.stringify(retried) !== JSON.stringify(suppressed)) throw new Error('Synthetic suppression was not idempotent')
     const missingIntent = encodeRecoveryIntent({ ...base, ideaId: randomUUID(), operationId: randomUUID(),
       decision: { kind: 'removal', classification: 'other', reason: 'synthetic uncertain removal' } })
     const withMissing = await suppressUnverifiedRestoredRemovals(recoveryPool, [...recoveryRecords, missingIntent], 'dev')
-    if (JSON.stringify(withMissing) !== JSON.stringify({ matched: 1, absent: 1, reviewOperations: 2, coverageVerified: false })) {
+    if (JSON.stringify(withMissing) !== JSON.stringify({ matched: 1, absent: 1, reviewOperations: 3, coverageVerified: false })) {
       throw new Error('Synthetic missing removal was not reported for review')
     }
     const empty = await suppressUnverifiedRestoredRemovals(recoveryPool, [], 'dev')
@@ -577,7 +875,7 @@ update-ca-certificates >/dev/null 2>&1`)
     const after = await readRecoveryContent()
     if (after.idea !== null || after.preview !== null || previewReads !== 1) throw new Error('Synthetic removal remained publicly readable')
     reconciledVisible = await sql(target, visibleQuery)
-  } finally { await recoveryPool.end() }
+  } finally { await Promise.all([recoveryPool.end(), reconciliationPool.end()]) }
   const functionPrivilege = "SELECT has_function_privilege('public','public.place_legal_hold_outcome(text,text,uuid,text,text)','EXECUTE')"
   const sourcePublicExecute = await sql(source, functionPrivilege)
   const restoredPublicExecute = await sql(target, functionPrivilege)
@@ -628,8 +926,9 @@ update-ca-certificates >/dev/null 2>&1`)
   console.log(JSON.stringify({ backupSeconds: (backupFinished - dumpStarted) / 1000,
     recoverySeconds: (Date.now() - recoveryStarted) / 1000, dataLossSeconds: lossMs / 1000,
     migrations: Number(migrations), postgisRestored: true, syntheticRemovalSuppressed: true,
-    syntheticPreviewSuppressed: true, heldEvidenceRequiresReconciliation: true,
-    holdAuthorityRequiresReconciliation: true,
+    journaledRemovalRequestVerified: true, journaledHoldPlacementVerified: true, sourceDefaultPrivilegesMatched: true,
+    syntheticPreviewSuppressed: true, restoredHoldBlocksRetention: true, unrelatedIdeaPreserved: true, selectedHeldSourcesCaptured: true, journaledScopeReviewVerified: true, heldEvidenceRequiresReconciliation: true,
+    holdAuthorityRequiresReconciliation: true, syntheticArchiveRemovedBeforeReconciliation: true,
     journalCoverageVerified: false, syntheticGrantAndRevocationRestored: true, missingRoleRejected: true,
     restoredOpenGateFenced: true, missingGateFenced: true, databaseAccessFenced: true }))
 } finally {

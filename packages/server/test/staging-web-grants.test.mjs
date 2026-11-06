@@ -24,8 +24,6 @@ test('the staging web role reads only the public application result and cannot u
     await admin.query('BEGIN')
     await admin.query(await readFile(new URL('./staging-web-grants.sql', import.meta.url), 'utf8'))
     await admin.query(await readFile(new URL('./ssr-fixture.sql', import.meta.url), 'utf8'))
-    // Exercise the proposed reader grant only on this disposable test role.
-    await admin.query('GRANT EXECUTE ON FUNCTION public.public_access_allowed() TO idea_map_staging_web_test')
     await admin.query("ALTER ROLE idea_map_staging_web_test PASSWORD 'local-only-staging-web-test'")
     await admin.query('COMMIT')
     ownsFixtures = true
@@ -53,7 +51,7 @@ test('the staging web role reads only the public application result and cannot u
     try {
       await runtime.connect()
       for (const statement of ['SELECT id FROM public.contacts', 'SELECT id FROM public.jobs', 'UPDATE public.outbox SET published_at = now()',
-        'UPDATE public.public_access_gate SET is_open = true']) {
+        'SELECT is_open FROM public.public_access_gate', 'UPDATE public.public_access_gate SET is_open = true']) {
         await assert.rejects(runtime.query(statement), { code: '42501' })
       }
     } finally { await runtime.end() }

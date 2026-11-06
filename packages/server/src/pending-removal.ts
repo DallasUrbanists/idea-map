@@ -1,16 +1,38 @@
 import { decodeRecoveryRecord, encodeRecoveryConfirmation, encodeRecoveryIntent, recoveryConfirmationRecordId } from './recovery-journal-record.js'
 import { withVerifiedModerator, type ModeratorAccess, type RegisteredSessionVerifier } from './moderator-authorization.js'
 import { pendingRemovalDatabasePool } from './runtime-database.js'
-import { encodeRecoverySequenceEntry } from './recovery-sequence.js'
+import { decodeRecoverySequenceEntry, encodeRecoverySequenceEntry } from './recovery-sequence.js'
 import { appendAndVerifyRecoverySequenceVersion, readRecoverySequenceVersion, type RecoverySequenceTransport } from './recovery-sequence-storage.js'
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const uuid4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const journalReason = 'Authorized removal'
-type PendingResult = 'stale' | { state: 'pending', recordId: string, payload: Uint8Array }
+type PendingResult = 'stale' | 'resolved' | { state: 'pending', recordId: string, payload: Uint8Array }
 type PendingRemovalInput = {
   operationId: string, recordId: string, ideaId: string, approvedRevisionId: string,
   classification: 'violation' | 'other', reason: string,
+}
+type Candidate = Record<keyof PendingRemovalInput, unknown>
+type RemovalJournal = {
+  environment: 'dev' | 'prod', projectNumber: string, secretId: string, epochId: string, checkpointDigest: string,
+}
+
+function validRemoval(input: Candidate): input is PendingRemovalInput {
+  return typeof input.operationId === 'string' && uuid4.test(input.operationId) &&
+    typeof input.recordId === 'string' && uuid4.test(input.recordId) &&
+    typeof input.ideaId === 'string' && uuid.test(input.ideaId) &&
+    typeof input.approvedRevisionId === 'string' && uuid.test(input.approvedRevisionId) &&
+    (input.classification === 'violation' || input.classification === 'other') &&
+    typeof input.reason === 'string' && input.reason.trim().length > 0 && Buffer.byteLength(input.reason) <= 1000 &&
+    Buffer.from(input.reason, 'utf8').toString('utf8') === input.reason && !/[\x00-\x1f\x7f]/u.test(input.reason)
+}
+
+/** The client retains one operation ID for retries of the same decision. */
+export function readJournaledRemovalRequest(body: unknown): PendingRemovalInput | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length !== 5) return null
+  const { operationId, ideaId, approvedRevisionId, classification, reason } = body as Candidate
+  const input = { operationId, recordId: operationId, ideaId, approvedRevisionId, classification, reason }
+  return validRemoval(input) ? input : null
 }
 
 /** Pin a saved intent before any sequence append. This does not append or apply it. */
@@ -167,19 +189,13 @@ export async function inspectSequenceRemoval(databaseUrl: string, projectId: str
  * IDs and retry the same operation after an uncertain result.
  */
 export async function preparePendingRemoval(databaseUrl: string, projectId: string, cookie: string,
-  verifier: RegisteredSessionVerifier, environment: 'dev' | 'prod', input: PendingRemovalInput): Promise<ModeratorAccess<PendingResult>> {
+  verifier: RegisteredSessionVerifier, environment: 'dev' | 'prod', input: PendingRemovalInput,
+  journal?: RemovalJournal): Promise<ModeratorAccess<PendingResult>> {
   if (!databaseUrl || !['dev', 'prod'].includes(environment) || !input || typeof input !== 'object') throw new Error('Invalid pending removal')
   const saved = { operationId: input.operationId, recordId: input.recordId, ideaId: input.ideaId,
     approvedRevisionId: input.approvedRevisionId, classification: input.classification, reason: input.reason }
-  if (typeof saved.operationId !== 'string' || !uuid4.test(saved.operationId) ||
-      typeof saved.recordId !== 'string' || !uuid4.test(saved.recordId) ||
-      typeof saved.ideaId !== 'string' || !uuid.test(saved.ideaId) ||
-      typeof saved.approvedRevisionId !== 'string' || !uuid.test(saved.approvedRevisionId) ||
-      !['violation', 'other'].includes(saved.classification) || typeof saved.reason !== 'string' ||
-      !saved.reason.trim() || Buffer.byteLength(saved.reason) > 1000 ||
-      Buffer.from(saved.reason, 'utf8').toString('utf8') !== saved.reason || /[\x00-\x1f\x7f]/u.test(saved.reason)) {
-    throw new Error('Invalid pending removal')
-  }
+  if (!validRemoval(saved)) throw new Error('Invalid pending removal')
+  const baseline = journal && [journal.projectNumber, journal.secretId, journal.epochId, journal.checkpointDigest]
   try {
     return await withVerifiedModerator(databaseUrl, projectId, cookie, verifier, async (client, actor, subject) => {
       await client.query("SET LOCAL lock_timeout = '5s'")
@@ -189,12 +205,15 @@ export async function preparePendingRemoval(databaseUrl: string, projectId: stri
       const intent = encodeRecoveryIntent({ operationId: saved.operationId, environment, ideaId: saved.ideaId,
         actorId: actor, authorizedAt, decision: { kind: 'removal', classification: saved.classification, reason: journalReason } })
       const result = await client.query<{ outcome: string, persisted_record_id: string | null, persisted_intent: string | null }>(
-        'SELECT * FROM public.prepare_pending_removal($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+        baseline
+          ? 'SELECT * FROM public.prepare_journaled_removal($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)'
+          : 'SELECT * FROM public.prepare_pending_removal($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
         [`firebase:${projectId}`, subject, saved.ideaId, saved.approvedRevisionId, saved.operationId, saved.recordId,
-          environment, saved.classification, saved.reason, Buffer.from(intent).toString('utf8')])
+          environment, saved.classification, saved.reason, Buffer.from(intent).toString('utf8'), ...(baseline ?? [])])
       const row = result.rows[0]
       if (row?.outcome === 'stale' && row.persisted_record_id === null && row.persisted_intent === null) return 'stale'
-      if (row?.outcome !== 'pending' || row.persisted_record_id !== saved.recordId || typeof row.persisted_intent !== 'string') {
+      if ((row?.outcome !== 'pending' && row?.outcome !== 'resolved') ||
+          row.persisted_record_id !== saved.recordId || typeof row.persisted_intent !== 'string') {
         throw new Error('Pending removal is ambiguous')
       }
       const payload = Buffer.from(row.persisted_intent, 'utf8')
@@ -202,6 +221,7 @@ export async function preparePendingRemoval(databaseUrl: string, projectId: stri
       if (record.recordType !== 'intent' || record.operationId !== saved.operationId || record.ideaId !== saved.ideaId ||
           record.actorId !== actor || record.decision.kind !== 'removal' || record.decision.classification !== saved.classification ||
           record.decision.reason !== journalReason) throw new Error('Pending removal is ambiguous')
+      if (row.outcome === 'resolved') return 'resolved'
       return { state: 'pending' as const, recordId: row.persisted_record_id, payload }
     }, pendingRemovalDatabasePool(databaseUrl))
   } catch {
@@ -346,20 +366,33 @@ export async function verifySequenceRemovalConfirmation(databaseUrl: string, pro
 }
 
 /**
- * Run the unwired, retryable sequence through confirmation. The caller must
+ * Run the retryable sequence through confirmation. The caller must
  * retain the same operation and record IDs. This never reopens the gate,
  * proves journal coverage, or replaces the separate recovery fence.
  */
 export async function coordinateSequenceRemoval(preparationDatabaseUrl: string, coordinatorDatabaseUrl: string,
   projectId: string, cookie: string, verifier: RegisteredSessionVerifier,
-  target: { environment: 'dev' | 'prod', projectNumber: string, secretId: string, epochId: string },
+  target: Omit<RemovalJournal, 'checkpointDigest'> & { checkpointDigest?: string },
   writer: RecoverySequenceTransport, reader: RecoverySequenceTransport, input: PendingRemovalInput): Promise<ModeratorAccess<
     'stale' | 'journal_uncertain' | 'confirmation_uncertain' | 'reconciliation_required' | 'confirmed'>> {
   if (!target || !input || typeof input !== 'object') throw new Error('Invalid pending removal')
   const destination = { ...target }, decision = { ...input }
-  const prepared = await preparePendingRemoval(preparationDatabaseUrl, projectId, cookie, verifier, destination.environment, decision)
+  const journal = destination.checkpointDigest === undefined ? undefined : { ...destination, checkpointDigest: destination.checkpointDigest }
+  const prepared = await preparePendingRemoval(preparationDatabaseUrl, projectId, cookie, verifier, destination.environment, decision, journal)
   if (prepared.state !== 'authorized') return prepared
   if (prepared.value === 'stale') return { state: 'authorized', value: 'stale' }
+  // Verify the pinned epoch after committing the pause but before its first
+  // append. A broken journal leaves the authorized removal safely pending.
+  if (journal) {
+    try {
+      const bytes = await readRecoverySequenceVersion(reader, journal, '1')
+      const baseline = decodeRecoverySequenceEntry(bytes, journal.environment, journal.epochId)
+      if (baseline.kind !== 'baseline' || baseline.checkpointDigest !== journal.checkpointDigest) {
+        return { state: 'authorized', value: 'reconciliation_required' }
+      }
+    } catch { return { state: 'authorized', value: 'journal_uncertain' } }
+  }
+  if (prepared.value === 'resolved') return { state: 'authorized', value: 'confirmed' }
   const saved = { operationId: decision.operationId, recordId: prepared.value.recordId, payload: Buffer.from(prepared.value.payload) }
   const journaled = await journalPendingRemovalSequence(coordinatorDatabaseUrl, projectId, cookie, verifier, destination, writer, reader, saved)
   if (journaled.state !== 'authorized') return journaled
@@ -379,4 +412,36 @@ export async function coordinateSequenceRemoval(preparationDatabaseUrl: string, 
     destination, reader, confirmationInput, confirmation.value.version)
   if (verified.state !== 'authorized') return verified
   return { state: 'authorized', value: verified.value === 'confirmation_uncertain' ? 'confirmation_uncertain' : 'confirmed' }
+}
+
+/** Resolve a verified removal against the pinned baseline for routine service. */
+export async function removeThroughRecoveryJournal(
+  preparationDatabaseUrl: string, coordinatorDatabaseUrl: string, projectId: string, cookie: string,
+  verifier: RegisteredSessionVerifier, journal: RemovalJournal,
+  { writer, reader }: { writer: RecoverySequenceTransport, reader: RecoverySequenceTransport }, input: PendingRemovalInput,
+): Promise<ModeratorAccess<'stale' | 'reconciliation_required' | { state: 'removed', publicAccess: 'open' | 'paused' }>> {
+  const target = { ...journal }, decision = { ...input }
+  if (!['dev', 'prod'].includes(target.environment) || !/^[1-9][0-9]{5,19}$/.test(target.projectNumber) ||
+      !/^[a-zA-Z0-9_-]{1,255}$/.test(target.secretId) || !uuid4.test(target.epochId) ||
+      !/^[0-9a-f]{64}$/.test(target.checkpointDigest) || !validRemoval(decision)) throw new Error('Invalid removal configuration')
+  const result = await coordinateSequenceRemoval(preparationDatabaseUrl, coordinatorDatabaseUrl, projectId, cookie, verifier,
+    target, writer, reader, decision)
+  if (result.state !== 'authorized') return result
+  if (result.value === 'stale') return { state: 'authorized', value: 'stale' }
+  if (result.value !== 'confirmed') return { state: 'authorized', value: 'reconciliation_required' }
+  try {
+    return await withVerifiedModerator(coordinatorDatabaseUrl, projectId, cookie, verifier, async (client, _actor, subject) => {
+      await client.query("SET LOCAL lock_timeout = '5s'")
+      await client.query("SET LOCAL statement_timeout = '10s'")
+      const { rows } = await client.query<{ allowed: boolean }>(
+        'SELECT public.resolve_journaled_removal($1,$2,$3,$4,$5,$6,$7,$8,$9) AS allowed',
+        [`firebase:${projectId}`, subject, decision.operationId, decision.recordId, target.environment,
+          target.projectNumber, target.secretId, target.epochId, target.checkpointDigest],
+      )
+      if (rows.length !== 1 || typeof rows[0]?.allowed !== 'boolean') throw new Error('Removal resolution unavailable')
+      return { state: 'removed' as const, publicAccess: rows[0].allowed ? 'open' as const : 'paused' as const }
+    }, pendingRemovalDatabasePool(coordinatorDatabaseUrl))
+  } catch {
+    return { state: 'authorized', value: 'reconciliation_required' }
+  }
 }

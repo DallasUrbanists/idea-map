@@ -10,6 +10,36 @@ const placement = { kind: 'hold_placement', caseReference: 'synthetic case', rea
 const assignment = { actorId: base.actorId, authority: 'executive_director', grantedBy: base.actorId,
   grantedAt: '2026-11-03T11:59:00.000000Z', authorizationReference: 'synthetic authority' }
 const decode = value => JSON.parse(Buffer.from(value).toString('utf8'))
+const scopeReview = { kind: 'hold_scope_review', holdId: '44444444-4444-4444-8444-444444444444',
+  caseReference: 'synthetic case', authorizationReference: 'synthetic authority', selectedInventory: {
+    artifactId: '55555555-5555-4555-8555-555555555555', generation: '123', size: 42, sha256: 'a'.repeat(64),
+  } }
+
+test('scope review preserves an exact inventory reference without asserting its authority', () => {
+  const encoded = encodeRecoveryIntent({ ...base, decision: scopeReview })
+  assert.deepEqual(decodeRecoveryRecord(encoded, 'dev'), { version: 1, recordType: 'intent', ...base, decision: scopeReview })
+  assert.deepEqual(decodeRecoveryRecord(encodeRecoveryConfirmation(base.operationId, 'dev', base.authorizedAt), 'dev'),
+    { version: 1, recordType: 'commit_confirmation', operationId: base.operationId, environment: 'dev', confirmedAt: base.authorizedAt })
+  const original = Buffer.from(encoded).toString('utf8')
+  assert.throws(() => decodeRecoveryRecord(encoded, 'prod'), /invalid or incompatible/)
+  assert.throws(() => decodeRecoveryRecord(Buffer.from(`${original} `), 'dev'), /invalid or incompatible/)
+})
+
+test('scope review rejects incomplete or invalid inventory references and unrecognized fields', () => {
+  const inventory = scopeReview.selectedInventory
+  for (const decision of [
+    { ...scopeReview, holdId: 'bad' }, { ...scopeReview, caseReference: '' },
+    { ...scopeReview, authorizationReference: '' }, { ...scopeReview, unexpected: 'private content' },
+    { ...scopeReview, selectedInventory: null }, { ...scopeReview, selectedInventory: [] },
+    { ...scopeReview, selectedInventory: { ...inventory, artifactId: 'bad' } },
+    { ...scopeReview, selectedInventory: { ...inventory, generation: '0' } },
+    { ...scopeReview, selectedInventory: { ...inventory, generation: '1'.repeat(21) } },
+    { ...scopeReview, selectedInventory: { ...inventory, size: 0 } },
+    { ...scopeReview, selectedInventory: { ...inventory, size: 16 * 1024 * 1024 + 1 } },
+    { ...scopeReview, selectedInventory: { ...inventory, sha256: 'A'.repeat(64) } },
+    { ...scopeReview, selectedInventory: { ...inventory, extra: 'private content' } },
+  ]) assert.throws(() => encodeRecoveryIntent({ ...base, decision }), { message: 'Invalid recovery decision' })
+})
 
 test('confirmation record IDs are stable UUIDv8 values distinct from intent UUIDv4 IDs', () => {
   assert.equal(recoveryConfirmationRecordId(base.operationId), '5d8900a6-1e2f-8723-b310-940ebe35dd66')

@@ -64,6 +64,12 @@ after an authorized deployment of a new image and review of older revisions
 and cached responses. This first Hosting release had no earlier application
 release to restore.
 
+Before deploying a revision with the gate, apply the compatible migrations to
+the authorized staging database and review the runtime grants. Give the web
+role execution of `public.public_access_allowed()` and leave gate changes with
+the operator. Verify the test gate and its independent access boundary before
+routing traffic. [Recovery journal access](../architecture/recovery-journal.md#establish-a-baseline-and-fence)
+
 ## One-time setup for operators
 
 Operators need Node 24.22.1, pnpm 11.25.0, Terraform 1.13 through 1.x, the Google

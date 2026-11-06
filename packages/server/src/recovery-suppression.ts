@@ -4,14 +4,22 @@ import { readUnverifiedRecoverySequence, type RecoverySequenceTransport } from '
 import { readUnverifiedSequenceChain, readUnverifiedSequenceRollover, type SequenceReaderEpoch } from './recovery-sequence-rollover-storage.js'
 import type { RolloverDescriptor } from './recovery-sequence-rollover.js'
 
-/**
- * Suppress every known removal intent on an independently isolated restore.
- * This does not authenticate the inventory, prove coverage, restore holds,
- * update external projections, or authorize reopening public access.
- */
-export async function suppressUnverifiedRestoredRemovals(pool: pg.Pool, records: Uint8Array[], environment: 'dev' | 'prod') {
-  const summary = summarizeUnverifiedRecovery(records, environment)
-  if (summary.removals.length > 10_000) throw new Error('Recovery suppression inventory is too large')
+type IdeaCounts = { matched: number, absent: number }
+type RecoverySummary = ReturnType<typeof summarizeUnverifiedRecovery>
+
+function requireCounts(rows: IdeaCounts[], expected: number): IdeaCounts {
+  const [row] = rows
+  if (rows.length !== 1 || !row || !Number.isSafeInteger(row.matched) || !Number.isSafeInteger(row.absent) ||
+      row.matched < 0 || row.absent < 0 || row.matched + row.absent !== expected) {
+    throw new Error('Recovery result is ambiguous')
+  }
+  return { matched: row.matched, absent: row.absent }
+}
+
+async function updateRecoveredIdeas(pool: pg.Pool, summary: RecoverySummary, recoveryClosureId?: string) {
+  if (summary.removals.length > 10_000 || (recoveryClosureId && summary.holdReviewIdeas.length > 10_000)) {
+    throw new Error('Recovery suppression inventory is too large')
+  }
   let client: pg.PoolClient
   try { client = await pool.connect() } catch { throw new Error('Recovery suppression unavailable') }
   let destroy = false
@@ -19,20 +27,42 @@ export async function suppressUnverifiedRestoredRemovals(pool: pg.Pool, records:
     await client.query('BEGIN ISOLATION LEVEL READ COMMITTED')
     await client.query("SET LOCAL lock_timeout = '5s'")
     await client.query("SET LOCAL statement_timeout = '10s'")
-    const result = await client.query<{ matched: number, absent: number }>(
+    const suppressed = await client.query<IdeaCounts>(
       'SELECT * FROM public.suppress_restored_removals($1::uuid[])', [summary.removals])
-    const row = result.rows[0]
-    if (result.rows.length !== 1 || !Number.isSafeInteger(row?.matched) || !Number.isSafeInteger(row?.absent) ||
-        row!.matched < 0 || row!.absent < 0 || row!.matched + row!.absent !== summary.removals.length) {
-      throw new Error('Recovery suppression result is ambiguous')
+    const removals = requireCounts(suppressed.rows, summary.removals.length)
+    let holds: IdeaCounts | undefined
+    if (recoveryClosureId) {
+      const protectedIdeas = await client.query<IdeaCounts>(
+        'SELECT * FROM public.protect_restored_held_ideas($1::uuid,$2::uuid[])', [recoveryClosureId, summary.holdReviewIdeas])
+      holds = requireCounts(protectedIdeas.rows, summary.holdReviewIdeas.length)
     }
     await client.query('COMMIT')
-    return { matched: row!.matched, absent: row!.absent, reviewOperations: summary.reviewOperations.length,
-      coverageVerified: false as const }
+    return { ...removals, reviewOperations: summary.reviewOperations.length, coverageVerified: false as const, ...(holds && { holds }) }
   } catch {
     try { await client.query('ROLLBACK') } catch { destroy = true }
     throw new Error('Recovery suppression outcome is uncertain')
   } finally { client.release(destroy) }
+}
+
+/** Suppress known removals on an independently isolated restore. */
+export async function suppressUnverifiedRestoredRemovals(pool: pg.Pool, records: Uint8Array[], environment: 'dev' | 'prod') {
+  return updateRecoveredIdeas(pool, summarizeUnverifiedRecovery(records, environment))
+}
+
+/**
+ * Apply conservative protections using a separately reviewed checkpoint and
+ * recovery closure. The caller must authenticate and fence every writer and
+ * isolate the replacement. Unknown or missing material still requires review.
+ */
+export async function reconcileFencedRecoveryFromSequence(reader: RecoverySequenceTransport,
+  target: Parameters<typeof readUnverifiedRecoverySequence>[1] & { checkpointDigest: string },
+  fenceVersion: string, fenceNonce: string, pool: pg.Pool, recoveryClosureId: string, timeoutMs = 120_000) {
+  if (typeof recoveryClosureId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(recoveryClosureId) ||
+      !target || !/^[0-9a-f]{64}$/.test(target.checkpointDigest)) throw new Error('Invalid recovery checkpoint')
+  const destination = { ...target }
+  const inventory = await readUnverifiedRecoverySequence(reader, destination, fenceVersion, fenceNonce, timeoutMs)
+  if (inventory.checkpointDigest !== destination.checkpointDigest) throw new Error('Recovery checkpoint differs')
+  return updateRecoveredIdeas(pool, inventory.summary, recoveryClosureId)
 }
 
 /**

@@ -25,6 +25,7 @@ const confirmationFor = (manifestBytes, overrides = {}) => encodeRecoveryHoldMan
 
 test('canonical held manifests bind selected artifacts to a known hold without claiming coverage', () => {
   const manifestBytes = encodeUnverifiedHeldManifest(input)
+  assert.equal(Buffer.from(manifestBytes).toString(), JSON.stringify({ version: 1, ...input }))
   assert.deepEqual(decodeUnverifiedHeldManifest(manifestBytes, 'dev'), input)
   const confirmation = confirmationFor(manifestBytes)
   assert.equal(decodeRecoveryRecord(confirmation, 'dev').version, 3)
@@ -48,6 +49,29 @@ test('manifest canonicalization and scope references reject duplicates and ambig
   assert.throws(() => encodeUnverifiedHeldManifest({ ...input, entries: [{ ...media, sourceGeneration: null }] }), /Invalid/)
   assert.throws(() => decodeUnverifiedHeldManifest(first, 'prod'), /invalid or incompatible/)
   assert.throws(() => decodeUnverifiedHeldManifest(Buffer.from(`${first.toString()} `), 'dev'), /invalid or incompatible/)
+})
+
+test('version-two manifests bind explicitly selected related records without asserting scope', () => {
+  const related = { kind: 'related_record', sourceType: 'moderation_events', sourceId: '99999999-9999-4999-8999-999999999999',
+    sourceGeneration: null, artifactId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', generation: '56', size: 21, sha256: 'b'.repeat(64) }
+  const bytes = encodeUnverifiedHeldManifest({ ...input, entries: [entry, related] })
+  assert.equal(JSON.parse(Buffer.from(bytes).toString()).version, 2)
+  assert.equal(JSON.parse(Buffer.from(encodeUnverifiedHeldManifest(input)).toString()).version, 1)
+  assert.deepEqual(bytes, encodeUnverifiedHeldManifest({ ...input, entries: [related, entry] }))
+  const confirmation = confirmationFor(bytes)
+  const decoded = decodeUnverifiedHeldManifest(bytes, 'dev')
+  assert.deepEqual(decoded.entries, [related, entry])
+  assert.equal(matchUnverifiedHeldManifest(intent, confirmation, bytes, 'dev').coverageVerified, false)
+  const revisionSource = { kind: 'revision', sourceId: entry.sourceId, sourceGeneration: null }
+  const recordSource = { kind: 'related_record', sourceType: related.sourceType, sourceId: related.sourceId, sourceGeneration: null }
+  assert.deepEqual(compareUnverifiedHeldSources(intent, confirmation, bytes, 'dev', [revisionSource, recordSource]),
+    { matchedSources: 2, scopeVerified: false, coverageVerified: false })
+  assert.throws(() => compareUnverifiedHeldSources(intent, confirmation, bytes, 'dev',
+    [revisionSource, { ...recordSource, sourceType: 'audit_events' }]), /could not be reconciled/)
+  assert.throws(() => encodeUnverifiedHeldManifest({ ...input, entries: [entry, { ...related, sourceType: '../private' }] }), /Invalid/)
+  assert.throws(() => encodeUnverifiedHeldManifest({ ...input, entries: [entry, { ...related, sourceGeneration: '1' }] }), /Invalid/)
+  assert.throws(() => decodeUnverifiedHeldManifest(Buffer.from(Buffer.from(bytes).toString().replace('"version":2', '"version":1')), 'dev'), /invalid or incompatible/)
+  assert.throws(() => decodeUnverifiedHeldManifest(Buffer.from(Buffer.from(encodeUnverifiedHeldManifest(input)).toString().replace('"version":1', '"version":2')), 'dev'), /invalid or incompatible/)
 })
 
 test('manifest mismatch, hold mismatch, and malformed confirmation fail without exposing content', () => {
@@ -86,6 +110,10 @@ test('a selected source inventory must match the bound hold manifest exactly', (
   assert.throws(() => compare([revisionSource, revisionSource]), /could not be reconciled/)
   assert.throws(() => compare([revisionSource, { ...mediaSource, sourceGeneration: '055' }]), /could not be reconciled/)
   assert.throws(() => compare([revisionSource, { ...mediaSource, unexpected: true }]), /could not be reconciled/)
+  // A related record without its source type cannot silently match the manifest.
+  assert.throws(() => compare([revisionSource, mediaSource, {
+    kind: 'related_record', sourceId: operationId, sourceGeneration: null,
+  }]), /could not be reconciled/)
   assert.throws(() => compareUnverifiedHeldSources(intent, confirmation, bytes, 'prod', [revisionSource, mediaSource]), /could not be reconciled/)
   assert.throws(() => compareUnverifiedHeldSources(intent, confirmationFor(bytes, { sha256: '0'.repeat(64) }), bytes, 'dev',
     [revisionSource, mediaSource]), /could not be reconciled/)

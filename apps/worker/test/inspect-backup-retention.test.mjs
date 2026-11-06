@@ -65,6 +65,8 @@ test('inventory reads all pages and separately counts old soft-deleted objects',
   assert.equal(result.latestWeeklyAgeSeconds, 86_400)
   assert.equal(result.weeklyFreshEnough, true)
   assert.ok(result.candidates.some(item => item.name === make('daily', 15).name))
+  assert.equal(result.holdScopeVerified, false)
+  assert.equal(result.deletionAuthorized, false)
   const boundary = await inspectBackupRetention(storageFor(bucket), target, new Date(now.getTime() + 86_400_000))
   assert.equal(boundary.dailyFreshEnough, true)
   const late = await inspectBackupRetention(storageFor(bucket), target, new Date(now.getTime() + 86_400_001))
@@ -74,6 +76,53 @@ test('inventory reads all pages and separately counts old soft-deleted objects',
   assert.equal(stale.latestDailyAgeSeconds, 5 * 86_400)
   assert.equal(stale.dailyFreshEnough, false)
   assert.deepEqual(stale.candidates, [])
+})
+
+test('fresh backups can still show an earlier recovery age over 24 hours', async () => {
+  function exported(id, startedAt, completedAt) {
+    const daily = {
+      ...make('daily', id),
+      name: `idea-map-v2/dev/daily/${startedAt.slice(0, 10)}/00000000-0000-4000-8000-${String(id).padStart(12, '0')}.pgdump`,
+      timeCreated: completedAt,
+    }
+    const marker = completion(daily, null)
+    marker.metadata.backup_started_at = startedAt
+    return [daily, marker]
+  }
+  const objects = [
+    ...exported(1, '2026-10-31T10:00:00.000Z', '2026-10-31T10:01:00.000Z'),
+    ...exported(2, '2026-11-01T10:00:00.000Z', '2026-11-01T10:02:00.000000001Z'),
+    // A late older export must not replace the newer available recovery point.
+    ...exported(3, '2026-10-31T23:00:00.000Z', '2026-11-01T10:03:00.000Z'),
+  ].reverse()
+  const bucket = { async getMetadata() { return [metadata] }, async getFiles(query) {
+    return [query.softDeleted ? [] : objects.map(item => ({ metadata: item })), null]
+  } }
+  const result = await inspectBackupRetention(storageFor(bucket), target, new Date('2026-11-01T11:00:00.000Z'))
+  assert.equal(result.latestDailyAgeSeconds, 3600)
+  assert.equal(result.dailyFreshEnough, true)
+  assert.deepEqual(result.dailyRecoveryWindow, {
+    firstCompletionAt: '2026-10-31T10:01:00.000Z',
+    observedAt: '2026-11-01T11:00:00.000Z',
+    completedArchives: 3,
+    maximumSnapshotAgeSeconds: 86_520.001,
+  })
+  assert.equal(result.deletionAuthorized, false)
+})
+
+test('a healthy storage inventory does not verify legal-hold scope or authorize deletion', async () => {
+  const recent = records.filter(item => now.getTime() - Date.parse(item.timeCreated) <= 56 * 86_400_000)
+  const bucket = { async getMetadata() { return [metadata] }, async getFiles(query) {
+    return query.softDeleted ? [[], null] : [recent.map(item => ({ metadata: item })), null]
+  } }
+  const result = await inspectBackupRetention(storageFor(bucket), target, now)
+  assert.equal(result.retentionSatisfied, true)
+  assert.equal(result.dailyFreshEnough, true)
+  assert.equal(result.weeklyFreshEnough, true)
+  assert.equal(result.reviewRequired, false)
+  assert.ok(result.candidates.length > 0)
+  assert.equal(result.holdScopeVerified, false)
+  assert.equal(result.deletionAuthorized, false)
 })
 
 test('inventory refuses ambiguous retention metadata on an otherwise completed archive', async () => {
@@ -334,6 +383,7 @@ test('legacy markers remain visible but cannot establish a verified retention pl
   bucket.getFiles = async query => [query.softDeleted ? [] : allLegacy.map(item => ({ metadata: item })), null]
   const legacyOnly = await inspectBackupRetention(storageFor(bucket), target, now)
   assert.equal(legacyOnly.latestDailyAgeSeconds, null)
+  assert.equal(legacyOnly.dailyRecoveryWindow, null)
   assert.equal(legacyOnly.latestWeeklyAgeSeconds, null)
   assert.equal(legacyOnly.dailyFreshEnough, false)
   assert.equal(legacyOnly.weeklyFreshEnough, false)

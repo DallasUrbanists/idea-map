@@ -1,722 +1,295 @@
 # Recovery decision journal
 
-Recovery operators need an independent record of removals and legal-hold
-decisions made after a database backup. This design uses numbered versions in
-the existing Secret Manager service and keeps PostgreSQL as the application's
-authority. Selected held artifacts would use the existing private backup bucket.
-The journal and pending-removal components are not wired into live
-decision mutations. The public request guard remains incomplete. A restored
-service must remain isolated until its decisions can be reconciled and the
-[recovery procedure](../contributor-guides/backup-recovery.md) is satisfied.
+The recovery journal preserves removal and legal-hold decisions outside the
+application database. Operators use numbered versions in an existing Secret
+Manager project and separately protected artifacts in the private backup bucket.
+PostgreSQL remains authoritative for current application state. Use the
+[backup and recovery procedure](../contributor-guides/backup-recovery.md) with this
+guide when restoring a replacement.
 
 The following contents links navigate within this guide:
 
 - [Purpose and boundaries](#purpose-and-boundaries)
 - [Record and access](#record-and-access)
 - [Write and reconcile](#write-and-reconcile)
+    - [Establish a baseline and fence](#establish-a-baseline-and-fence)
+    - [Journaled operations](#journaled-operations)
+    - [Guard public delivery](#guard-public-delivery)
+    - [Reconcile a replacement](#reconcile-a-replacement)
 - [Retention and held material](#retention-and-held-material)
+    - [Review held material](#review-held-material)
 - [Required evidence](#required-evidence)
 
 ## Purpose and boundaries
 
-An older database archive can contain content that was later withdrawn, or lack
-a later legal hold. The intended journal preserves evidence of those decisions outside
-PostgreSQL so recovery can fail closed. Secret Manager and the existing backup
-bucket are separately operated services; that separation does not prove
-independence from a shared project compromise or administrative error. The
-journal does not replace database backups, authorize a removal or hold,
-invalidate public caches, or preserve all held material.
+An older archive can contain content that was later withdrawn or lack a later
+legal hold. Recover the independent journal and held artifacts before exposing
+an older snapshot. If a decision, authority, or held copy is uncertain, keep the
+replacement fenced for authorized reconciliation.
 
-The proposed single decision store uses a separately owned secret per environment
-and a pinned epoch. No new provider, database, or independent Terraform state is
-assumed. No secret or permissions have been provisioned for this design. Review
-inherited access, secret replacement and deletion, and writer separation before
-relying on it. Held artifacts remain separately scoped in the backup bucket.
+Use a separately owned secret per environment and a pinned journal epoch.
+Keep the secret and held artifacts within the reviewed provider and ownership
+boundaries. Separation from PostgreSQL protects against losing the database,
+while a shared project compromise or administrative error can still affect
+both recovery stores.
 
-The server package contains an encoder and decoder for version-one intent and
-commit confirmation records and version-two and version-three hold-placement
-confirmations, a numbered sequence transport, and an unverified recovery summary.
-The encoder checks required fields and sizes but cannot verify authority, legal
-meaning, or whether a reason or reference is non-sensitive; its caller must
-establish those facts. The decoder rejects unknown versions, extra fields,
-duplicate keys, noncanonical bytes, and a different environment. Preserve the
-version-one encoding when extending the format; a failed decode keeps recovery
-isolated. Each numbered append or read has a bounded deadline; an uncertain
-append may still create a version.
-
-The summary conservatively identifies ideas in removal and hold-placement
-intents, flags unconfirmed operations and all hold placements and releases for
-authorized review, and reports the operation IDs of confirmations without intents
-for review. An unmatched confirmation does not identify its affected idea. The
-summary also identifies ideas requiring hold review when only a release intent
-is present; that is not proof that a hold remains active. A confirmed hold ID alone does not preserve its
-authority or held material; the summary exposes associated hold IDs only as
-unverified evidence. It rejects conflicting idea IDs or case references for a
-known hold ID across placement confirmations and release intents, regardless of
-record order. Case comparison follows the placement function's removal of leading
-and trailing ASCII spaces. Matching IDs and references do not verify the hold's
-authority or the release. It never establishes inventory
-coverage, removes a hold, changes a database, or
-authorizes public access. Its output contains private identifiers and must not
-be written to public logs. These components do not guard mutation paths, capture
-held material, or reconcile a restore. They are not connected to live removal
-or hold operations and are not sufficient to enable them.
+The server supplies opt-in journaled moderator removal and provisional hold
+placement endpoints. Before enabling them, review all authorized decision
+paths, including direct SQL, earlier revisions, beta publication and owner
+withdrawal. The replacement needs coverage of those paths through its
+recovery fence. See the [beta publication](https://github.com/DallasUrbanists/idea-map/issues/246),
+[removal](https://github.com/DallasUrbanists/idea-map/issues/247), and
+[owner lifecycle](https://github.com/DallasUrbanists/idea-map/issues/56) work.
 
 ## Record and access
 
-Use canonical records with a unique operation ID and opaque record ID inside
-each numbered version. An intent and its confirmation use distinct record IDs
-and contain the same operation ID in their bodies. A retry reuses the original
-record ID and bytes; a lost response can create another identical version. A
-record identifies its environment, operation, affected idea, decision type and
-time. Hold records also preserve the authorized person, scope, non-sensitive
-case reference and reason, and authorization or delegation reference; release
-evidence includes any required legal review. Follow the
-[Privacy Policy](../policies/privacy-policy.md#retention-and-deletion).
-Do not put raw content, contact details, credentials or reasons in resource
-names, metadata or operational logs.
+Each numbered version contains a canonical baseline, decision, or fence.
+An intent uses a UUIDv4 operation ID as its record ID. A confirmation uses a
+separate deterministic UUIDv8 record ID derived from the operation ID. Preserve
+the canonical encoding and the derivation namespace for existing records and
+retries. A retry can create another numbered version with identical bytes.
+Conflicting bytes, missing versions, malformed records, and confirmations
+ordered before their intent require reconciliation.
 
-Use separate reviewed writer and reader identities. The writer must not disable,
-destroy, or replace secret versions or change backup objects. Review effective
-inherited permissions, administrator access, encryption, retention and recovery
-access before integration.
+Record the environment, affected idea, decision type, actor and time.
+Hold confirmations preserve the exact committed hold ID and, in the current
+format, the authority assignment and microsecond placement time. Review the
+assignment and the supporting delegation independently. Earlier records and
+unmatched confirmations may lack the information needed to identify a hold or
+reconstruct its authority. Keep those cases under review and avoid matching
+different holds by idea and case alone.
+
+Retain minimal decision metadata and opaque case references. Keep the actual
+removal reason and case evidence in restricted records. Keep content,
+credentials, hashes and private identifiers out of provider resource names,
+metadata and operational logs. Follow the
+[Privacy Policy](../policies/privacy-policy.md#retention-and-deletion).
+
+Give append and exact-version readback to distinct scoped principals.
+Review effective inherited permissions, administrator access, retention and
+the ability to replace or delete the secret. The backup writer needs no journal
+access. Verify the operator's separate recovery privileges before relying on
+the secret or allowing mutation traffic.
+
+Read the exact numbered version for each checksum-bound append. The transport
+uses a bounded wait, and a timeout can occur after the provider accepted the
+append. Use the same saved bytes for retries and reconcile uncertain outcomes.
+The exact version API is strongly consistent after an append. Listing and
+the latest alias can lag. [Secret Manager consistency](https://cloud.google.com/secret-manager/docs/reference/consistency)
+
+The sequence reader scans versions one through 10,000 per epoch and bounds
+the elapsed scan. An append can cross that application limit before the
+client detects it. Review quota, access and rollover well before reaching the
+limit, including duplicate writes and recovery fences. The exact-version
+inspection helper can read a separately identified version outside the scan
+range when reconciling an ambiguous append. It requires the explicit version ID.
+
+An epoch can bind the preceding epoch and its selected fence in the next
+baseline's SHA-256 checkpoint. Verify each supplied link and preserve all
+earlier versions needed by retained backups or holds. The reader accepts up
+to eight supplied epochs and 64 MiB of framed data in total. Independently
+verify the first baseline, any earlier required epochs, the absence of forks,
+and the identity and fencing of every writer. Review the actual provider
+quotas and scan duration. [Secret Manager quotas](https://cloud.google.com/secret-manager/quotas)
 
 ## Write and reconcile
 
-All authorized removal, withdrawal, hold placement, and hold release paths need
-coverage, including database entry points, retries, and future writers. A
-deployment must prevent an older or direct write path from bypassing the
-journal. Establish a reviewed coverage checkpoint only after those paths are
-guarded and the current decision state has been verified. A backup older than
-the checkpoint cannot rely on the journal alone.
+### Establish a baseline and fence
 
-The unjournaled moderator-removal and legal-hold mutation helpers remain
-available to their internal tests but are not exported from the server package
-entry point. The locking hold check remains available for retention work.
-This package boundary reduces accidental use; it does not revoke database
-execution grants or prevent a direct SQL caller or an older deployed revision
-from bypassing the journal. Review those paths and effective privileges before
-establishing coverage.
+1. Keep public traffic and covered writers independently fenced. Include
+   earlier revisions, scheduled jobs, queued work, operator tools and direct
+   database connections.
+2. Drain in-flight writes and check outstanding or ambiguous operations.
+   Account for permission propagation and existing credentials before
+   relying on the fence.
+3. Verify current decision state, writer restrictions and the precise
+   archive boundary. Record the approved baseline in the epoch and identify
+   older archives that require separately verified decision evidence.
+4. To inventory the journal for recovery, append a fence with a fresh opaque
+   nonce using an authorized recovery identity after writers have drained.
+   Read each explicit version from the approved baseline through that
+   exact number and check the nonce and checkpoint.
+5. Stop on a missing, disabled or unreadable required version, unexpected
+   bytes, incompatible epoch, or an ambiguous fence append. Keep the
+   replacement isolated while verifying the actual scope and ordering.
 
-The intended write protocol records an intent before the associated database
-transaction can commit. The writer uses a bounded timeout and a separately
-authorized reader compares the exact numbered version and canonical bytes. A
-confirmation may be written only after a database commit is known to have
-succeeded. A lost response, rollback or failed confirmation can leave an intent
-without proof of the outcome; recovery must treat it as uncertain rather than
-infer a commit. A timed-out append may still create a version, so a retry uses
-the same saved bytes. Do not write a negative confirmation based on an exception.
+A timestamp alone cannot establish the boundary between the archive and all
+concurrent commits. Replay the verified overlap conservatively. Treat
+the scan as evidence of its numbered entries and verify coverage of the
+writer set independently.
 
-An existing Secret Manager version is not a complete tail proof by itself:
-access to a newly added version
-by its exact number is strongly consistent, but
-[version listing and the latest alias are eventually consistent](https://cloud.google.com/secret-manager/docs/reference/consistency).
-Do not infer that a version does not exist from a recent list or latest read.
+### Journaled operations
 
-One sequence-fence option needs further validation before use: after independently
-fencing and draining every decision writer, an authorized recovery identity could
-append a sentinel version and use the returned exact version number as an upper
-bound. [Secret version IDs](https://cloud.google.com/secret-manager/docs/reference/rest/v1/projects.secrets.versions)
-start at one and advance with each addition; reading explicitly numbered versions
-rather than listing or using the latest alias could expose gaps through that
-sentinel. This depends on every covered decision being durably recorded before
-commit, a verified baseline for older archives, no writers continuing past the
-fence, and a protected secret that cannot be destroyed or recreated by a writer.
-A disabled, destroyed, missing, or unreadable required version must keep recovery
-isolated. An ambiguous sentinel write needs reconciliation, not an assumed upper
-bound. The sequence would also need a reviewed rollover and expiration process for
-decision metadata and held evidence, and measured quota, costs, and scan time.
-A complete decision record fits within a Secret Manager version's documented
-[payload limit](https://cloud.google.com/secret-manager/quotas), so a reviewed
-design could use the numbered versions as the journal instead of maintaining
-two copies of every decision. The [add-version request](https://cloud.google.com/secret-manager/docs/reference/rest/v1/projects.secrets/addVersion)
-has no caller-selected version ID or documented idempotency key. A lost response
-and retry can therefore create duplicate versions. Reconciliation would need to
-recognize exact retry bytes and reject conflicting decisions, without treating
-an uncertain write as absent. The proposed sequence also needs verified
-permissions, retention, writer fencing, and restore procedures before use.
+The private `NUXT_JOURNALED_REMOVAL_*` settings pin the environment, project
+number, secret, epoch and checkpoint. Use separate PostgreSQL identities for
+public reads, preparation and coordination, pointing to the same database.
+Use distinct Secret Manager append and read service accounts scoped to the
+reviewed secret. A separate operator calls `authorize_journaled_public_access`
+after establishing the reviewed baseline and verifying the independent fences.
 
-An unwired sequence codec explores the single-store option: put the canonical
-decision bytes directly in numbered Secret Manager versions. This uses the
-existing Secret Manager service but needs a separately owned secret and distinct
-permissions. A baseline entry contains a checkpoint digest, and a recovery fence
-uses an opaque nonce. The codec checks supplied version numbers from one through
-a selected fence, rejects missing or conflicting entries, and tolerates identical
-retries. When an intent and its confirmation are both present, it rejects a
-confirmation that precedes the first intent; an unmatched confirmation requires
-review. It also decodes and summarizes the decisions without asserting coverage.
-A matching sequence does not authenticate its source or baseline, prove all
-writers used it, establish the fence, or allow access to reopen. An unwired
-transport wrapper can append canonical entries with CRC32C and read explicit
-numbered versions through a selected fence. It limits concurrency and elapsed
-waiting, rejects missing or altered versions, and treats failed appends as
-uncertain. A separate-reader helper compares the exact newly appended bytes but
-does not prove effective identity separation. A timed-out request can still finish
-if the injected transport ignores cancellation. The Google transport rejects a
-late response or body after cancellation, but that does not undo an append that
-reached the service. Its returned sequence remains
-unverified: callers must establish the actual secret's identity, authenticated
-baseline, writer fence and coverage. An unwired Google transport targets only
-the Secret Manager API and uses short-lived application credentials; local tests
-inject fake credentials and responses. No live secret, effective permissions,
-mutation path, or recovery path has been tested or connected to this transport.
-The numbered sequence is the only decision transport in this branch. It is
-unwired and has not been tested against a live secret. Held material remains
-separately scoped in the existing backup bucket.
+Give preparation and coordination their respective journaled functions.
+Keep legacy mutation functions, general gate updates and baseline authorization
+out of those roles. The unjournaled moderation and legal-hold mutation helpers
+remain internal to the server package. Review database and provider grants on
+every enabled writer, including earlier application revisions.
 
-The prototype's ordinary reader and scanner accept only versions 1 through
-10,000. This is an application bound, not a Secret Manager limit. It cannot
-reserve a version before appending: an append may create version 10,001 and
-then return an uncertain result. A separate unwired inspection helper can read
-one independently identified version above the limit by exact decimal ID, but
-cannot discover an unknown version or prove sequence coverage. Lost responses,
-retries, and recovery fences also consume versions. Do not connect it to live
-decisions until a separately verified rollover and writer-fencing protocol
-prevents this boundary from stranding an authorized removal or hold. It must keep
-every version needed by retained backups and active holds available and must
-account for concurrent or ambiguous appends.
+For an authorized operator client, send requests to the configured origin
+using a verified session cookie, JSON, and the normal session mutation header.
 
-An unwired rollover comparison can bind one supplied, explicitly numbered
-sequence and fence to the next epoch's baseline with a SHA-256 checkpoint. It
-binds the previous environment, project, secret, epoch, fence and exact framed
-payloads; it rejects missing versions, conflicting duplicates, different projects,
-reused secret or epoch IDs, and a confirmation that precedes its first intent
-across the boundary. Each supplied epoch is limited to 32 MiB of framed data.
-The result remains unverified: matching checkpoints do not establish source
-identity, find unknown versions or forks, drain writers, prove coverage, or permit
-deleting prior versions. Its result includes records from only those two epochs;
-earlier epochs still need separate verified recovery handling. This comparison
-does not perform rollover or solve the 10,000-version boundary by itself.
-An offline comparison can also combine two to eight supplied epochs, up to
-64 MiB of framed data in total, while retaining the same unverified status. It
-rejects repeated secret or epoch IDs and checks every adjacent checkpoint; it
-does not discover earlier epochs or prove the first supplied baseline.
-An unwired reader can retrieve up to eight supplied epochs by exact version
-number under one deadline before comparing the links. A missing or unreadable
-version rejects the read; its private output likewise does not establish
-authenticated coverage.
-An unwired coordinator can pass known removal intents from a supplied chain to
-the existing suppression function on an independently isolated restore. Its
-result still excludes earlier epochs and does not restore held material or prove
-coverage. The read deadline does not bound the database connection or transaction;
-the latter has separate database lock and statement timeouts.
-Another unwired verifier can check selected held artifacts named by the supplied
-chain, including an intent and confirmation split across a boundary. It still
-reports authority and coverage as unverified and excludes earlier epochs; a
-missing version or held artifact rejects the check.
+| Request | Enabled by | JSON fields |
+| --- | --- | --- |
+| `POST /api/moderation/removal` | `NUXT_JOURNALED_REMOVAL_ENABLED` | `ideaId`, `approvedRevisionId`, `operationId`, `classification`, `reason` |
+| `POST /api/moderation/legal-hold` | `NUXT_JOURNALED_REMOVAL_HOLD_PLACEMENT_ENABLED` | `ideaId`, `requestId`, `caseReference`, `reason` |
 
-Review the expected number of enabled and disabled Secret Manager versions,
-retries, service quotas, retention and safe rollover before provisioning. Do not
-destroy versions needed by a retained backup or an active hold.
+Use a UUIDv4 for the operation or request ID. Retain the same request and ID
+for retries. A removal proceeds in this order.
 
-The checkpoint needs a coordinated boundary, not merely a timestamp. Suspend
-all covered mutations, drain in-flight transactions and journal writes, verify
-the current decision state and writer restrictions, and record the checkpoint
-before resuming mutations through the guarded paths. Keep an inventory of archives
-that predate that boundary: a checkpoint cannot supply decisions missing from an
-older archive unless a separately verified baseline includes them. Establishing
-coverage also requires a way to detect a missing or deleted record; successful
-listing alone does not prove that no record was lost or bypassed.
+1. Authenticate the active moderator and verify the expected revision.
+   Commit the pending decision and close the gate in one transaction before
+   any external write, pausing public idea and media access.
+2. Persist the journal target. Append the saved intent and read back its
+   exact version using the separate reader. Keep access closed if any outcome
+   is uncertain.
+3. Acquire the exclusive public-access lock and apply the removal once the
+   protected readers have drained. Verify the committed application before
+   preparing the stable confirmation in a separate transaction.
+4. Append the confirmation, compare its exact bytes, and persist the readback.
+   Reconcile ambiguous commits from the saved operation and numbered versions.
+5. Resolve only this removal's closure. The transaction reopens routine
+   access only when its approved baseline is still valid and all other
+   closures and pending decisions have cleared.
 
-During a recovery, fence the original writers and wait for in-flight operations
-to finish before taking the journal inventory. Include old service revisions,
-scheduled jobs, queued work, operator tools, and direct database writers in the
-fence. Stop or isolate the relevant execution paths and verify the effective
-access boundary with separately authorized checks. A successful IAM revocation
-alone is not an immediate fence: permission changes need time to propagate and
-requests already in flight may still complete. Account for propagation and
-credential lifetimes, drain or resolve outstanding operations, and read through
-a new fence after the boundary is established. If those steps cannot be verified,
-keep the replacement isolated.
+The original moderator must remain active and able to authenticate to retry.
+If the actor becomes unavailable, the expected revision is stale, or any
+saved state conflicts, keep access closed and escalate for authorized
+reconciliation. An independent recovery or operator closure invalidates
+automatic reopening. Verify that closure separately if its commit is uncertain.
 
-Verify the checkpoint, integrity, and complete coverage through the fence. A
-version timestamp or a backup start time alone cannot identify every concurrent
-committed transaction. Replay the verified overlap conservatively and require
-authorized reconciliation where order or outcome is unclear. If writers cannot
-be fenced or completeness cannot be verified, keep the restored service isolated.
+Hold placement requires a current Executive Director or written delegate
+assignment and an opaque case reference. It first commits broad protection
+under the idea lock. A failed journal read or append leaves that protection
+in force. An authorized retry reuses the hold and verifies the exact intent
+and confirmation positions. Scope review and disposition follow the separate
+process below.
 
-The current hold-placement function creates the hold ID inside PostgreSQL, but
-the version-one journal confirmation does not record that ID. A later release
-names a hold ID, and the same idea and case can have more than one hold over
-time. A version-two hold-placement confirmation can identify the actual committed
-hold ID; the caller must obtain it from the authorized transaction and establish
-that the commit succeeded. A version-one placement confirmation and an uncertain
-outcome require review. Before integrating the journal, verify the ID association
-through the live mutation path. Do not match a release to a placement solely by
-idea and case or apply it automatically.
+### Guard public delivery
 
-The hold ID alone is not enough to recreate a database hold. The hold also refers
-to an idea, a person, and a legal-authority assignment, and records its placement
-time. An older archive may lack any of those rows or the assignment that was valid
-at placement. A version-two confirmation preserves the committed assignment ID
-and exact microsecond placement time, together with the assignment's actor,
-authority type, grantor, grant time, and non-sensitive authorization reference.
-Its caller must obtain these facts from the known committed hold and assignment.
-The summary rejects an assignment actor that differs from the intent and
-conflicting immutable facts for the same assignment ID across holds. An action's
-authorization reference and its assignment's delegation reference can differ;
-both require authorized review. These records do not independently authenticate
-the person, the written delegation, or the stored facts. A confirmation time has
-millisecond precision while placement time has microsecond precision, so times
-within the same millisecond cannot independently establish their ordering. Review
-the committed transaction evidence instead of inferring order from those values.
-A version-one confirmation does not
-contain these fields.
-Preserve and verify the necessary authorization and referenced records through a
-reviewed recovery design; do not synthesize an assignment or substitute a new
-hold ID to make a restore pass. Keep the target
-isolated when the original evidence or its relationships cannot be established.
+The database gate starts closed. Public idea, suggestion and preview responses
+require a live database lease that checks the gate, closure records and pending
+decisions. The outer suggestion response shares its transaction with its
+server-side fetch through server-only context. Keep the lease until delivery
+finishes or stops, and abort protected delivery on a lost or stalled guard.
 
-On restore, an operator verifies coverage and reads the relevant complete
-journal before public reads or side effects resume. Apply removals and hold
-placements conservatively and idempotently; do not release a hold or republish
-content solely because an intent lacks a confirmation. An unresolved intent,
-missing record, coverage gap, or incompatible schema keeps affected material
-private and requires authorized reconciliation. Record the uncertainty and
-include reconciliation time in the recovery measurement.
+The read lease uses a shared transaction-scoped advisory lock and read committed
+isolation. The removal application takes the exclusive lock. While a protected
+response is active, the lease checks for gate closure or a waiting exclusive
+lock every 250 ms, with a ten-second local bound on a stalled check. Query delay,
+pool saturation and network failure affect drain time. The writer's lock wait
+has a five-second timeout. Leave the pending decision and closed gate in place
+after a timeout. Measure the full path under the reviewed transaction pooler
+and workload. [Neon connection budget](neon.md#connection-budget)
 
-An unwired suppression primitive can mark ideas from known removal intents
-withdrawn and unpublish their previews on an independently isolated replacement.
-It takes the exclusive public-read lock, requires the database gate to be closed,
-locks the matching ideas, and reports counts for present and absent IDs. Repeating
-it is safe, and an uncertain intent is suppressed as well. The function has no
-`PUBLIC` execute grant; only a separately authorized recovery coordinator should
-receive access after the independent network and writer fences are verified.
-An unwired coordinator reads numbered entries through a selected fence before
-invoking this primitive. It cannot authenticate the baseline or fence and does
-not establish either fence. Its deadline bounds waiting for storage only; the
-caller must also configure a database connection timeout. Database lock and statement timeouts bound the suppression
-transaction. Neither helper opens the gate.
-It does not authenticate the records, establish complete coverage, restore hold
-evidence, reconcile moderation and trust records, update external projections or
-caches, delete primary data, or open the gate. Keep the target isolated until
-those outstanding tasks are resolved. A missing idea requires review; it can
-represent an idea created after the restored archive rather than a verified
-deletion.
+The web guard uses `private, no-store` for protected responses. Older cached
+copies, direct media access, and older serving paths require an independent
+traffic fence and cache review. Verify all serving revisions and caches before
+relying on the gate or releasing a rollback fence.
+[Hosting cache and withdrawal behavior](hosting-cache.md#cache-and-withdrawal-behavior)
 
-The write protocol alone does not solve an unavailable journal: an already
-authorized removal must still stop public access immediately, and a failed
-write must not silently create a coverage gap. If an authorized removal cannot
-be recorded because the journal is unavailable or the write outcome is
-uncertain, block all public idea and media access until the removal and journal
-are reconciled. The gate must fail closed when its own state cannot be verified.
-Preserve the authorized pending decision and mark the journal coverage gap; do
-not report the removal or recovery as complete merely because the gate closed.
-Only an authorized recovery process can reopen public access after verifying
-the removal, journal continuity, and all other pending decisions.
+### Reconcile a replacement
 
-Closing the gate only after a failed journal call is insufficient: the process
-can stop after an authorized decision or an ambiguous write and before it closes
-the gate. Close public access and durably record the authorized pending decision
-in the same protected transaction before attempting the journal write. Public
-idea and media access briefly pauses for successful removals too. Keep it closed
-if the write or commit is uncertain,
-and reopen it only after the decision and journal are reconciled. Concurrent
-removals must not reopen the gate while another decision remains pending.
+Restore behind an independent network and application fence. A snapshot can
+contain an open gate and no record of later decisions. Place and verify a fresh
+recovery closure on the replacement before evaluating its contents.
 
-The current gate stores only an open/closed value. It cannot distinguish a
-routine removal pause from a recovery fence or another independent closure.
-Consequently, even an exact readback of every confirmed removal is insufficient
-to reopen it automatically. A reopening design needs durable, independently
-addressable closure causes, or an equivalent independently verified fence.
-Recording and clearing a removal's cause must serialize with new decisions and
-must not clear a recovery or operator closure. A lost commit response must be
-reconciled against durable state; it must not be treated as permission to open.
-The initial closed state and restored databases require independent authorization
-and coverage verification, not an empty list of pending removals.
+Authenticate the archived state, journal baseline and writer fence. Then
+read through the selected journal fence, using all required linked epochs.
+With the exact recovery closure present, the restricted coordinator can
+suppress known removals and mark restored ideas with known hold decisions for
+retention protection in one transaction. It marks the idea withdrawn and
+unpublishes its previews. Retain the fence and separately check any missing
+ideas, authority records, hold scopes, selected captures and external projections.
 
-One possible implementation uses a durable closure record for each removal,
-recovery, and operator fence. Each record needs an immutable identity and an
-explicit kind, so a retry can find the same closure and resolving a removal
-cannot remove a different fence. The transaction that records a new removal
-would lock the singleton gate row, create its closure and pending decision, and
-close the gate before committing. A separate recovery or operator closure must
-take the same gate-row lock before recording its own cause and closing access.
-If the row is missing, these operations fail closed rather than recreating an
-open gate.
-
-Resolving a removal would take that same lock, verify its durable confirmation
-and the applicable journal coverage, and clear only that removal's closure. It
-could open the gate only if no closure of any kind remains and the independently
-authorized access baseline is still valid. The check and update must commit in
-the same transaction as clearing the closure. A concurrent new closure either
-commits first and prevents reopening, or waits and closes the gate in its own
-transaction. A retry after a lost commit response must read the operation and
-gate state under the lock; an absent closure alone does not establish that the
-gate is open or that the journal is complete. Access to create, resolve, and
-inspect each kind of closure needs separate reviewed authorization.
-Coverage verification must also account for every authorized journal writer and
-keep its independently established fence valid through the reopen commit. The
-closure table and a successful readback cannot establish that coverage.
-
-These records cannot by themselves protect a restored database: a backup may
-contain an open gate and no record of a later closure. Recovery must first fence
-public traffic outside the restored database, establish a fresh authorized
-baseline and reconcile the independent journal before releasing that fence. The
-scheme is a design for further implementation and testing. The schema records a
-removal closure with its pending decision, but no reviewed recovery or operator
-closure workflow exists. An unwired database function can only add a recovery or
-operator closure and close the gate; its execution privilege is revoked from
-`PUBLIC`. Review the operator identity, grant, audit evidence and independent
-traffic fence before relying on it. A separately granted read-only function can
-check a known recovery or operator cause and the closed gate after an uncertain
-commit. Its result is a point-in-time database observation; it does not prove
-the traffic fence, journal coverage, or permission to reopen. Inserting a
-closure locks and closes the gate, and a database guard refuses to open it while
-any closure remains or under stronger
-transaction isolation. The guard also refuses to open while any pending decision
-remains, including when its closure record is missing. The read lease checks the
-gate, closure ledger, and pending decisions through a restricted boolean
-function. Its execution privilege requires
-separate review and grant to the reader identity; absent that grant, access
-fails closed. Nothing automatically reopens the gate. An empty ledger does not
-establish the required journal coverage or authorize access.
-
-This boundary must coordinate requests already in flight, including responses
-that have read content but have not finished delivery. An unreadable or missing
-gate state must deny access, and all public serving paths must honor it. A
-timeout, process termination, or lost database commit response must not silently
-reopen access or discard the pending decision. Do not enable live integration
-until the complete ordering, access boundaries, and failure cases are implemented
-and tested. If the pending transaction's outcome cannot be established, an
-independent fail-closed fence must remain in place until authorized reconciliation.
-
-The database schema creates one `public_access_gate` row in the closed state and
-revokes table access from `PUBLIC`. The server package has a read-lease
-primitive that holds a shared transaction-scoped advisory lock and refuses a
-missing, closed, or unreadable gate or any recorded closure. It reports a lost
-database connection through
-an abort signal. The caller must hold the lease through delivery and stop the
-response when the signal aborts. The in-progress web guard uses this primitive for
-current idea, suggestion, and media routes. A reader periodically checks the gate
-and for a waiting exclusive advisory lock, and aborts its response when the gate
-is closed or a lock is waiting. The lease explicitly uses read committed isolation
-so a later poll can observe a gate closure even if the role defaults to a stronger
-isolation level.
-The server package's public content entry points require a lease issued by the
-read guard and refuse forged, released, or aborted leases. The public lease does
-not expose its underlying database connection. Projection reads
-check the lease again after the database query, and preview reads also propagate
-its abort signal through storage I/O. Internal query helpers and direct database
-access are not guarded by this API boundary; runtime grants and every public
-serving path still require review.
-Pending removals use a reserved one-client pool so occupied public readers cannot
-prevent the writer from closing the gate. This adds to the documented connection budget.
-The guard still lacks reviewed runtime grants, measured drain timing, and complete
-coverage of future serving paths. It is not sufficient to enable live removals.
-The check runs while each protected response is active and shares its database
-client with that response's queries. A long-running query or delayed connection
-can delay detection. Measure query volume and worst-case drain time under load;
-the polling interval alone is not an immediate-removal guarantee.
-
-An unwired pending-removal transaction verifies the moderator, closes the gate,
-and stores the pending decision in the same database transaction through a
-restricted database function. It does this without waiting for active readers,
-so the committed closure survives termination while they drain. A later removal
-transaction must acquire the exclusive advisory lock and drain those readers
-before changing the idea. A reader can still deliver data between the closure
-and its next check, so this ordering alone does not establish immediate removal.
-The pending transaction keeps the moderator's free-text reason in the private
-database and uses a non-sensitive reason in the journal intent. An older backup
-and the intent alone cannot recover
-the original free-text reason if the current database is lost; that metadata needs
-separate authorized reconciliation. After a known commit, a successful call
-returns the original record ID and canonical intent bytes for the journal writer.
-A retry of the same operation returns the stored bytes, including the original
-timestamp. An unwired coordinator can write those bytes to the journal and reports
-an uncertain outcome without reopening the gate. It does not remove content or
-confirm a database mutation. Keep the returned bytes private and do not infer
-success from a failed or uncertain call.
-
-An unwired database function can
-pin the pending removal to one project number, secret ID and journal epoch while
-the gate is closed. It rechecks the original moderator and saved intent; retries
-must use the same target. A trigger prevents changing the pin or applying a
-removal in the same transaction that created it. The coordinator must confirm the
-pin transaction committed before any external append; a lost commit response
-requires reconciliation. An unwired server helper checks the canonical saved
-intent and current moderator, and returns success only after that transaction
-commits. A failed identity recheck rolls the pin back. Existing applied rows
-without a pin cannot be pinned automatically. The pin does not verify the
-secret, effective access, baseline or coverage. An unwired coordinator appends
-the saved intent only after the pin commits and compares the exact numbered
-version with a separate reader. A lost append response remains uncertain; a
-retry uses the same saved bytes and target. This does not prove coverage or
-apply the removal. No runtime role receives this function, and the path is not
-ready for live use.
-
-An unwired sequence application step reads the exact numbered intent again,
-then checks the saved bytes, original moderator, committed pin and matching
-project, secret and epoch under the closed gate before applying the existing
-removal. A retry must use the same version. A separately granted legacy
-application function does not enforce this target: it must be retired or
-restricted before any sequence path is enabled. Neither the exact read nor the
-database check authenticates the journal baseline, writer fence or permissions.
-After an uncertain application commit, an unwired status check can find the
-committed version for the same actor, intent and pinned target, and a separate
-reader must still compare its exact bytes. It refuses an uncommitted pin or
-application, including through a savepoint. An unavailable read leaves the
-outcome uncertain. A sequential retry checks that status before appending;
-concurrent retries may still append identical versions and need reconciliation.
-An unwired confirmation step rechecks the pinned target and commits the stable
-confirmation before appending it. It compares the exact numbered entry through
-a reader, then records verification only for the same target and a version
-later than the intent. An uncertain append or read leaves the gate closed.
-These steps do not establish that all decisions and held material are present.
-If the verification commit response is lost, an unwired status check can recover
-the committed confirmation version for the same decision and target. It must
-read that exact version again; an inaccessible or different record is uncertain.
-The database rejects a status read in the verification transaction, including
-after a savepoint. Older verified rows without transaction evidence require
-authorized reconciliation. A sequential retry reuses the verified version;
-concurrent retries can still append identical versions.
-An unwired coordinator joins preparation, journal readback, application and
-confirmation using separately supplied database connections. A caller retains
-the original operation and record IDs for retries. An uncertain write or read
-keeps the decision pending; a revision that becomes stale after preparation
-requires reconciliation. Even a confirmed result leaves the gate closed and
-does not establish coverage or authorize reopening.
-An isolated restore can also read each numbered entry through a selected fence
-and suppress the removals found there. A missing version stops suppression;
-successful reads do not authenticate the baseline, fence or writer cutoff and do
-not authorize opening public access. The local rehearsal uses a synthetic
-sequence and demonstrates only this fail-closed behavior.
-
-The normal preparation role must not be able to apply removals directly.
-Only a trusted coordinator can attest to an external sequence read. Check
-inherited database and cloud permissions before any live integration.
-
-An unwired confirmation step runs in a separate transaction after a known
-application commit. It stores a stable confirmation timestamp and a deterministic
-UUIDv8 record ID derived from the operation ID with a fixed SHA-256 namespace.
-Intent IDs remain UUIDv4, so the two kinds cannot share a record ID. Preserve
-the namespace and derivation for retries and older records; an incompatible
-change requires a reviewed format migration. The database independently checks
-the derived ID and a unique index rejects collisions among pending confirmations.
-Journal writers and readers require a UUIDv4 name for an intent and the derived
-UUIDv8 name for its confirmation. A different name fails closed.
-It records the application's top-level transaction ID and rejects confirmation
-in that same transaction, including after a savepoint. An older applied row
-without that transaction evidence requires authorized review. Transaction IDs
-are scoped to a database cluster, so an ID reused on a replacement cluster can
-also conservatively block preparation and require review. This check does not
-establish journal coverage or make a restored database safe to expose.
-
-After the confirmation transaction commits, retrying the append uses the same
-canonical bytes. A lost response or failed read remains uncertain until an
-authorized reader verifies an exact numbered version. The coordinator records
-the first verified version and time; it never reopens the gate.
-
-The current preparation,
-application, and confirmation steps require the original moderator to remain
-active and able to authenticate. If that person loses access or is unavailable,
-they cannot finish the pending operation through these steps. Keep the gate
-closed and escalate for authorized recovery; a separately authorized operator
-path and its audit evidence still need a design and test. Include that delay in
-the recovery objective. Verification is not journal coverage, and it does not
-resolve the other pending decisions, the independent access fence, or reopen the
-gate.
-
-Granting a web identity general gate updates would also let it reopen the gate;
-verify narrowly scoped grants and inherited permissions before integrating the
-transaction. Direct or older removal entry points must not be able to bypass the
-pending-decision protocol.
-
-The suggestion page renders an idea fetched from the idea API. Guarding only the
-inner API response is insufficient: the outer HTML response can continue after
-that fetch finishes. The gate must cover the outer delivery as well as API and
-media responses. Account for nested requests, connection limits, client
-disconnects, and timeouts when choosing the coordination mechanism. Guarded
-staging responses now request no storage, but older revisions or previously
-cached responses can still serve content. Clear or expire those copies and
-verify the deployed route before relying on the immediate removal boundary.
-
-Hosted web traffic uses Neon transaction pooling and a two-client public-read
-pool. Do not assume a session-level advisory lock remains attached to a backend
-across transactions. Holding a client for an outer render while the nested API
-request needs another client can also exhaust that pool under concurrent load.
-Verify the selected coordination mechanism against the actual pooler and the
-complete render path, including a queued removal and concurrent page requests.
-A disposable PostgreSQL probe showed that a later `FOR SHARE` reader could join
-while an update was waiting for an earlier reader. A shared row lock alone does
-not prevent new readers from delaying the gate; test admission and bounded drain
-behavior explicitly. In the same kind of local probe, a waiting exclusive
-transaction-scoped advisory lock prevented a later shared lock from entering.
-That result does not validate Neon pooling, resource limits, deadlock handling,
-or the application response lifecycle; all public readers and removal writers
-would have to use the same reviewed lock convention.
-Each guard setup query and the final commit have a ten-second local deadline;
-failed setup discards the client instead of waiting for a rollback. The pool
-must separately bound connection acquisition. The prototype also aborts a public
-response when a liveness check has not returned within ten seconds, even if the
-database connection reports no error. This bounds a stalled check while the Node
-event loop is running; it does not prove an independent network fence or
-immediate failure detection. Release destroys a client with a check still in
-flight and bounds the wait for commit.
-In a local synthetic stalled-query probe, the server held the advisory lock for
-about ten seconds after the client was destroyed, until the configured statement
-timeout. Destroying a client alone is not evidence that a remote database has
-released its lock; test actual network failures and pooler behavior separately.
-The removal application uses a five-second lock timeout and can therefore fail
-while that lock remains. Keep its already-closed gate and pending decision in
-place, and reconcile the result before an authorized retry; do not report the
-removal as complete from the closure alone.
-A synthetic local-fetch probe against the built Nitro runtime did not carry a
-custom server-side context object into the nested request. Do not assume an inner
-request can reuse an outer request's guarded transaction. Test any alternative
-context propagation and cleanup against the deployed runtime. Never trust a
-client-supplied header as proof that a request holds a guard.
-A synthetic probe of two concurrent built suggestion-page renders preserved
-distinct Node `AsyncLocalStorage` values when the outer request explicitly wrapped
-its internal fetch. It used a database fake and initialized the module URL before
-importing the internal bundle, as the normal server entry point does.
-That result does not show that a middleware guards the full rendered response or
-that every internal fetch uses the same context. Verify actual database locks,
-the hosted pooler, and concurrent and disconnected requests before relying on it.
-
-The gate and pending state need a guarded transaction and must cover every
-public read, projection, and media delivery path. A restored older database may
-not contain the later gate or pending decision, so recovery must begin behind an
-independent access fence. If journal coverage or the pending decisions cannot be
-proved after a failure, keep the replacement isolated for authorized
-reconciliation. Implement and test that fence and the emergency path before
-enabling live removals or relying on the journal.
-The existing [Hosting cache policy](hosting-cache.md#cache-and-withdrawal-behavior)
-uses `private, no-store` for dynamic production responses, and media previews
-recheck publication state after fetching the object. Those controls are useful
-starting points, but a complete failure path must also cover in-flight reads,
-all public projections, and any direct media or cache access. Past synthetic
-staging cache tests are not evidence for live removals.
+Treat uncertain removal intents conservatively and retain protection when
+hold placement, scope or release is unclear. Keep unrelated approved content
+unchanged. Reconciliation helpers return counts and unresolved evidence for an
+authorized operator. Only the independently reviewed access and writer
+procedure can authorize reopening.
 
 ## Retention and held material
 
-Retain decision records while any recoverable backup can require them, subject
-to the privacy and legal-hold rules. Before deleting a journal record, verify
-that older live, noncurrent, and soft-deleted backups can no longer restore the
-affected decision and that no applicable hold requires the record. Review
-deletion with a separate identity; the writer cannot delete records.
+Retain decision records while any live, noncurrent or soft-deleted backup
+could need them, subject to the privacy policy and active legal holds.
+Review deletion with a separate identity. Track primary deletion from the
+original authorized removal time, including database and media copies. Retries
+reuse the original decision time. See the
+[retention procedure](../contributor-guides/backup-recovery.md#inspect-retention).
 
-Pending database decisions also contain a private free-text reason and refer to
-the idea and actor. An unresolved decision must not become an indefinite hold on
-that information or prevent the applicable deletion deadline from being met.
-Before live integration, establish timely reconciliation and a reviewed way to
-minimize and dispose of pending data without reopening the gate prematurely.
+Use broad provisional protection while the authorized reviewer determines
+case-specific scope. Preserve all potentially relevant versions, files and
+related records with restricted access. After an authorized scope review,
+material outside the recorded scope can return to the applicable deletion
+process only after checking other holds and preservation obligations.
+Keep withdrawn content private throughout.
 
-A hold on a complete database archive can retain unrelated people's data past
-their deletion deadlines. Preserve only the material and evidence covered by an
-authorized hold, with restricted access and its own reviewed release and
-deletion process. The record is not the held material. The exact evidence
-capture, scope, and lifecycle remain unresolved and must be established before
-live backups or holds depend on this design.
-The current `legal_holds` table records the idea, case, reason, and authority,
-but has no structured material scope. The journal intent's scope text alone
-does not prove which revisions or media were authorized for retention. Coordinate
-an authoritative scope and its application-data lifecycle with #56 before
-selecting artifacts or treating a manifest as complete.
+Preserve required material separately so an unrelated person's information
+does not stay in a whole database archive beyond its applicable deadline.
+If relevant material cannot be isolated, keep affected copies protected while
+the authorized operator resolves the scope or competing obligations.
 
-Capture must cover material added or changed after the latest archive and any
-associated media, not just a database row or a reference to an expiring object.
-For an authorized scope, a future capture must identify exact content revisions
-and media generations, preserve the scoped material separately, and verify that
-capture completed before treating it as recoverable. Coordinate that capture
-with the idea and retention locks so deletion or replacement cannot silently race
-it; a missing generation, interrupted capture, or ambiguous completion requires
-an explicit hold on deletion and authorized follow-up. Do not place raw content
-in decision records or extend a hold to unrelated material by default.
-An unwired storage primitive can write one already-scoped private artifact to the
-existing backup bucket under a caller-supplied UUIDv4, then read its exact generation
-and check its size and SHA-256 digest. It requests a temporary object hold in the
-create-only upload and requires the returned bucket, object generation,
-metageneration, checksum, size, and hold to agree. A failed or ambiguous response
-can still leave a held object behind; reconcile and dispose of orphaned artifacts
-through the separately authorized retention process. On a checksum mismatch the
-Storage client attempts to delete the upload. A local fake denies that request
-and retains the requested hold; it does not establish actual provider permissions
-or hold enforcement. A
-read checks the exact generation's temporary hold and metageneration before and
-after downloading; a missing hold or changed metadata fails verification. The
-primitive also compares the bucket generation and metageneration before and
-after each upload or read. These observations do not prove effective permissions,
-unchanged IAM policy, or future protection. The
-deadline stops waiting for metadata but does not cancel an SDK request already
-in flight.
-Each artifact must contain between one byte and 16 MiB, so empty or larger
-material cannot be captured by this primitive. The caller must generate a random,
-opaque ID and keep IDs, references, hashes, and bytes private. The caller
-must establish authority and scope, capture every required revision and media
-generation under the appropriate locks, and protect the references separately.
-An unwired manifest format can associate selected revision or media references
-and exact artifact generations with one hold; a version-three confirmation can
-reference the stored manifest. The caller must read that exact generation before
-reconciliation checks the manifest's digest, environment, operation, idea and
-hold IDs. An unwired verifier can also read each listed generation and check its
-size and digest. It reads at most four artifacts concurrently, limits the
-manifest and artifact bytes together to 128 MiB, and bounds waiting to two
-minutes. Missing, altered, oversized, or unavailable artifacts fail
-verification. A revision entry can represent only
-part of a revision, and the manifest does not establish what the authorized
-scope requires or guarantee future availability. The primitives do not
-authenticate the scope, capture all evidence, implement complete retention, legal-hold
-release or disposition, or establish complete recovery. Do not use them to
-authorize deletion or enable a live hold workflow. Review permissions for the
-separate `held-material` prefix before any live integration.
-An unwired comparison can reject a manifest whose revision IDs or media
-generations differ from a separately supplied source inventory, including extra,
-missing, or duplicate sources. A match does not authenticate that inventory or
-prove that it reflects the legal scope, that a revision's bytes are complete, or
-that captured material will remain available. The #56 lifecycle must establish
-and protect the authoritative inventory before this comparison can support a
-recovery decision. An unwired combined verifier checks the selected inventory
-before downloading the artifacts and verifies every selected generation's size,
-digest, and observed hold. It copies the inventory before contacting storage;
-it still cannot establish the inventory's authority or journal coverage.
-An unwired sequence check finds the recorded hold placements and verifies each
-available version-three capture. It reports placements without captures and
-other decisions requiring review; it does not authenticate the journal or hold
-authority. It checks at most 100 placements and 512 MiB of manifests and selected
-artifacts within two minutes, with the per-capture limits still applying.
-The retention and disposition work in
-[#56](https://github.com/DallasUrbanists/idea-map/issues/56) owns application-data
-lifecycle integration. Coordinate its guarded mutation paths and scoped evidence
-with this recovery process; a journal record by itself is not that integration.
+### Review held material
 
-For an authorized removal, the application-data process must track the original
-authorization time and target primary deletion within 14 days. Its completion
-evidence must cover the applicable database records and media generations, not
-just suppression from public views or a queued deletion request. Track any
-remaining copies and active holds for authorized follow-up, using only the scope
-needed for the decision. A valid hold can require restricted retention beyond the
-ordinary deadline; do not treat a pending hold review as proof that every copy
-is held. Repeated requests or retries must not silently restart the original
-deadline. Preserve the minimum evidence needed to reconcile older backups without
-indefinitely retaining the content or private reasons being deleted. The #56
-lifecycle must define and implement those records, timing, and disposition;
-this journal does not currently verify primary deletion or backup expiry.
+1. Verify the authority assignment, active case and idea. Use
+   `listAuthorizedHeldSourceCandidates` in a private operator process with
+   the held-source database role to list reference types, row identifiers
+   and exact media generations.
+2. Account for earlier backups, historical media generations and other
+   systems outside the primary listing. Record the selected sources and
+   candidate artifact IDs in the restricted case record.
+3. Use `captureAuthorizedHeldInventory` with scoped database and storage
+   identities. It copies selected complete PostgreSQL rows and exact media
+   generations into the `held-material` prefix of the private backup
+   bucket as create-only artifacts with temporary object holds.
+4. Use `recordJournaledHoldScopeReview` with the same operation ID, hold and
+   manifest generation. The review verifies each retained artifact and
+   compares the selected bytes against the current source before first
+   recording the decision.
+5. Reconcile the candidate IDs after an interrupted capture and retry an
+   interrupted review with the same operation and manifest. Preserve the
+   broader scope until an authorized reviewer verifies completeness, all
+   overlapping obligations, and the independent copies.
+
+A version-two manifest binds selected related records as well as revisions
+and media generations. Recovery reads the exact manifest and artifacts
+referenced by the review and checks their sizes, checksums, digests, generations
+and observed holds. A missing artifact, altered metadata or ambiguous
+readback keeps the scope under review. Individual artifacts are limited to
+16 MiB, so use separately reviewed handling for larger or unsupported sources.
+
+Issue #56 owns primary-data selection, release and disposition. The current
+bulk retention check preserves the idea's broad protection. Before approving
+primary or archive disposition, recheck the applicable holds and artifacts
+under the boundary that also excludes new holds. Scope review alone leaves
+public visibility and the broad primary protection in place.
+[Issue #56 coordination](https://github.com/DallasUrbanists/idea-map/issues/56#issuecomment-6667385319)
 
 ## Required evidence
 
-Before relying on the journal, test with synthetic data and isolated resources:
+Before relying on the journal in an environment, use authorized isolated
+resources and synthetic data.
 
-1. Verify effective identity boundaries, including inherited access, prefix
-    conditions, no update or delete, and denial of backup-writer journal access.
-2. Exercise all removal and hold paths, retries, direct database bypass attempts,
-    concurrent decisions, failed or ambiguous storage writes, rollbacks, lost
-    commit responses, and failed confirmations. Stop the writer at each boundary
-    between authorization, gate protection, journal write, database commit, and
-    reconciliation; verify public reads and in-flight responses remain protected.
-    Include concurrent outer page renders and direct API and media requests,
-    a stalled or disconnected client, a queued gate closure, exhausted database
-    connections, a lost database connection, and a terminated reader. Verify the
-    shared lock is released only after the protected response finishes or is
-    stopped, and that reopening waits for every pending decision. Test an
-    unrelated recovery closure, a concurrent
-    new removal, a lost reopen response, and a restored gate separately; none may
-    clear another closure or infer journal coverage. Exercise the real pooler and
-    the deployed runtime separately from local provider fakes.
-3. Restore an older archive after later synthetic decisions, reconcile the
-    journal, and prove that withdrawn content and held material remain private.
-4. Verify coverage checkpoint handling, old-schema compatibility, retention of
-    records and held material, and expiration of unrelated backup copies.
-5. Measure both recovery objectives on replacement infrastructure, including
-    access, evidence capture, reconciliation, and any manual review. Do not
-    claim the 24-hour recovery target from a local or incomplete rehearsal.
+1. Verify effective identity boundaries, including inherited access,
+   scoped reads and appends, and denial of unauthorized update, delete
+   and bypass paths.
+2. Exercise removals, holds, retry ordering, journal failure and interrupted
+   commits. Verify an unrelated closure persists and that concurrent or
+   stalled readers and disconnected clients are fenced.
+3. Restore an older archive on replacement infrastructure after later
+   synthetic decisions. Verify withdrawal of the idea and preview, retention
+   protection, exact held artifacts and the unaffected control.
+4. Review scope and archive expiry independently of the content restore.
+   Recheck provider expiry, journal continuity and recoverability of each
+   required held generation before releasing any protection.
+5. Measure recovery from incident start through verified restoration,
+   including replacement setup, access, reconciliation and validation.
+   Use the observed backup history separately to measure data loss.
+   [Recovery acceptance](https://github.com/DallasUrbanists/idea-map/issues/32) · [Sustained retention and data loss](https://github.com/DallasUrbanists/idea-map/issues/260)

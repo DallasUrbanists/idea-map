@@ -12,7 +12,7 @@ BEGIN
   CREATE ROLE idea_map_staging_web_test NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
   GRANT CONNECT ON DATABASE idea_map_test_worker TO idea_map_staging_web_test;
   GRANT USAGE ON SCHEMA public TO idea_map_staging_web_test;
-  GRANT SELECT (singleton, is_open) ON public.public_access_gate TO idea_map_staging_web_test;
+  GRANT EXECUTE ON FUNCTION public.public_access_allowed() TO idea_map_staging_web_test;
   GRANT SELECT (id, publication_state) ON public.ideas TO idea_map_staging_web_test;
   GRANT SELECT (idea_id, revision_id) ON public.approved_revisions TO idea_map_staging_web_test;
   GRANT SELECT (id, idea_id, content, review_state) ON public.idea_revisions TO idea_map_staging_web_test;
