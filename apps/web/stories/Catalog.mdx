@@ -1,0 +1,62 @@
+import { Meta } from '@storybook/addon-docs/blocks'
+
+<Meta title="Catalog/Overview" />
+
+# Component catalog
+
+Use this catalog to find the production components and composed patterns that
+support Idea Map's interface. The examples use synthetic content.
+
+## Foundations
+
+Start with <a href="./?path=/docs/foundations-principles--docs" target="_top">design principles</a>,
+<a href="./?path=/docs/foundations-color--docs" target="_top">color</a>, and
+<a href="./?path=/docs/foundations-theming--docs" target="_top">theming</a> to choose shared tokens and
+review light, dark, and reduced-motion behavior.
+
+## Controls
+
+The <a href="./?path=/docs/components-button--usage" target="_top">Button</a>,
+<a href="./?path=/docs/components-input--usage" target="_top">Input</a>, and
+<a href="./?path=/docs/components-select--usage" target="_top">Select</a> pages show production controls,
+labels, disabled states, validation, and usage contracts. Their stories use
+synthetic examples and can be exercised with the keyboard.
+
+## Overlays
+
+Use the <a href="./?path=/story/components-dialog--default" target="_top">Dialog example</a> for focused
+modal work, the <a href="./?path=/docs/components-tray--usage" target="_top">Tray usage page</a> for
+nonmodal map content, and the <a href="./?path=/docs/components-menu--usage" target="_top">Menu</a> and
+<a href="./?path=/docs/components-toast--usage" target="_top">Toast</a> pages for contextual actions and
+notifications. Their contracts describe focus, dismissal, and interruption.
+
+## Ideas
+
+The <a href="./?path=/docs/components-layout-patterns--usage" target="_top">layout patterns</a> specimen
+shows synthetic idea selection above a persistent map. The <a href="./?path=/docs/components-card--usage" target="_top">Card</a>
+page documents a reusable production container. The specimen does not establish
+that a complete idea-detail feature is implemented.
+
+## Discussion
+
+Dedicated discussion components and application flows are not represented in
+this catalog. The <a href="./?path=/docs/components-input--usage" target="_top">Input</a> and
+<a href="./?path=/docs/components-button--usage" target="_top">Button</a> pages document general controls;
+they are not a discussion implementation.
+
+## Submission
+
+The <a href="./?path=/docs/components-layout-patterns--usage" target="_top">layout patterns</a> specimen
+includes a synthetic draft to demonstrate interrupted navigation and return.
+<a href="./?path=/docs/components-input--usage" target="_top">Input</a>, <a href="./?path=/story/components-progress--default" target="_top">Progress</a>,
+and <a href="./?path=/docs/components-toast--usage" target="_top">Toast</a> document reusable controls.
+The specimen does not submit data or represent an integrated submission flow.
+
+## Review and publishing
+
+Stories import project-owned components; the map-layout specimen uses synthetic
+application state and can use an injected map adapter in tests. Contributors
+should review keyboard access, focus, small screens, and relevant loading, empty,
+error, and recovery states. The selected production destination is
+[storybook.mapmy.town](https://storybook.mapmy.town/); the address does not imply
+that hosting or DNS is configured.

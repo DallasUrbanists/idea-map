@@ -32,9 +32,9 @@
   "scripts": {
     "dev": "nuxt dev",
     "test:dialog": "nuxt prepare && node --test ../../scripts/dialog-ssr.mjs && playwright test --config tests/dialog/playwright.config.mjs",
-    "test:storybook-docs": "playwright test --config tests/storybook/playwright.config.mjs",
-    "storybook": "storybook dev -p 6006",
-    "build:storybook": "storybook build",
+    "test:storybook-docs": "nuxt prepare && playwright test --config tests/storybook/playwright.config.mjs",
+    "storybook": "nuxt prepare && storybook dev -p 6006",
+    "build:storybook": "nuxt prepare && storybook build",
     "build": "nuxt build",
     "typecheck": "nuxt typecheck",
     "preview": "nuxt preview",
