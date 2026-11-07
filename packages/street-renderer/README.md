@@ -25,10 +25,20 @@ deterministic for identical inputs. SVG may still be subject to an application's
 content security and untrusted-input resource limits; impose size limits at the
 server boundary.
 
-The sample fixture is original synthetic geometry and uses no third-party assets.
+The [synthetic fixtures](test/fixtures/synthetic.mjs) contain original fictional
+viewport coordinates and styles; they use no third-party assets. They exercise
+polylines only and do not establish rail or agency artwork support. The
+[historical renderer input inventory](../../docs/v1-migration/renderer-inputs.md)
+records source evidence and unresolved rights. The
+[reuse rights guide](../../docs/contributor-guides/reuse-rights-guide.md) describes
+permission and attribution checks before using real inputs.
 The application owns geometry acquisition, labels, asset permissions, and raster
 previews around the core renderer; the [renderer inputs](../../docs/architecture/architecture-overview.md#workspace-boundaries)
 remain provider independent. Keep the package's source and tests independent of
 workspace app imports to preserve package independence; publishing and release automation require
-separate authorization. After the root build, run
-`pnpm --filter @idea-map/street-renderer test` for the focused checks.
+separate authorization.
+
+## Validation
+
+After the root build, run `pnpm --filter @idea-map/street-renderer test` for the
+focused checks. These tests do not establish clearance for real-world inputs.
