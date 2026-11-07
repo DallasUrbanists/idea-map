@@ -54,6 +54,20 @@ for (const width of [320, 1280]) {
         await expect.poll(() => region.evaluate(el => el.scrollLeft)).toBeGreaterThan(0)
       }
     }
+    if (width === 320) {
+      const question = page.getByRole('region', { name: 'Review checklist' }).getByRole('rowheader').first()
+      const { available, wordWidth } = await question.evaluate(el => {
+        const style = getComputedStyle(el)
+        const canvas = document.createElement('canvas')
+        const context = canvas.getContext('2d')
+        context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+        return {
+          available: el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+          wordWidth: context.measureText('keyboard').width,
+        }
+      })
+      expect(available).toBeGreaterThanOrEqual(wordWidth)
+    }
     expect(await page.locator('html').evaluate(el => el.scrollWidth > el.clientWidth)).toBe(false)
   })
 }
