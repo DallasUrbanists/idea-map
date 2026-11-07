@@ -14,7 +14,7 @@ The following contents links navigate within this guide:
 
 ## Compilation and types
 
-The root [package manifest](../../package.json) pins Node.js 24.22.1 and
+The root [package manifest](../../package.json) pins Node.js 26.13.0 and
 TypeScript 5.9.3. You should keep those declarations and development
 instructions aligned.
 

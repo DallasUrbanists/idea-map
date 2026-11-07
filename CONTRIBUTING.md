@@ -58,7 +58,7 @@ local settings for a new checkout.
 1. Complete the [development setup](docs/contributor-guides/development-guide.md#one-time-setup-for-each-checkout) to install tools and dependencies and create the root `.env`.
 2. Confirm your `.env` uses the local demo settings from [`.env.example`](.env.example).
 
-Setup uses Node 24.22.1, pnpm 11.25.0 and Docker. The local database and Firebase
+Setup uses Node 26.13.0, pnpm 11.25.0 and Docker. The local database and Firebase
 emulators need no production credentials.
 
 ### Start of each work session

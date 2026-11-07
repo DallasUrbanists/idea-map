@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
-import { Readable, Writable } from 'node:stream'
+import { PassThrough, Readable, Writable } from 'node:stream'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { backupConfiguration, backupConnectionEnvironment, exportEncryptedBackup as exportWithSnapshot, isCanonicalBackupCrc32c, startDump, verifyBackupBucket } from '../ops/export-encrypted-backup.mjs'
@@ -107,7 +107,7 @@ test('a lost snapshot session leaves uploaded archives unconfirmed', async () =>
   assert.equal(fake.manifests.length, 0)
 })
 
-function provider(bucketMetadata = metadata, failWeekly = false, failCompletion = false, mismatchedWeekly = false, ambiguousCompletion = false, stallUpload = false, archiveBucket = env.BACKUP_BUCKET, archiveCrc = 'AAAAAA==') {
+function provider(bucketMetadata = metadata, failWeekly = false, failCompletion = false, mismatchedWeekly = false, ambiguousCompletion = false, stallUpload = false, archiveBucket = env.BACKUP_BUCKET, archiveCrc = 'AAAAAA==', failWeeklyOnFinal = false) {
   const states = []
   const manifests = []
   const bucket = { async getMetadata() { return [bucketMetadata] }, file(name) {
@@ -129,6 +129,7 @@ function provider(bucketMetadata = metadata, failWeekly = false, failCompletion 
         write(chunk, encoding, callback) { state.bytes += chunk.toString(); callback(failWeekly && name.includes('/weekly/') ? new Error('synthetic upload failure') : undefined) },
         final(callback) {
           if (stallUpload) return
+          if (failWeeklyOnFinal && name.includes('/weekly/')) return callback(new Error('synthetic final upload failure'))
           state.finalized = true; file.metadata = { name, bucket: archiveBucket, generation: '123', metageneration: '1', size: String(Buffer.byteLength(state.bytes) + (mismatchedWeekly && name.includes('/weekly/') ? 1 : 0)), crc32c: archiveCrc }; callback()
         },
         destroy(error, callback) { state.destroyed = true; callback(error) },
@@ -252,9 +253,30 @@ test('a missed weekly copy can be recreated from one new snapshot', async () => 
 
 test('a failed weekly upload aborts the daily upload and fails the run', async () => {
   const { storage, states, manifests } = provider(metadata, true)
-  await assert.rejects(exportEncryptedBackup(backupConfiguration(env), { storage, now: new Date('2026-11-02T10:00:00Z'), start: () => source() }))
+  let killed = false
+  const start = () => {
+    const stdout = new PassThrough()
+    const done = new Promise((resolve, reject) => {
+      stdout.once('close', () => reject(new Error('synthetic dump stopped')))
+    })
+    const child = { stdout, kill() { killed = true; stdout.destroy() } }
+    // Keep the dump open until the failed upload stops it, independent of stream timing.
+    setImmediate(() => stdout.write('synthetic database bytes'))
+    return { child, done }
+  }
+  await assert.rejects(exportEncryptedBackup(backupConfiguration(env), { storage, now: new Date('2026-11-02T10:00:00Z'), start }))
+  assert.equal(killed, true)
   assert.equal(states.length, 2)
   assert.ok(states.every(state => !state.finalized && state.destroyed))
+  assert.equal(manifests.length, 0)
+})
+
+test('a weekly upload failure after dump completion never confirms the backup', async () => {
+  const { storage, states, manifests } = provider(metadata, false, false, false, false, false, env.BACKUP_BUCKET, 'AAAAAA==', true)
+  await assert.rejects(exportEncryptedBackup(backupConfiguration(env), { storage, now: new Date('2026-11-02T10:00:00Z'), start: () => source() }))
+  assert.equal(states.length, 2)
+  assert.equal(states.find(state => state.name.includes('/weekly/')).finalized, false)
+  assert.ok(states.every(state => state.destroyed))
   assert.equal(manifests.length, 0)
 })
 

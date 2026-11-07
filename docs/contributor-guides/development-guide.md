@@ -32,7 +32,7 @@ The following contents links navigate within this guide:
 
 You should prepare each checkout with these steps:
 
-1. Install Node.js 24.22.1, pnpm 11.25.0, and Docker Desktop with its Linux
+1. Install Node.js 26.13.0, pnpm 11.25.0, and Docker Desktop with its Linux
     engine, or a compatible Linux Docker Engine with Compose.
 2. Verify the installed versions:
 
@@ -58,12 +58,19 @@ You can use these checks to confirm that setup and configuration are correct:
 
 | Setup detail | What to expect |
 | --- | --- |
-| Node.js version | `node --version` reports `v24.22.1`. |
+| Node.js version | `node --version` reports `v26.13.0`. |
 | pnpm version | `pnpm --version` reports `11.25.0`. |
 | Docker Compose | `docker compose version` reports an installed Compose version. |
 | Local configuration | The example contains demo Firebase identifiers and a local database address; keep those values for this workflow. |
 | Configuration loading | `pnpm dev` loads the root `.env` into Nuxt, including its server-side emulator setting; `pnpm dev:db:migrate` loads it for the database *command-line interface (CLI)*. |
 | Configuration privacy | Git ignores `.env`; keep personal secrets out of the tracked `.env.example`. |
+
+If you used Node 24 for this project, switch to Node 26.13.0 before running
+pnpm. The root [`.nvmrc`](../../.nvmrc) records the required version for Node
+version managers. If a version manager reports the correct selection but
+`node --version` differs, reopen the terminal and check which Node installation
+is on your path. Node 26 does not include Corepack; you can install the pinned
+pnpm version with `npm install --global pnpm@11.25.0`.
 
 You should repeat dependency installation after pulling changes to
 `pnpm-lock.yaml`. Continue with the session-start steps once setup is complete.
