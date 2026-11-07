@@ -1,4 +1,5 @@
 import { renderStreetDiagram } from '../dist/index.js'
+import { syntheticFixtures } from './fixtures/synthetic.mjs'
 
 // Synthetic viewport coordinates: no third-party artwork or geographic data.
 const fixture = {
@@ -8,6 +9,12 @@ const fixture = {
   provenance: { source: 'synthetic', revision: '1', attribution: 'Test fixture' },
 }
 const check = (condition, message) => { if (!condition) throw new Error(message) }
+for (const example of syntheticFixtures) {
+  const rendered = renderStreetDiagram(example)
+  check(rendered.metadata.lineCount === example.lines.length, 'fixture line count must be retained')
+  check(JSON.stringify(rendered.metadata.provenance) === JSON.stringify(example.provenance), 'fixture provenance must be retained')
+  check(JSON.stringify(rendered) === JSON.stringify(renderStreetDiagram(example)), 'fixture output must be deterministic')
+}
 const rejects = (input, kind) => {
   try { renderStreetDiagram(input) } catch (error) { check(error instanceof kind, `unexpected error: ${error}`); return }
   throw new Error('expected invalid input to be rejected')
