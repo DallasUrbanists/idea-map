@@ -109,6 +109,28 @@ variable "web_database_secret_version" {
     error_message = "Use an empty value or a numeric secret version, not latest."
   }
 }
+variable "web_firebase_auth" {
+  description = "Optional hosted Firebase browser settings and exact session origin for the web service. The API key is public browser configuration."
+  type = object({
+    api_key        = string
+    auth_domain    = string
+    session_origin = string
+  })
+  default = null
+  validation {
+    condition = var.web_firebase_auth == null ? true : try(
+      can(regex("^[A-Za-z0-9_-]+$", var.web_firebase_auth.api_key)) &&
+      can(regex("^https://[a-z0-9-]+(\\.[a-z0-9-]+)+$", var.web_firebase_auth.session_origin)) &&
+      contains([
+        "${var.project_id}.firebaseapp.com",
+        trimprefix(var.web_firebase_auth.session_origin, "https://")
+      ], var.web_firebase_auth.auth_domain),
+      false
+    )
+    error_message = "Supply a Firebase browser API key, an exact HTTPS session origin, and either the project's Firebase Auth domain or the session origin hostname."
+  }
+}
+
 variable "worker_origin" {
   description = "Exact HTTPS origin of the reviewed worker service, without a trailing slash."
   type        = string

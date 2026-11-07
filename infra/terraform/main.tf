@@ -44,6 +44,21 @@ resource "google_cloud_run_v2_service" "runtime" {
         cpu_idle = true
       }
       dynamic "env" {
+        for_each = each.key == "web" && var.web_firebase_auth != null ? {
+          NUXT_AUTH_PROVIDER_MODE          = "provider"
+          NUXT_PUBLIC_AUTH_PROVIDER_MODE   = "provider"
+          NUXT_FIREBASE_PROJECT_ID         = var.project_id
+          NUXT_PUBLIC_FIREBASE_PROJECT_ID  = var.project_id
+          NUXT_PUBLIC_FIREBASE_API_KEY     = var.web_firebase_auth.api_key
+          NUXT_PUBLIC_FIREBASE_AUTH_DOMAIN = var.web_firebase_auth.auth_domain
+          NUXT_SESSION_ORIGIN              = var.web_firebase_auth.session_origin
+        } : {}
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+      dynamic "env" {
         for_each = each.key == "web" && var.web_database_secret_id != "" && var.web_database_secret_version != "" ? [1] : []
         content {
           name = "NUXT_DATABASE_URL"
@@ -131,7 +146,12 @@ resource "google_cloud_run_v2_service" "runtime" {
       error_message = "The configured worker origin must match the Cloud Run service URI."
     }
   }
-  depends_on = [google_secret_manager_secret_iam_member.resend, google_secret_manager_secret_iam_member.web_database, google_secret_manager_secret_iam_member.worker_database]
+  depends_on = [
+    google_secret_manager_secret_iam_member.resend,
+    google_secret_manager_secret_iam_member.web_database,
+    google_secret_manager_secret_iam_member.worker_database,
+    google_project_iam_member.web_firebase_session,
+  ]
 }
 
 resource "google_storage_bucket" "media" {
