@@ -29,6 +29,12 @@ path. Each checkout has separate containers and volumes. The published ports are
 fixed, so two checkouts cannot run these services at the same time. Published
 ports bind loopback only.
 
+Node-based images use the version pinned in the root manifest. Rebuilding an
+image applies that runtime version; existing deployed images remain unchanged
+until an authorized deployment. To recover a deployment, follow the
+[Cloud Run release guide](../contributor-guides/cloud-run-release.md) and check
+that the previous revision is compatible with current data and configuration.
+
 ## Web image
 
 Build the web image and run its local-only smoke checks from the repository root:

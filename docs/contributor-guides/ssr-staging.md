@@ -72,7 +72,7 @@ routing traffic. [Recovery journal access](../architecture/recovery-journal.md#e
 
 ## One-time setup for operators
 
-Operators need Node 24.22.1, pnpm 11.25.0, Terraform 1.13 through 1.x, the Google
+Operators need Node 26.13.0, pnpm 11.25.0, Terraform 1.13 through 1.x, the Google
 Cloud and Firebase *command-line interfaces (CLIs)*, and `tar`. For database
 checks, operators also need `psql` and the
 [Cloud SQL Auth Proxy](https://cloud.google.com/sql/docs/postgres/sql-proxy).
