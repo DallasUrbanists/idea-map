@@ -9,7 +9,7 @@ for (const width of [320, 1280]) {
     for (const heading of ['Foundations', 'Controls', 'Overlays', 'Ideas', 'Discussion', 'Submission']) {
       await expect(content.getByRole('heading', { name: heading })).toBeVisible()
     }
-    await expect(content).toContainText('Dedicated discussion components and application flows are not represented')
+    await expect(content).toContainText('Application discussion flows are not yet represented')
     const index = await (await request.get('/index.json')).json()
     const links = await content.locator('a[href*="?path=/"]').all()
     expect(links.length).toBeGreaterThan(10)
