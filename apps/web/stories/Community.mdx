@@ -1,0 +1,26 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks'
+import * as Stories from './Community.stories.js'
+
+<Meta of={Stories} name="Usage" />
+
+# Community patterns
+
+**Draft:** these patterns await explicit design acceptance and are not yet accepted for use in the application. The examples use synthetic data and local state only; they do not send comments, modify ideas, or load notifications.
+
+## Idea and discussion
+
+An idea card presents a summary and emits `open`, `like`, `follow`, and `moderate` actions. Its `liked` and `following` props control the pressed states; `role`, `pending`, and `offline` control available actions, and `error` describes a failed action. The caller owns changes, authorization, navigation, error handling, and persistence. An idea detail presents the full description and emits `edit` or `moderate` for the appropriate role. A guest sees sign-in guidance. A moderator control is a request for review, not authorization to perform a moderation operation.
+
+The comment thread accepts an array of stable IDs, authors, text, and display times and emits a comment ID when a moderator chooses review. The composer accepts `modelValue`, `role`, `state`, and an optional `error`; it emits `update:modelValue` and `submit`. The caller retains the text while a request is pending, fails, or is offline, and clears it only after confirmed success. Errors are associated with the field. The example's controls simulate transitions without a network request.
+
+<Canvas of={Stories.Owner} sourceState="none" />
+
+## Notifications and clarification
+
+The inbox accepts stable IDs, text, unread flags, and `state`; it emits `open` with an ID and `retry` on failure. The caller owns fetching, read status, and retry behavior. The clarification conversation accepts a summary and ordered messages with stable IDs, authors, and text. Its default slot can contain a caller-owned response control. Empty, pending, error, and offline states should reflect actual application data rather than fabricated results.
+
+<Canvas of={Stories.Moderator} sourceState="none" />
+
+## Review and integration
+
+Review the guest, owner, moderator, pending, error, offline, and dark stories at narrow and wide widths. Follow the [component review checklist](/docs/foundations-before-you-contribute--docs). Automated tests do not establish screen-reader or physical touch-device usability. These components do not enforce permissions, operate a provider, or define server-side policies.
