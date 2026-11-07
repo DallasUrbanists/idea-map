@@ -86,7 +86,7 @@ The v1 [logo directory][logo-directory] contains eleven named agency/operator
 images: Amtrak, DART, DCTA, FlixBus, Greyhound, M-Line, RedCoach, STAR Transit,
 TRE, Trinity Metro, and Vonlane. These names identify files to investigate, not
 permission to use the associated marks. Each catalog and logo needs a
-source-specific rights and notice record before transfer; the detailed audit is
+source-specific rights and notice record before transfer; the detailed audit is in [renderer input evidence](renderer-inputs.md) and
 [#94][94].
 
 An inspection of the first feature's properties in each GeoJSON found feed and

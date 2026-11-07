@@ -1,24 +1,16 @@
-# Renderer inputs and reuse evidence
+# Historical renderer input evidence
 
-This inventory helps maintainers review data and artwork before using them in the
-renderer. It records evidence, not permission or a legal determination. The
-[historical rights inventory](../../docs/v1-migration/rights-inventory.md) explains
+This inventory records predecessor data and artwork evidence for migration
+review. It does not establish current behavior, permission or a legal
+determination. The [historical rights inventory](rights-inventory.md) explains
 the predecessor boundary and the maintainer authorization for code they control.
 
-## Current fixtures and outputs
+The following contents links navigate within this inventory:
 
-The [synthetic fixtures](test/fixtures/synthetic.mjs) contain original, fictional
-viewport coordinates, descriptions and styles created for this project. They
-contain no copied geographic features, transit marks or user submissions and
-are covered by the project license. They exercise polylines only: they do not
-assert that rail catalogs, agency artwork or OSM attribution are implemented.
-
-The renderer returns a copy of caller-supplied provenance as metadata; it does
-not draw attribution. A caller using real data must determine the applicable
-rights and provide the required visible attribution and notices in the delivered
-work. The root Apache-2.0 license does not relicense datasets, third-party artwork
-or trademarks. Do not transfer an item below without item-specific permission
-and the required notices.
+- [Geographic data](#geographic-data)
+- [Predecessor rail catalogs](#predecessor-rail-catalogs)
+- [Predecessor agency artwork](#predecessor-agency-artwork)
+- [Review workflow](#review-workflow)
 
 ## Geographic data
 
@@ -26,7 +18,7 @@ The predecessor [live location code](https://github.com/DallasUrbanists/improvem
 identifies OpenStreetMap as a source and records attribution and ODbL-1.0 for
 its query context. [OpenStreetMap copyright and attribution](https://www.openstreetmap.org/copyright)
 and the [ODbL text](https://opendatacommons.org/licenses/odbl/1-0/) are separate
-from Apache. Review the specific use, changes, distribution and database
+from Apache. Maintainers should review the specific use, changes, distribution and database
 obligations before shipping; these observations do not grant access to an
 unverified saved extract.
 
@@ -36,7 +28,7 @@ The following is an inventory of the pinned v1 files, not material copied into
 this package. Feed identifiers and hashes are recorded by those files, not proof
 of license, feed terms, authorship or transfer permission. The correction counts
 below refer to `shape_corrections` on the single feature in each inspected file.
-Confirm each original dataset, license, attribution and correction rights before
+Maintainers should confirm each original dataset, license, attribution and correction rights before
 using it. No listed catalog is currently cleared by this inventory.
 
 | Catalog | Feed identifier / version SHA-1 | Recorded corrections |
@@ -63,7 +55,7 @@ in that feature, not that the underlying feed was unmodified.
 
 Each linked file is historical evidence only. An external image reference is
 not a license, and an operator name or repository inclusion does not establish
-trademark permission. Verify source, rights holder, license, attribution,
+trademark permission. Maintainers should verify source, rights holder, license, attribution,
 modifications and permission for the intended use separately. No artwork below
 is cleared for transfer; use neutral, synthetic alternatives until reviewed.
 
@@ -89,4 +81,4 @@ required attribution, corrections and distribution constraints. Keep source
 notices alongside shipped artifacts and visible attribution in outputs when
 required. Do not treat a feed hash, route URL, linked image, or successful test
 as rights clearance. Resolve missing evidence before transferring that item.
-Run the [package checks](README.md#validation) using synthetic fixtures.
+Run the [package checks](../../packages/street-renderer/README.md#validation) using synthetic fixtures.
