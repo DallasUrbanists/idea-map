@@ -54,15 +54,26 @@ not configured. The web service uses at most two instances; the database runs
 continuously unless an operator stops it.
 Shared-core Cloud SQL is not covered by the Cloud SQL service-level agreement.
 
-The November 1, 2026 deployment used image digest
+On November 6, 2026, Cloud Run revision `idea-map-ssr-staging-00002-hcg` served
+all traffic using image digest
+`sha256:4e11a8ff1a515cf10d336c6352b49f56d4467bb8eb0d92d0ef91b13ae0648ae9`.
+Cloud Build `6b577aa7-226d-453d-8274-0fa4879bef8a` produced that image on
+November 1. Its retained source archive matches the included tracked files at
+commit `2ba712a13f6b005eb7de41a4ecf7208646fd0418`, accounting for line endings;
+the archive excludes five tracked ignore files. The earlier image digest
 `sha256:ed93775f9365e74f8ebba29388b3ffa8a4ebb99987fdd43f54b9876390e1e0ed`
-from Cloud Build `b54d170d-31fe-42fb-bcbf-add71c87e2e3`. The build included
-uncommitted changes on top of commit `35d09741eb229c6275c454af673149f131cc0e87`,
-so that commit alone cannot reproduce the deployed image. That deployed image
-predates the current no-store and access-gate changes. They take effect only
-after an authorized deployment of a new image and review of older revisions
-and cached responses. This first Hosting release had no earlier application
-release to restore.
+came from a different build and does not identify the serving revision. Asset
+build `b3cd157b-1115-4a33-9e83-da177b9dfa3f` used the serving image to create
+`gs://dallasurbanists-idea-map-dev-ssr-build/assets/4e11a8ff-hosting.tar.gz`;
+the archive was present on November 6. The live Hosting channel reported
+finalized version `2d83aad864186249`, with a catch-all rewrite to the staging
+service. On November 6, the 15 archived application assets matched the live
+staging responses byte for byte. This comparison does not test rollback.
+
+The serving image predates the current no-store and access-gate changes. They
+take effect only after an authorized deployment of a new image and review of
+older revisions and cached responses. Operators must confirm a matching image,
+asset archive, and recovery procedure before any subsequent deployment.
 
 Before deploying a revision with the gate, apply the compatible migrations to
 the authorized staging database and review the runtime grants. Give the web

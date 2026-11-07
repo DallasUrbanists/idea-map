@@ -46,14 +46,15 @@ Use these procedures to reproduce focused evaluations and review their evidence:
 
 ## User guides
 
-The [user-guide directory](user-guides/) contains nontechnical instructions for
-actions people take in the application. Each Markdown filename follows
-`how-to-<user-action>.md`, with a descriptive lowercase kebab-case action.
+These guides help you manage your account:
 
-Authors should explain user-facing prerequisites, steps, results, and recovery
-options without developer commands, source paths, or architecture. Add or update
-guides alongside user-facing feature changes once the interactions can be
-described accurately; the empty directory is retained with `.gitkeep`.
+- [Create an account](user-guides/how-to-create-an-account.md)
+- [Sign in](user-guides/how-to-sign-in.md)
+- [Reset your password](user-guides/how-to-reset-your-password.md)
+- [Sign out](user-guides/how-to-sign-out.md)
+
+Authors should follow the [user-guide writing rules](contributor-guides/documentation-style-guide.md#user-guides)
+when adding or updating these instructions.
 
 ## Architecture
 
